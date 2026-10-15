@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>DexAgent</title>
+<meta name="description" content="agent 把一段人手视频转成验证过的机器人训练数据，按物体 property 选或写 skill 与 verifier；11 个真机任务平均 63.6%，最强 baseline 18.2%。">
+<meta name="paper:title" content="DexAgent: An Agentic Human2Sim2Robot Framework for Dexterous Manipulation with Self-Evolving Tool Library">
+<meta name="paper:source" content="https://arxiv.org/abs/2609.35318">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2609.35318v2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+table.grid td:last-child { white-space: nowrap; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+  table.grid td:last-child { white-space: normal; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-10-15</p>
+  <h1>DexAgent</h1>
+  <p class="full-title">DexAgent: An Agentic Human2Sim2Robot Framework for Dexterous Manipulation with Self-Evolving Tool Library</p>
+  <p class="meta">Youhui Wang, Yunzhu Li, Li Fei-Fei, Jiajun Wu, Huang Huang · Stanford, Columbia · arXiv 2609.35318v2，2026-10-02</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2609.35318">arXiv</a><a href="https://arxiv.org/pdf/2609.35318v2">PDF</a>
+    <a href="https://dexagent1.github.io/">Project page</a><a href="https://github.com/dexagent1/DexAgent">Code</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：agent 把一段人手视频重建成 sim 里的物体和场景（螺纹瓶盖、绳子），再生成机器人训练数据；它的 skill + verifier 库对 Robotic-harness 也有参考价值。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>人手视频很多，但现有 Human2Sim2Robot pipeline 步骤固定，碰到螺纹瓶盖、绳子、长任务就转不出机器手能执行的动作。</dd></div>
+    <div><dt>Idea</dt><dd>一个 agent 分 4 个 stage 转换，每步按物体 property 选或现写 skill，用 verifier 在 sim 里检查，不过就改；新工具存进 self-evolving tool library。</dd></div>
+    <div><dt>Result</dt><dd>用它的数据训的 π0.5 在 11 个真机任务上平均 <b>63.6%</b>，约为最强 baseline SPIDER（18.2%）的 3.5×；开瓶 70%，所有 baseline 0%（Table IV）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>同一段开瓶视频，7 个 baseline 转出的动作在真机上重放全失败，训出的 policy 全是 0%</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Open the Bottle</b>：一段 egocentric RGB 人手视频（RealSense D435，<span class="ex">640x480, 30 fps</span>）：左手抵住蓝色瓶身、右手反复拧松瓶盖，右手拔出盖子和连着的长管，左手再把瓶子倾向灰色杯子。外加 prompt <span class="ex">"Remove the bottle cap, then pour the water from the bottle into the mug."</span></p>
+    <p>→ 想要：双臂 YamBox 上两只 Sharpa 手能执行的开瓶 trajectory，扩成训练数据，训出在真机上能开瓶的 π0.5 policy。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>开瓶视频 + prompt</span>"] --> A1["<b>A · Retargeting</b><br/>照搬人手动作"]
+  A1 --> AX["<b>拧盖：握法不按机器手改</b><br/><span class='ex'>重放 0/10 · policy 0%</span>"]:::gap
+  IN --> B1["<b>B · 固定 pipeline</b><br/>先重建，再生成动作"]
+  B1 --> BX["<b>重建：螺纹盖没专门建模</b><br/><span class='ex'>重放 0/10 · policy 0%</span>"]:::gap
+  IN --> C1["<b>C · Zero-shot LLM</b><br/>直接写出整段动作"]
+  C1 --> CX["<b>每一步都没有 verifier</b><br/><span class='ex'>重放 0/10 · policy 0%</span>"]:::gap
+  </pre></div>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>Baseline</th><th>怎么做</th><th>在例子上哪里坏</th><th>结果</th></tr>
+      <tr><td><b>A · Retargeting</b>（Dex-retargeting、SPIDER、TopoRetarget）</td><td>拿到给定的瓶、杯 asset 和 pose，把人手动作映射到 Sharpa 手上</td><td><b>拧盖</b>：照搬人手的"反复转 + 换握"，Sharpa 手做不到时不会改握法；物体转角误差本就大（OakInk E<sub>rot</sub> 0.42–0.62 rad，DexAgent 0.12，Table II）</td><td>Bottle ✗ · 0%<br>最好 SPIDER 18.2%</td></tr>
+      <tr><td><b>B · 固定 reconstruct + 生成</b>（Do as I Do、EgoInfinity、V2D）</td><td>按各自固定的流程从视频重建瓶和杯，再用优化、retargeting 或 RL 生成动作</td><td><b>重建瓶盖</b>：螺纹（转一圈升一个螺距）和要拔出的长管需要专门的 joint model 和检查，固定流程不按 property 建；铰接重建本就弱（HOI4D CD：Do as I Do 1.25，DexAgent 1.08，Table I）</td><td>Bottle ✗ · 0%<br>最好 V2D 17.3%</td></tr>
+      <tr><td><b>C · Zero-shot LLM</b>（GPT-6: Astra）</td><td>不用 DexAgent 的 harness，按视频和 prompt zero-shot 直接写出整段双手 trajectory</td><td><b>每一步</b>：没有 verifier、重试和工具库，盖子转没转开、长管离没离开瓶口都没在 sim 里验，第一个错误带到最后</td><td>Bottle ✗ · 0%<br>平均 16.4%</td></tr>
+    </table>
+  </div>
+  <p class="flow-hint">"哪里坏"一栏和红框，是按论文对这几类方法的描述（§I、§II、§IV）推到开瓶上的推断。论文对每个 baseline 只报告 Bottle 重放 ✗、policy 0%（Table III、IV），没写具体卡在哪一步。</p>
+  <p class="crux"><b>根本问题：</b>步骤固定，又没有按物体 property 的检查：螺纹瓶盖也套通用的 reconstruction 和 motion 方法，错了没人发现（同为铰接物体，单自由度抽屉有 4 个 baseline 能重放，瓶盖 0 个，Table III）。　<b>这篇的切入点：</b>agent 按 property 选或现写 skill，每一步用 verifier 在 sim 里验过才往下走，新工具入库复用。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>一个 agent 把一段人手视频变成验证过的机器人训练数据，并把自己写的工具留下来</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-15-DexAgent/fig1.jpg" alt="Fig. 1：左边 8 段人手视频，中间 DexAgent 和它的 self-evolving tool library（蓝色 skill、绿色 verifier），右边 10 个任务的真机 rollout。"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）一段人手视频 + prompt 进，DexAgent 用 self-evolving tool library 里的 skill 和 verifier 把它转成机器人训练数据；右边是 11 个任务里 10 个的真机 rollout 成功画面。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左 "One Human Video"：</b>每个任务只有一段输入视频；第 2 行右边（蓝瓶、灰杯）就是开瓶例子。</li>
+    <li><b>中间 "DexAgent" 箭头和下方的循环箭头：</b>agent 和工具库来回：取工具用，再把新工具存回去。</li>
+    <li><b>中下 "Self-Evolving Tool Library"：</b>蓝色是 skill（Scene Understanding、Object Reconstruction、Motion Analysis、Manipulation），绿色是 verifier（Physical &amp; Geometric、Task）。</li>
+    <li><b>右 "Robot Rollout Success"：</b>真机双手在 10 个任务上的成功画面；左上 "Open the Bottle" 是例子的终点。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>Input</b><br/><span class='ex'>开瓶视频 + prompt</span>"] --> SK["<b>每个 stage：选或写 skill</b><br/><span class='ex'>human_pose_prior</span>"]
+  LIB["<b>Tool library</b><br/><span class='ex'>skill + verifier</span>"] &lt;-->|"取用 / 存回"| SK
+  SK --> V["<b>Verifier 在 sim 里验</b><br/><span class='ex'>stress_test_rotation</span>"]
+  V -->|"没过：改或换工具"| SK
+  V -->|"4 个 stage 都过"| OUT["<b>Output</b><br/><span class='ex'>500 条 episode</span><br/><span class='ex'>π0.5 真机 70%</span>"]:::win
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>4 个 stage，外加一个贯穿全程的 tool library</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-15-DexAgent/fig2.jpg" alt="Fig. 2：开瓶视频和 prompt 依次经过 Semantic Understanding、Property-Based Simulation Reconstruction、Robot Trajectory Optimization、Robot Data Generation，四个 stage 都连着底部的 Self-Evolving Tool Library，最后是 policy 和真机 rollout。"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）开瓶例子走过 4 个 stage：Stage 1 拆 subgoal、找物体和关键 property；Stage 2 用 property 专用的 skill（蓝色）在 sim 里重建物体；Stage 3 把人手动作引导的优化和代码生成的动作结合；Stage 4 换视角和物体状态，抹掉原视频里的人并 retexture。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>最左 "Human Video" + "Prompt"：</b>例子的全部输入。</li>
+    <li><b>"Semantic Understanding"（Stage 1）：</b>检测到 Bottle、Mug，输出 scene_semantics.json（"objects"、"subgoals"、"env"）。</li>
+    <li><b>"Property-Based Simulation Reconstruction"（Stage 2）：</b>skill（蓝，扳手）和 verifier（绿，清单）建出螺纹盖瓶子。</li>
+    <li><b>"Robot Trajectory Optimization"（Stage 3）：</b>手型 skill + 旋转压测 verifier，下面是 sim 里机器手拧盖。</li>
+    <li><b>"Robot Data Generation"（Stage 4）：</b>Inpainting + Retexturing、View Augmentation、Diverse Training Data。</li>
+    <li><b>"π Policy" → "Rollout" t1–t4：</b>用这些数据训出的 policy 在真机上开瓶。</li>
+    <li><b>底部 "Self-Evolving Tool Library"：</b>每个 stage 下的上下箭头：从库里取工具，新工具存回去。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  S1["<b>1 · Understand</b><br/><span class='ex'>bottle: articulated</span>"] --> S2["<b>2 · Reconstruct</b><br/><span class='ex'>螺纹盖 bottle</span>"]
+  S2 --> S3["<b>3 · Trajectory</b><br/><span class='ex'>验证过的开瓶动作</span>"]
+  S3 --> S4["<b>4 · Data</b><br/><span class='ex'>500 条 → π0.5</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。每个 stage 都从 <a href="#stage-all">tool library 和 verify 循环</a>里取工具、存工具。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Semantic understanding</span>
+      <span class="stage-io">视频 + prompt → scene_semantics.json</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>后面要知道每个物体该建出哪些 property、每个 subgoal 怎样算完成。</li>
+        <li><b>How：</b>VLM 先从 prompt 列出任务可能涉及的物体。</li>
+        <li><b>How：</b>猜每个物体的 property，再抽视频帧看物体怎么动来确认。</li>
+        <li><b>How：</b>可调 skill 帮忙确认：depth estimation、gravity direction、human pose。</li>
+        <li><b>How：</b>把示范拆成 subgoal，每个只含一个（或尽量少的）动作，标出 acting hand 和 goal。</li>
+        <li><b>注意：</b>这一步全是自然语言，没有参数和数值；数值到 Stage 2–3 才定。</li>
+      </ul>
+      <figure class="paper-fig" style="max-width: 560px">
+        <div class="mat"><img src="2026-10-15-DexAgent/fig2-s1.jpg" alt="Fig. 2 左部：人手视频帧、prompt，以及 Semantic Understanding 面板：检测到的 Bottle 和 Mug、scene_semantics.json 的三个 key。"></div>
+        <figcaption><b>Fig. 2，左部</b>（作者原图，放大）输入和 Stage 1。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>"Human Video"：</b>一帧第一视角画面：左边蓝瓶、右边灰杯，下方是示范者的两只手。</li>
+        <li><b>"Prompt"：</b>agent 拿到的唯一一段文字。</li>
+        <li><b>"Detected Objects"：</b>Bottle、Mug 两个裁剪；"…" 表示可能还有别的物体。</li>
+        <li><b>"scene_semantics.json"：</b>三个 key："objects"、"subgoals"、"env"，就是 Stage 1 的全部输出。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Prompt → 物体</b><br/><span class='ex'>bottle, mug</span>"] --> b["<b>在帧上确认 property</b><br/><span class='ex'>盖子先转再脱离</span>"]
+  b --> c["<b>拆 subgoal</b><br/><span class='ex'>拧松 → 拔盖 → … → 倾倒</span>"]
+  c --> d["<b>写 JSON</b><br/><span class='ex'>scene_semantics.json</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>作者给出的这个任务的 JSON（App. B2，作者用 "…" 省略了部分字段）：</p>
+        <ul class="tight">
+          <li><span class="ex">bottle</span>："articulated"，parts：body、mouth、screw_cap、attached_tube。</li>
+          <li>property："The cap turns relative to the body before detaching from the threaded mouth."</li>
+          <li>property：盖子带着一根长管，挪开盖子前长管必须先离开瓶口。</li>
+          <li><span class="ex">mug</span>："rigid"，一直放在桌上，两只手都不碰它。</li>
+          <li>subgoal（both）："Loosen the cap with repeated turns."：左手抵住瓶身不让它转，右手拧盖、需要时换握。</li>
+          <li>subgoal（both）："Lift off the cap assembly."，goal：盖子脱离、长管离开瓶口。</li>
+          <li>subgoal（left）：把瓶子倾斜成倒水姿势；JSON 注明液体流动 "not clearly resolved"。</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Property-based simulation reconstruction</span>
+      <span class="stage-io">JSON + 视频 → 验证过的 asset，摆进 sim 场景</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>对应 B 类的坏点：螺纹盖、抽屉、绳子要不同的模型，一套固定 recipe 建不出它们的机械结构。</li>
+        <li><b>How：</b>先按物体类型和 Stage 1 的 property 选或写 verifier，再动手建。</li>
+        <li><b>How：</b>库里有这类物体的 skill → 带参数调用（尺寸、颜色、纹理、joint 数、joint 活动范围）。</li>
+        <li><b>How：</b>没有 → 写一个参数化 skill，面向一组相似物体，而不是单个物体。</li>
+        <li><b>How：</b>从没有 joint 的 URDF 开始；每个 property 先写 verifier，再改 URDF 直到它通过。</li>
+        <li><b>How：</b>所有 verifier 一起跑查冲突；第二轮再加 verifier，并生成 3 个变体也要通过，才存进库。</li>
+        <li><b>How：</b>摆放：让 sim 渲染的物体 mask 和视频里的 mask IoU 最大（同一相机视角）。</li>
+        <li><b>How：</b>相机距离主要靠 depth，角度靠 Sharpa 手和人手的叠合；输出 scene file。</li>
+      </ul>
+      <figure class="paper-fig" style="max-width: 360px">
+        <div class="mat"><img src="2026-10-15-DexAgent/fig2-s2.jpg" alt="Fig. 2 的 Stage 2 面板：construct_bottle skill 代码，一个 yaw joint 和把 lift 绑到 yaw 的 equality 约束；fit_pose skill、stablility verifier，以及重建好的场景。"></div>
+        <figcaption><b>Fig. 2，Stage 2 面板</b>（作者原图，放大）</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>颜色：</b>蓝底扳手 = skill，绿底清单 = verifier，和 Fig. 1 一致。</li>
+        <li><b>"construct_bottle" 第 1–2 行：</b>名为 "yaw" 的 joint，frictionloss "0.02"：盖子的转动。</li>
+        <li><b>第 3–5 行：</b>equality 把 joint1 "lift" 绑到 joint2 "yaw"，polycoef "0 pitch/2π"。</li>
+        <li><b>含义（按 MuJoCo equality 的语义解读）：</b>lift = pitch/2π × yaw，盖子转一圈沿轴升一个螺距：螺纹。</li>
+        <li><b>"fit_pose"（skill）和 "stablility"（verifier，图中原拼写）：</b>摆放和它的检查。</li>
+        <li><b>"Reconstructed Scene"：</b>sim 里的蓝瓶、灰杯和两只机器手。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart TD
+  V["<b>先定 verifier</b><br/><span class='ex'>joint、axis、</span><br/><span class='ex'>travel、self-lock</span>"] --> Q["<b>库里有这类 skill？</b>"]
+  Q -->|"有"| C["<b>带参数调用</b><br/><span class='ex'>尺寸、颜色、joint 范围</span>"]
+  Q -->|"没有"| W["<b>逐个 property 写</b><br/><span class='ex'>construct_bottle</span><br/><span class='ex'>yaw + lift</span>"]
+  W --> R["<b>全部 verifier + 3 个变体</b><br/><span class='ex'>过了才存进库</span>"]
+  C --> F["<b>按 mask IoU 摆放</b><br/><span class='ex'>瓶、杯对齐视频</span>"]
+  R --> F
+  F --> SC["<b>Scene file</b><br/><span class='ex'>机器人 + 瓶 + 杯 + 相机</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <ul class="tight">
+          <li>bottle 是 "articulated" → joint-existence、axis、travel-range、self-locking 四类 verifier。</li>
+          <li>mug 是 "rigid" → silhouette、scale、mass、resting-stability。</li>
+          <li><span class="ex">construct_bottle</span> 把盖子建成转动 joint，lift 跟着转动走：螺纹。</li>
+          <li>存进库前：所有 verifier 一起过，再生成 3 个瓶子变体也要过。</li>
+          <li>瓶、杯按 mask IoU 摆到视频里的位置；Fig. 5 第 2 列就是这个场景。</li>
+          <li>读图提示：正文说编辑 URDF，Fig. 2 的片段却是 MuJoCo 风格的 equality 写法。</li>
+        </ul>
+      </div>
+      <figure class="paper-fig" style="max-width: 640px">
+        <div class="mat"><img src="2026-10-15-DexAgent/tab1.jpg" alt="Table I：HOI4D 上 rigid 和 articulated 物体的重建精度，DexAgent 每列最好。"></div>
+        <figcaption><b>Table I</b>（作者原图）这个 stage 的证据：HOI4D 上的重建。F-5、F-10 是两个距离阈值下的 F-score（越高越好），CD 是 Chamfer distance（越低越好）。</figcaption>
+      </figure>
+      <p class="flow-hint">先看最后一行对 Do as I Do：rigid F-5 0.83 vs 0.72、CD 0.29 vs 0.49；articulated CD 1.08，最强 baseline 是 MCC-HO 1.21。</p>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Robot trajectory optimization</span>
+      <span class="stage-io">scene + subgoals → 一条验证过的双手 episode</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>对应 A 类的坏点：机器手复现不了人手动作时要改握法，有的 subgoal 要专门写动作。</li>
+        <li><b>How：</b>每个 subgoal 先定成功条件：搬运 = 到目标位置；操作铰接物体 = 到目标 joint 状态。</li>
+        <li><b>How：</b>选 skill 定目标手型：直接 retarget 人手、优化手指复现接触，或按 contact、force closure、clearance 生成 grasp。</li>
+        <li><b>How：</b>verifier 压测手型：搬运就抬起再摇；铰接物体就滑动、旋转，确认 joint 每个位置都能到。</li>
+        <li><b>How：</b>没过 → 按反馈改手型或换工具；只有通过的手型才往下用。</li>
+        <li><b>How：</b>IK 算手臂姿态；生成代码把关键姿态连起来，可用人手轨迹作 motion prior。</li>
+        <li><b>How：</b>串起所有 subgoal；前面的动作挡住后面的 subgoal 时，回头改前面。</li>
+        <li><b>How：</b>whole-trajectory verifier 查运动极限和物理一致性。</li>
+      </ul>
+      <figure class="paper-fig" style="max-width: 360px">
+        <div class="mat"><img src="2026-10-15-DexAgent/fig2-s3.jpg" alt="Fig. 2 的 Stage 3 面板：human_pose_prior skill、stress_test_rotation verifier 代码，以及机器手拧瓶盖的渲染图。"></div>
+        <figcaption><b>Fig. 2，Stage 3 面板</b>（作者原图，放大）</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>"human_pose_prior"（蓝，skill）：</b>参照示范者的手型给出机器手握法。</li>
+        <li><b>"stress_test_rotation"（绿，verifier）第 1–2 行：</b>起始角 "0..360" 逐步取，两个方向 "(+1, -1)" 都试。</li>
+        <li><b>第 3–4 行：</b>把盖子 reset 到该角度，保持候选手型，施加 wrench。</li>
+        <li><b>第 5–6 行：</b>盖子按指令方向转（"sgn·Δyaw &gt; …"）且 "slip &lt; …" 才算过。</li>
+        <li><b>"Code-Generated Motion"：</b>一只机器手捏住瓶盖，另一只握住瓶身。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart TD
+  G["<b>subgoal 的成功条件</b><br/><span class='ex'>盖子 joint 到目标状态</span>"] --> H["<b>目标手型</b><br/><span class='ex'>human_pose_prior</span>"]
+  H --> T["<b>手型压测</b><br/><span class='ex'>stress_test_rotation</span>"]
+  T -->|"没过：改或换工具"| H
+  T -->|"过"| K["<b>IK + 代码连接姿态</b><br/><span class='ex'>拧盖动作</span>"]
+  K --> J["<b>串 subgoal，整段审查</b><br/><span class='ex'>拧松 → 拔盖 → 倾倒</span>"]
+  J --> EP["<b>一条验证过的 episode</b><br/><span class='ex'>sim 里开瓶</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <ul class="tight">
+          <li>拧松是铰接操作，成功条件是盖子 joint 到目标状态；JSON 的 goal："Cap is loosened sufficiently for removal."，阈值没报告。</li>
+          <li><span class="ex">human_pose_prior</span> 参照示范者的手给出拧盖握法。</li>
+          <li><span class="ex">stress_test_rotation</span>：盖子从 0–360° 每个起始角、正反两个方向都转一遍，不打滑才算过。</li>
+          <li>没过就改握法或换工具；开瓶试了几次没报告。</li>
+          <li>过了 → IK → 生成拧盖代码，再接拔盖和倾倒。</li>
+          <li>整段 episode 过了 whole-trajectory verifier 才交给 Stage 4。</li>
+        </ul>
+      </div>
+      <figure class="paper-fig" style="max-width: 640px">
+        <div class="mat"><img src="2026-10-15-DexAgent/tab2.jpg" alt="Table II：OakInk 上的人手到机器手 retargeting，DexAgent 成功率最高、误差最低。"></div>
+        <figcaption><b>Table II</b>（作者原图）这个 stage 的证据：OakInk 上的 retargeting。Success = 物理仿真里物体平均位置误差 &lt; 0.1 m 且旋转误差 &lt; 0.5 rad 的片段比例；E<sub>pos</sub>、E<sub>rot</sub> 是和示范的残差。</figcaption>
+      </figure>
+      <p class="flow-hint">先看 Success：85.7 vs Do-as-I-Do 81.0，E<sub>rot</sub> 0.12 vs 0.15；缩进的两行是对 Do-as-I-Do 的 ablation。</p>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Robot data generation</span>
+      <span class="stage-io">一条验证过的 episode → 500 条训练 episode</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>一条示范训不出 policy；sim 渲染的画面又和真实相机不一样。</li>
+        <li><b>How：</b>在桌面可用范围内随机采 1,500 个物体初始摆放（seed，App. A）。</li>
+        <li><b>How：</b>丢掉对应的手够不到、或找不到可行执行的 seed。</li>
+        <li><b>How：</b>每个 seed 调整 trajectory，过和原 episode 一样的手型检查和整段检查。</li>
+        <li><b>How：</b>从通过的 seed 里随机选 500 条；不够 500 就再采。</li>
+        <li><b>How：</b>用 VOID 从原视频抹掉示范者的手和物体；从标定相机渲染机器人和物体并合成进去。</li>
+        <li><b>How：</b>在 Blender 里 retexture；再渲染左、右手腕视角：每条 episode 三个同步视角。</li>
+        <li><b>然后：</b>用这 500 条 fine-tune π0.5；真机测 10 次，初始摆放随机。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-15-DexAgent/fig6.jpg" alt="Fig. 6 的 Open the Bottle 一行：人手示范、抹掉人之后的第一视角、左右手腕视角、两个不同 seed 的摆放。"></div>
+        <figcaption><b>Fig. 6，Open the Bottle 这一行</b>（作者原图）开瓶的 Stage 4 输出；原图另有 5 个任务各一行。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>"Human Demonstration"：</b>原视频帧，有人的手。</li>
+        <li><b>"Inpainted Data" / "Ego View"：</b>人被抹掉，左下、右下是渲染进去的机器手。</li>
+        <li><b>"Augmented Wrist Views"：</b>"Left Wrist"、"Right Wrist" 两个手腕相机都近看到蓝瓶，右手腕画面里还能看到杯子。</li>
+        <li><b>"Diversified Samples" / "Seed 1"、"Seed 2"：</b>同一任务，瓶和杯换了位置：500 条里的两条。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart TD
+  SD["<b>采 1,500 个摆放</b><br/><span class='ex'>瓶、杯换位置</span>"] --> FE["<b>够得到 + 重新验证</b><br/><span class='ex'>同 Stage 3 的检查</span>"]
+  FE -->|"不过"| DR["丢掉"]
+  FE -->|"过"| KP["<b>留 500 条</b><br/><span class='ex'>不够再采</span>"]
+  KP --> RN["<b>抹人、渲染机器人</b><br/><span class='ex'>VOID + Blender，3 个视角</span>"]
+  RN --> PI["<b>Fine-tune π0.5</b><br/><span class='ex'>真机开瓶 70%</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <ul class="tight">
+          <li>那一条验证过的开瓶 episode 变成 500 条，瓶和杯在新位置。</li>
+          <li>每条保持同样的双手计划，并针对新摆放重新检查。</li>
+          <li>π0.5 用它们训练，真机 10 次开瓶成功 7 次（<span class="ex">70%</span>）；所有 baseline 0%（Table IV）。</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">All stages</span>
+      <span class="stage-name">Self-evolving tool library 和 verify 循环</span>
+      <span class="stage-io">每个 stage ⇄ 库；新工具留给下一段视频</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>对应 C 类的坏点：每一步都有 verifier 把关；工具留下来，后面的视频更快。</li>
+        <li><b>How：</b>skill 产出 asset、pose 或 motion；verifier 根据 sim 里的交互接受或拒绝 skill 的产出。</li>
+        <li><b>How：</b>两者都是带类型参数的普通 Python 函数，设计成跨样本复用，不贴合某一个样本。</li>
+        <li><b>How：</b>改进工具时 fork 一份，不覆盖原函数；所有工具都存，object asset 因体积大小不一可选存。</li>
+        <li><b>How：</b>每个 stage 循环到所需 verifier 全过，或用完 budget / 100 个 agent turn。</li>
+        <li><b>How：</b>用完还没过 → 记为失败，不把半成品往下传。</li>
+        <li><b>Backbone：</b>"any VLM" 都行，可经 API 切换；实验用的是哪个模型没写。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  T["<b>选或写工具</b><br/><span class='ex'>construct_bottle</span>"] --> R["<b>运行</b><br/><span class='ex'>得到 bottle asset</span>"]
+  R --> V["<b>所需 verifier 全过？</b><br/><span class='ex'>joint、axis、travel</span>"]
+  V -->|"没过，还有 budget"| T
+  V -->|"budget 用完"| FL["<b>记为失败</b><br/>不往下传"]:::gap
+  V -->|"过"| KEEP["<b>进下一 stage，工具入库</b><br/><span class='ex'>下一个瓶子直接调用</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig" style="max-width: 720px">
+        <div class="mat"><img src="2026-10-15-DexAgent/fig4.jpg" alt="Fig. 4：100 个 EgoDex 样本上，每个样本的处理时间下降，工具库台阶式增长；V2D 和 GPT-6: Astra 保持水平。"></div>
+        <figcaption><b>Fig. 4</b>（作者原图）100 段 EgoDex 视频，库长到 85 个 skill、168 个 verifier。每段：V2D 3.7 h，GPT-6: Astra 3.3 h，DexAgent 从零开始平均 2.1 h。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>蓝线 "Ours"，左轴 "Processing Time"：</b>每段视频的处理时间；第一段 4.3 h。</li>
+        <li><b>紫线 "V2D"、绿虚线 "GPT 6: Astra"：</b>水平，因为两者都不保留工具库。</li>
+        <li><b>红 "Cumulative Skills"、黄 "Cumulative Verifiers"，右轴 "Library Size"：</b>遇到新物体类型就台阶式上升。</li>
+        <li><b>虚线框 1–6 和下方图例：</b>红数字是新增 skill，黄数字是新增 verifier。</li>
+        <li><b>框 1 "Growing Period (Rigid Objects, Drawer, Bottle, Box)"：</b>+60 skill、+98 verifier；瓶子在这一段就出现了。</li>
+        <li><b>框 7 "Assets Reuse"：</b>重复出现的物体，故意排在最后；时间掉到每段 13.1 min。</li>
+        <li><b>核对：</b>各框增量加起来正好 85 skill、168 verifier，第 78 个样本时达到。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-15-DexAgent/fig8.jpg" alt="Fig. 8：两个环形图，103 个 skill 分 6 类，188 个 verifier 分 6 类。"></div>
+        <figcaption><b>Fig. 8</b>（作者原图）当前的库：103 个 skill、188 个 verifier，来自 EgoDex 实验和作者自己的任务视频。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左 "103 Skills"：</b>Trajectory &amp; Execution 24、Object Reconstruction 22、Scene runtime &amp; Rendering 21、Perception &amp; Grounding 18、Grasp &amp; Poses 10、Measurements 8。</li>
+        <li><b>"Object Reconstruction"：</b>建出机械结构，论文举的例子是 "screw caps, drawers, and writable surfaces"。</li>
+        <li><b>右 "188 Verifiers"：</b>Task &amp; Rollout Gates 42、Grasp Stress Tests 34、Reconstruction Mechanism Tests 30、Episode Audits 30、Scene Assertions 28、Scene Compile Checks 24。</li>
+        <li><b>"Reconstruction Mechanism Tests"：</b>检查 "threads, latches, and writable surfaces"；瓶盖螺纹属于这一类。</li>
+        <li><b>整体：</b>verifier 比 skill 多，188 对 103。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <ul class="tight">
+          <li><span class="ex">construct_bottle</span>、<span class="ex">stress_test_rotation</span> 作为带类型参数的 Python 函数存进库。</li>
+          <li>…然后来了第二段开瓶视频：换一个螺纹瓶 → 带新参数直接调 <span class="ex">construct_bottle</span>。</li>
+          <li>还是同一个瓶子 → 连 asset 一起复用。</li>
+          <li>EgoDex 实测：第一段 4.3 h → 复用 skill 2.2 h → 复用 asset 13.1 min（Fig. 4）。</li>
+          <li>复用 asset 后，每条验证过的 episode 比 V2D 快约 17×，比 GPT-6: Astra 快 15.1×。</li>
+          <li>这两个工具在开瓶这次是新写的还是库里已有：没报告。</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>输入只有一段视频 + 一句 prompt</td><td>开瓶视频 + "Remove the bottle cap, then pour…"</td></tr>
+        <tr><td>Stage 1：物体、类型、property，在帧上确认</td><td>bottle → articulated（含 screw_cap、attached_tube）；mug → rigid</td></tr>
+        <tr><td>Stage 1：一个动作一个 subgoal，标出 acting hand</td><td>拧松（both）→ 拔盖（both）→ … → 倾倒（left）</td></tr>
+        <tr><td>Stage 2：按物体类型选 verifier</td><td>bottle：joint-existence、axis、travel-range、self-locking</td></tr>
+        <tr><td>Stage 2：参数化 skill，逐 property 建，3 个变体</td><td><span class="ex">construct_bottle</span>：yaw joint，lift = pitch/2π × yaw</td></tr>
+        <tr><td>Stage 2：按视频对齐摆放</td><td>瓶、杯按 mask IoU 摆放；Fig. 2 的 fit_pose、stablility</td></tr>
+        <tr><td>Stage 3：成功条件和目标手型</td><td>拧松 = 盖子 joint 到目标状态；握法来自 human_pose_prior</td></tr>
+        <tr><td>Stage 3：手型压测，不过就重试</td><td><span class="ex">stress_test_rotation</span>：0–360° 起始角，正反两个方向</td></tr>
+        <tr><td>Stage 3：代码生成动作，串联后整段审查</td><td>一只手抵住瓶身、另一只拧盖；整段 episode 再检查</td></tr>
+        <tr><td>Budget：要么过，要么记为失败</td><td>每个 stage 上限是 budget 或 100 个 agent turn（开瓶用了多少没报告）</td></tr>
+        <tr><td>Stage 4：摆放增广</td><td>1,500 个 seed → 选 500 条通过的瓶 + 杯摆放</td></tr>
+        <tr><td>Stage 4：sim-to-real 画面处理、额外视角</td><td>VOID 抹人、合成机器人、Blender retexture、左右手腕视角</td></tr>
+        <tr><td>Policy 和主结果</td><td>π0.5 用 500 条 fine-tune：开瓶 70%，baseline 全 0%（Table IV）</td></tr>
+        <tr><td>Open-loop 重放检查</td><td>开瓶只有 DexAgent 的 trajectory 能在真机重放（Table III）</td></tr>
+        <tr><td>Self-evolving library</td><td>…第二段开瓶视频来了：工具直接复用（EgoDex：4.3 h → 2.2 h → 13.1 min）</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览</h2>
+  <ul class="tight results">
+    <li><b>63.6%</b> 11 个任务真机 policy 平均成功率；SPIDER 18.2%、V2D 17.3%、GPT-6: Astra 16.4%（Table IV）。</li>
+    <li><b>70% vs 0%</b> 开瓶，对所有 baseline（Table IV）。</li>
+    <li><b>50% vs 0%</b> 打绳结；<b>80% vs 50%</b> 抽屉，最好的 baseline 是 GPT-6: Astra（Table IV）。</li>
+    <li><b>11/11</b> 个任务能 open-loop 重放；SPIDER 6/11，V2D、GPT-6: Astra 5/11（Table III）。</li>
+    <li><b>0.83</b> HOI4D rigid F-5，Do as I Do 0.72；Chamfer 0.29 vs 0.49（Table I）。</li>
+    <li><b>85.7%</b> OakInk retargeting 成功率，Do-as-I-Do 81.0%；E<sub>rot</sub> 0.12 vs 0.15 rad（Table II）。</li>
+    <li><b>2.1 h</b> 每段新视频，GPT-6: Astra 3.3 h、V2D 3.7 h；物体 asset 复用后 <b>13.1 min</b>（Fig. 4）。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-15-DexAgent/tab4.jpg" alt="Table IV：8 种数据来源在 11 个任务上的真机闭环成功率，DexAgent 平均 63.6%。"></div>
+    <figcaption><b>Table IV</b>（作者原图）真机闭环成功率，每个任务 10 次。所有方法的数据经过同样的增广，训练同一个 policy（π0.5）。</figcaption>
+  </figure>
+  <p class="flow-hint">先看 Bottle 列：70% 对一整列 0%，再看 Average。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-15-DexAgent/tab3.jpg" alt="Table III：每个任务的真机 open-loop 重放结果，DexAgent 11 个全部成功。"></div>
+    <figcaption><b>Table III</b>（作者原图）把转换出的 trajectory 在真机上 open-loop 重放，10 次里成功 1 次就算 ✓。GPT-6: Astra 是第一轮评测之后才加入的。</figcaption>
+  </figure>
+  <p class="flow-hint">先看 Total，再看 Rope Knot、Bottle、Biology 三列：只有 DexAgent 有 ✓。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-15-DexAgent/fig5.jpg" alt="Fig. 5：四个任务各一行：人手示范、重建的 sim 场景、四帧真机 rollout。"></div>
+    <figcaption><b>Fig. 5</b>（作者原图）四个任务的人手示范、重建的 sim 场景和四帧真机 rollout。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>最下一行 "Open the Bottle"：</b>就是例子；"Simulation" 列是 Stage 2 重建的场景。</li>
+    <li><b>"Real Robot Rollout" t1–t4：</b>一只手握住瓶身，另一只去拧盖；t3 拔出盖子和细长管；t4 把瓶子倾向杯子。</li>
+    <li><b>镜头：</b>这几帧从机器人对面拍，所以杯子在画面左边，和第一视角左右相反。</li>
+    <li><b>其他行：</b>绳子（deformable，50% vs 0%）、生物实验移液（40% vs 0%）、电池插入（60% vs 最多 10%）。</li>
+  </ol>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>作者自述：semantic、geometric 错误，verification 不完整，sim-to-real gap 仍在（§VI）。</li>
+    <li>作者自述：没被发现的错误会经由工具库传下去；力敏感的接触即使过了 sim 检查也可能失败。</li>
+    <li>没有对 DexAgent 自身部件做 ablation（verifier、工具库、代码 vs 优化）；所有提升都是端到端的。</li>
+    <li>Agent 用的 VLM 没写；每个 stage 的 budget 除 "100 agent turns" 外没给。</li>
+    <li>Baseline 缺的 stage 由 "common implementation" 补上，补的是什么没写，例如 A 类拿到的瓶子 asset。</li>
+    <li>重放 "10 次中 1 次成功" 就算过；policy 每个任务只测 10 次。</li>
+    <li>有的 baseline 重放失败却有 policy 成功率（Do as I Do：Giftbox ✗ 但 50%），论文没讨论。</li>
+    <li>开瓶的"倒水"只是姿势：视频里看不清液体，sim 里液体怎么处理没说。</li>
+    <li>作者的下一步：加强 verification；现有 skill 解不出时用 RL 兜底。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>先写 verifier 再建 asset：</b>每个 property 先有检查，再改 asset 直到通过；可直接套到 <code>real2sim-anything-indoor</code> 的铰接家具上，摆放再用 mask IoU 对齐原视频帧。</li>
+    <li><b>按物体类型的 verifier 菜单 + 参数化 builder：</b>rigid / articulated / deformable 三套检查和"3 个变体也要过"，可给 WorldClaw 的 scene、motion verify 当种子；他们用 MuJoCo / Isaac Sim，换到 Genesis 要重新验证。</li>
+    <li><b>对 Robotic-harness：</b>没有 harness 的 GPT-6: Astra（zero-shot）16.4%，DexAgent 63.6%；但 DexAgent 自己的 VLM 没写，模型和 harness 的贡献分不开。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-10-15-DexAgent.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
