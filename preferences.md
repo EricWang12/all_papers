@@ -50,6 +50,10 @@ Each project is one folder in the library. The scope line decides where a paper 
 - Lab-machine clone: `/nfs/turbo/coe-jungaocv/wzn/workspace/papers`
 - Artifact title: Zhaoning Paper Pile
 - Artifact: https://claude.ai/artifact/GGxYmvE3MgSAJUQDSi9EHb (first published 2026-10-15)
+- Papers I am reviewing are confidential submissions. They never go into this library or this
+  public repo. Their explainers are filed in the review library (`Paper-Reviews/` on the lab
+  machine, with its own `preferences.md`) and published to the separate artifact
+  "Zhaoning Review Pile".
 
 ## Feedback log
 
@@ -61,3 +65,4 @@ Each project is one folder in the library. The scope line decides where a paper 
     baselines' problems are. Tell it on the running example, one baseline at a time.
 - 2026-10-15: library synced to GitHub (all_papers); the artifact is named "Zhaoning Paper Pile"; this profile moved into the library repo.
 - 2026-10-15: PDFs stay out of git (`.gitignore`), because git history never shrinks. Each page records a versioned PDF link (`paper:pdf`) for re-downloading.
+- 2026-10-20: papers under review get their own artifact ("Zhaoning Review Pile") and stay out of this public repo.
