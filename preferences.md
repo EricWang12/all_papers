@@ -49,7 +49,7 @@ Each project is one folder in the library. The scope line decides where a paper 
   authorized.
 - Lab-machine clone: `/nfs/turbo/coe-jungaocv/wzn/workspace/papers`
 - Artifact title: Zhaoning Paper Pile
-- Artifact: https://claude.ai/artifact/WwBLzpin698pYEu9brsyot (first published 2026-10-21 under the current account). The old one, https://claude.ai/artifact/GGxYmvE3MgSAJUQDSi9EHb, belongs to the earlier account's organization: sessions on this account cannot publish into it, even with editor access.
+- Artifact: https://claude.ai/artifact/GGxYmvE3MgSAJUQDSi9EHb (first published 2026-10-15). It belongs to one Claude account; a session logged into another account cannot publish into it, even with editor access. A copy made from the other account on 2026-10-21, https://claude.ai/artifact/WwBLzpin698pYEu9brsyot, is not kept up to date.
 - Papers I am reviewing are confidential submissions. They never go into this library or this
   public repo. Their explainers are filed in the review library (`Paper-Reviews/` on the lab
   machine, with its own `preferences.md`) and published to the separate artifact
@@ -67,3 +67,4 @@ Each project is one folder in the library. The scope line decides where a paper 
 - 2026-10-15: PDFs stay out of git (`.gitignore`), because git history never shrinks. Each page records a versioned PDF link (`paper:pdf`) for re-downloading.
 - 2026-10-20: papers under review get their own artifact ("Zhaoning Review Pile") and stay out of this public repo.
 - 2026-10-21: library artifact moved to https://claude.ai/artifact/WwBLzpin698pYEu9brsyot; the old artifact is in another organization and the Artifact tool refuses cross-organization publishes.
+- 2026-10-22: back on the original artifact (GGxYmvE3MgSAJUQDSi9EHb) after the session returned to its owning account; MAST published there.
