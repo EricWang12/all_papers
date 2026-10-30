@@ -34,6 +34,10 @@ papers explained in general rather than about one paper.
 - **The authors' figures.** Inspect the original figures and explain with them, pointing
   at their parts. The authors' figure is the most precise description; my flowcharts
   complement it.
+- **Symbols in plain words.** When a figure or formula uses notation, put a symbol table
+  before the reading: each symbol, what it is in plain words, and its value in the
+  running example. The reading itself says things in plain words first, with the symbol
+  in parentheses. Never explain a symbol with other symbols.
 
 ## My projects
 
@@ -84,3 +88,6 @@ Each project is one folder in the library. The scope line decides where a paper 
     session's account saw the original only as shared and could not read it, so the run
     created https://claude.ai/artifact/3cWGRMjRFMuRxzmapBvXqp with the whole library.
   - New project folder `Sim-robot-learning`.
+- 2026-10-30, after SuperMimic: the reading of Fig. 2 used π_θ, g_t and the other symbols
+  without saying what they are, and I could not follow it. Figures with notation now get a
+  symbol table, and readings put plain words first.
