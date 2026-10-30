@@ -375,6 +375,7 @@ flowchart LR
         <li><b>Sim context ξ（每个 episode 抽一次）：</b>摩擦 μ ~ 𝒰[0.3, 1.2]，关节标定偏置 ~ 𝒰[−0.01, 0.01] rad，躯干质心偏移 Δx ~ 𝒰[−0.025, 0.025] m、Δy、Δz ~ 𝒰[−0.05, 0.05] m（Table A.3）。去掉了 BeyondMimic 的 root 速度推力：推力让状态跳变，确定性的 world model 学不了。</li>
         <li><b>Return-based reset sampling（App. D.1）：</b>动作时间轴切成 1 s 的 bin，每个 bin 记折扣回报 G_b；重置点 50% 均匀、40% 按 softmax(−25 G_b / G_max)、10% 按各 bin 过去的 softmax 权重：做得差的片段多练，学会后仍保留少量练习。</li>
         <li><b>Buffer：</b>每个环境 1000 步，新的挤掉最旧的。旧 policy 采的数据对拟合 world model 仍然有效：动力学和谁采的无关。</li>
+        <li><b>存的只有机器人自己：</b>每一步是机器人的完整状态、实际执行的动作和 ξ，再加仿真器给的 reward 和是否摔倒（Eq. 1 要拿它们对答案）。仿真里没有别的物体，只有平地。</li>
         <li><b>终止：</b>root 和参考的高度差 &gt; 0.25 m，或倾斜误差 &gt; 0.8（直立参考下约 78°）；不像 BeyondMimic 那样按末端偏差终止。</li>
         <li><b>数据（App. E）：</b>BONES-SEED 的 G1 retarget 142,220 段 → 名字过滤（stair、ladder、box、chair、sit、climb 等）剩 129,667 → 可行性过滤（站在高处、穿地、双脚悬空）剩 129,514 段。</li>
       </ul>
@@ -454,6 +455,7 @@ flowchart LR
       </div>
       <p class="note">每个 head 可以学出来，也可以直接按公式算，论文没说哪个是哪个；只有动力学 f<sub>ω</sub> 的结构写明了：MLP (2048, 2048, 2048)（Table A.4）。</p>
       <ul class="tight">
+        <li><b>s<sub>t</sub> 和 a<sub>t</sub> 不重复：</b>s<sub>t</sub> 是“现在在哪、怎么在动”，a<sub>t</sub> 是“这一步打算怎么动”。同一个状态后面可以接不同的动作，下一步就不同；采数据时加噪声，就是让模型在相似的状态下见到不同的动作。BPTT 要的正是“动作改一点，下一步怎么变”，所以 a<sub>t</sub> 必须单独输入。s<sub>t</sub> 里可能带着上一步的动作（观测里有它），但那是上一步的。</li>
         <li><b>时间不是输入：</b>第几步、第几段动作都不进 f<sub>ω</sub>。物理规律对所有动作都一样，所以一个模型能服务全部 129,514 段动作；时间只体现在“调用一次 = 往前 0.02 s”。</li>
         <li><b>goal 不进动力学：</b>g<sub>t</sub> 只进 reward 和终止 head。</li>
         <li><b>没有历史：</b>只看当前这一步的状态，不看前几帧。</li>
@@ -546,6 +548,33 @@ flowchart LR
         <li><b>Reward：</b>BeyondMimic 的 tracking reward（body 位置、朝向、线速度、角速度，root 位置、朝向；Table A.2），去掉 self-collision 惩罚：它防的是随机 policy 把两个身体部位压在一起、压低动作噪声来刷速度分，想象里 policy 是确定性的，这招没有收益。joint-limit 权重从 −10 降到 −2。</li>
         <li><b>规模：</b>每次更新 4096 条想象 rollout；Adam β = (0.9, 0.95)；梯度先按全局 norm 1.0、再逐元素 0.1 裁剪（Table A.5）。</li>
       </ul>
+      <p class="eyebrow">policy 怎么知道往哪改</p>
+      <ul class="tight">
+        <li><b>没有“成功 / 失败”标签，只有每步的 reward：</b>每 0.02 s 比一次机器人和参考动作有多像，越像分越高（下表）。</li>
+        <li><b>摔倒 = 后面的分全没了：</b>root 高度偏离超过 0.25 m 或倾斜误差超过 0.8 就终止。想象里终止是一个概率 d̂，生存权重 ĉ 跟着变小，后面每步的 reward 都要乘它，所以“别摔”自动算进了总分。</li>
+        <li><b>评测时的失败：</b>一段动作从头放到尾，触发一次终止就算失败；normalized return 是整段 reward 之和除以满分（§4）。</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>reward 项</th><th>白话</th><th>权重</th></tr>
+          <tr><td>Body position</td><td>每个被跟踪的身体部位离参考位置多远（尺度 0.3 m）</td><td>1.0</td></tr>
+          <tr><td>Body orientation</td><td>每个部位的朝向差多少（尺度 0.4 rad）</td><td>1.0</td></tr>
+          <tr><td>Body linear velocity</td><td>每个部位的速度差多少（尺度 1.0 m/s）</td><td>1.0</td></tr>
+          <tr><td>Body angular velocity</td><td>每个部位的转速差多少（尺度 3.14 rad/s）</td><td>1.0</td></tr>
+          <tr><td>Root position / orientation</td><td>骨盆的位置、朝向差多少</td><td>0.5 / 0.5</td></tr>
+          <tr><td>Action smoothness</td><td>动作别一步一跳：罚 ‖a<sub>t</sub> − a<sub>t−1</sub>‖²</td><td>−0.1</td></tr>
+          <tr><td>Joint limit</td><td>关节超出限位就罚</td><td>−2</td></tr>
+        </table>
+      </div>
+      <p class="note">前六项都是 exp(−误差² / 尺度²)：完全对上得 1，差得越多越接近 0。每项再乘控制周期 0.02 s（Table A.2、A.6 的注）。单位是我按物理量补的。</p>
+      <p class="eyebrow">梯度怎么算出来（Eq. 2，Algorithm A.1 第 6–7 行）</p>
+      <ol class="read">
+        <li><b>正向想象：</b>policy（权重 θ）出动作 → world model 预测下一刻的状态 → 算这一步的 reward；重复 32 步。</li>
+        <li><b>算总分 Ĵ：</b>32 个 reward 乘上生存权重和折扣（γ = 0.99）加起来，再加上 critic 估的 32 步之后的分。</li>
+        <li><b>反向求导：</b>每个 reward 取决于预测的状态，状态取决于动作，动作取决于 θ；链式法则沿这条路一路传回 θ，中间经过 world model 的 Jacobian。这就是 BPTT。</li>
+        <li><b>更新：</b>θ 往让总分变大的方向走一小步（Adam，学习率 2×10⁻⁴）；每次用 4096 条想象 rollout 一起算。</li>
+      </ol>
+      <p class="note">对比 PPO：它只能试，随机试动作，哪个分高就提高它的概率；BPTT 直接知道“这个关节多转一点，分会变高还是变低”。</p>
       <figure class="paper-fig">
         <div class="mat"><img src="2026-10-30-SuperMimic/fig2-s3.jpg" alt="Fig. 2 第 (3) 格：buffer 给出 (s_0, ξ)；训练中的 π_θ 和冻结的 f_ω 来回；Ĵ(θ) 的梯度虚线经 f_ω 指向 π_θ"></div>
         <figcaption><b>Fig. 2 (3)</b>（作者原图）改进 policy 这一格。</figcaption>
@@ -583,7 +612,7 @@ flowchart LR
       </pre></div>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
-        <p>从 buffer 抽到 side roll 中段的一个状态当起点，例如 G1 正侧躺翻滚。f_ω 往后想象 32 步 = 0.64 s，policy 每步只看模型给的观测加噪声。BPTT 告诉这 32 个动作各自该怎么改才跟得更紧；32 步之后的部分（比如滚完站起来）由 V_ψ 估（推断：论文没有拆 side roll 的回报）。视界再短又没有 critic，就训不出来（Fig. 4b）。</p>
+        <p>从 buffer 抽到 side roll 中段的一个状态当起点，例如 G1 正侧躺翻滚。f_ω 往后想象 32 步 = 0.64 s，policy 每步只看模型给的观测加噪声。BPTT 告诉这 32 个动作各自该怎么改才跟得更紧。比如想象到第 5 步时，参考说躯干此刻该贴近地面，预测的躯干却高了一点，body position 那项就不到满分；梯度沿 world model 往回传，算出前几步哪些关节的动作改一点能让躯干更低，θ 就被改成在类似状态下输出这样的动作（示意，不是论文里的数字）。32 步之后的部分（比如滚完站起来）由 V_ψ 估（推断：论文没有拆 side roll 的回报）。视界再短又没有 critic，就训不出来（Fig. 4b）。</p>
       </div>
     </div>
   </details>
