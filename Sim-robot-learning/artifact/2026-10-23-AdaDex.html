@@ -1,0 +1,726 @@
+<!doctype html>
+<!-- Paper page template. Copy to <Project>/artifact/<name>.html, replace every placeholder
+     in double braces, and drop optional blocks you do not use. Keep the section order: it is
+     the reader's order (preferences.md). Figures live in artifact/<name>/ next to this file.
+     This page loads Mermaid itself: pages other than the library home are served without the
+     artifact skeleton, so nothing else draws the charts. In chart labels write class='ex'
+     with single quotes. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>AdaDex</title>
+<meta name="description" content="一个 goal-conditioned policy 同时在 TrackEnv（dense 跟踪人手）和 GenEnv（加噪 goal + sparse 奖励）里训练，从几秒人手动作学到像人又能去新目标的灵巧技能。">
+<meta name="paper:title" content="Learning Adaptable Dexterous Skills via Hybrid Dexterous Mimicking">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.28628">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.28628v1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Sim-robot-learning</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Sim-robot-learning · 归档于 2026-10-23</p>
+  <h1>AdaDex</h1>
+  <p class="full-title">Learning Adaptable Dexterous Skills via Hybrid Dexterous Mimicking</p>
+  <p class="meta">Yuxuan Kuang, Jiashun Wang, Yixuan Sun, Yufei Ye, Sungjae Park, Umar Iqbal et al. · CMU、NVIDIA · arXiv 2610.28628v1，2026-10-20 · 代码 coming soon（项目页）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.28628">arXiv</a><a href="https://arxiv.org/pdf/2610.28628v1">PDF</a>
+    <a href="https://yuxuank.com/AdaDex/">Project page</a>
+  </p>
+  <p class="filed">归档到 <b>Robot learning in simulation</b>：用 RL 从几秒人手动作学多指手技能，再做 sim-to-sim / sim-to-real，正是这个项目的范围；视频 → HOI reference 的 real2sim 部分也关联 Agent-centric-real-to-sim。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>从几秒人手示范学灵巧技能，现有两条路各缺一半：motion tracking 像人但只会照抄那一段，goal-reaching RL 能去任意目标但抓法不像人、不能用。</dd></div>
+    <div><dt>Idea</dt><dd><b>Hybrid Dexterous Mimicking</b>：一个 goal-conditioned policy 同时在 TrackEnv（dense 跟踪人手 → 学人的做法）和 GenEnv（加噪 goal + sparse 成功奖励 → 学泛化）里训练；推理只要 goal。</dd></div>
+    <div><dt>Result</dt><dd>12 个 GRAB 物体、没见过的动作上 tracking progress <b>80.02%</b>（ManipTrans 7.28%，SimToolReal 13.68%）；random goal progress 51.80%（SimToolReal 44.60%）；零样本进 MuJoCo，并在真实 xArm6 + XHand 上运行。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>像人的抓法和去新目标的能力，现有方法只能二选一</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Hammer（GRAB <span class="ex">s1_hammer_use_1</span>）</b>：一段 <span class="ex">5.88 s</span>、<span class="ex">353 帧 @ 60 Hz</span> 的人手 mocap，人拿起锤子并使用（Table 6）；论文 §1 正是用“拿起桌上的锤子去敲钉子”来讲问题。</p>
+    <p>→ 想要：一个锤子 skill，保留人的握法、in-hand 换握和挥锤，又能敲<b>新位置</b>的钉子（downstream 的 Hammer 任务：敲两个不同位置的钉子，App. G）。</p>
+  </div>
+  <!-- One lane per baseline family, run on the example's input, ending at the exact step
+       where it breaks on this example (:::gap) with the visible symptom and its number. -->
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>锤子 clip 5.88 s</span>"] --> A1["<b>Motion tracking</b><br/>ManipTrans"]
+  A1 --> A2["dense reward 跟 353 帧<br/>继承握法、换握、挥锤"]
+  A2 --> AX["钉子换位置：无法适应<br/><span class='ex'>random goal SR 0.00%</span>"]:::gap
+  IN --> B1["<b>Goal-reaching RL</b><br/>SimToolReal"]
+  B1 --> B2["sparse reward：锤子<br/>到目标位姿就给分"]
+  B2 --> BX["抓锤头或捏中段：敲不了<br/><span class='ex'>腕朝向误差 65.30°</span>"]:::gap
+  </pre></div>
+  <p class="note">“坏在哪”是 §1 拿锤子做的分析（推断，非逐物体实测）；数字是 12 个 GRAB 物体的平均（Table 1 seen、Table 2），没单列 hammer；AdaDex 对应 11.45°、SR 27.08%。</p>
+  <p class="crux"><b>根本问题：</b>人的做法（怎么握、怎么换握）只能从 dense tracking 学到，去新目标的能力只能从加噪 goal + sparse reward 学到，现有方法各只用一种训练信号。　<b>这篇的切入点：</b>两者是同一个 goal-conditioned 问题（goal = 腕 + 物体位姿），只差 goal 从哪来、奖励怎么给，所以让一个 policy 同时在两种环境里训练。</p>
+  <h3 id="related">Related work</h3>
+  <!-- Families from the paper's related-work section, closest first. 同一问题: other ways to
+       solve this problem. 相似做法: this kind of method, used on another problem. Drop a group
+       that has no rows. One short line per cell. -->
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Motion tracking</b><br><span class="muted">ManipTrans, DexMachina, DexTrack, Dexplore</span></td><td>在机器人手上复现一段人手-物体 clip</td><td>dense tracking reward 的 RL；推理时也要整条 reference</td><td>只会照抄这一段 → 本文留它作 TrackEnv，再加 GenEnv；推理只要 goal</td></tr>
+      <tr><td><b>Goal-reaching RL</b><br><span class="muted">Dex4D, SimToolReal</span></td><td>把任意物体送到任意目标位姿</td><td>object-centric sparse 成功奖励，无人手先验</td><td>只管到哪、不管怎么做，抓法不自然 → 本文同样的 GenEnv，外加 TrackEnv 给先验</td></tr>
+      <tr><td><b>Teleop + behavior cloning</b><br><span class="muted">DexCap, DexUMI, GR-Dexter</span></td><td>从人的示范学灵巧操作</td><td>手套、外骨骼等采 in-domain 示范，再 behavior cloning</td><td>出了示范分布就泛化差，动态动作难采 → 本文只要几秒人手动作 + 仿真 RL</td></tr>
+      <tr><td><b>Grasp synthesis、专用 RL</b><br><span class="muted">DexGraspNet, Lightning Grasp, UniDexGrasp++, DexNDM</span></td><td>单一类技能：静态抓取或 in-hand 旋转</td><td>接触优化合成抓取；或单个任务的 RL</td><td>多限于抓取，开环优化遇扰动就脆 → 本文一个闭环 recipe 学抓取、换握、抛接</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Hybrid imitation（humanoid）</b><br><span class="muted">HIL, GfR</span></td><td>humanoid parkour 等动作，要超出 reference</td><td>reference tracking 和 sparse goal 合在一个多任务 RL 里</td><td>做的是 humanoid → 本文用在多指手 + 物体：goal 是腕和物体位姿</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2（§2.1、§2.2），未另行检索。Real2Sim 的对比方法 Do-As-I-Do、EgoInfinity 不在 §2，见 Stage 1。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>一个 goal-conditioned policy，同时练“像人”和“去哪都行”</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-23-AdaDex/fig1.jpg" alt="上半幅是多种机器人手在做各种技能；下排是人手拿锤子的几秒动作、机器人手模仿、学成的锤子技能敲不同位置"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）AdaDex 从几秒人手动作学到多种 adaptable dexterous skill：functional grasping、object reposing、in-hand reorientation 和动态抛接。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>上半幅：</b>同一套方法学出的各种技能；手的颜色对应 Fig. 5 图例（青 Arti-MANO、黄 XHAND、粉 Wuji、橙 Sharpa、紫 XHAND + xArm），中间白板上的 AdaDex 是 Marker 任务写的字。</li>
+    <li><b>下排左 “Seconds of Human Motion”：</b>几秒人手拿起锤子的动作，就是例子这一类输入。</li>
+    <li><b>下排中 “Hybrid Dexterous Mimicking”：</b>粉色机器人手（按图例是 Wuji）照着这段动作，把平放的锤子拿起、翻到手里。</li>
+    <li><b>下排右 “Adaptable Dexterous Skill”：</b>学成的锤子 skill 去敲多个不同位置的灰色小柱；人手 clip 里没有这些位置，这就是“钉子换位置”。</li>
+  </ol>
+  <!-- Input -> 3-4 boxes -> output, each box carrying the example's value on a second line. -->
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>锤子 clip 5.88 s</span>"] --> R["<b>HOI reference τ̂</b><br/><span class='ex'>腕、手、锤子位姿</span>"]
+  R --> H["<b>Hybrid Dexterous Mimicking</b><br/><span class='ex'>TrackEnv + GenEnv</span>"]:::win
+  H --> O["<b>Output：π(a | s, g)</b><br/><span class='ex'>给 goal 就去敲</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>6 个 stage，中间是一个共享 policy</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-23-AdaDex/fig2.jpg" alt="左：TrackEnv 和 GenEnv 两种环境共用一个 PPO actor-critic；右：Real2Sim 重建、Hybrid Dexterous Mimicking、Sim2Sim 和 Sim2Real"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）左：Hybrid Dexterous Mimicking，dense reference tracking 和 sparse goal reaching 作为两种并行环境，共用一个 actor。右：从视频重建的单段人手动作学 skill，再迁到 MuJoCo 和真机。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>右栏上 “Real2Sim Recon.”：</b>Human Demo → Kinematic Ref. τ̂，即 Stage 1；锤子来自 GRAB mocap，直接接在这一步的输出。</li>
+    <li><b>左栏蓝色 “TrackEnv (Sec. 3.2.1)”：</b>τ̂ + Small Deviation、Dense Tracking Reward → ✓ Human Prior，即 Stage 3。</li>
+    <li><b>左栏绿色 “GenEnv (Sec. 3.2.2)”：</b>τ̂ + Large Deviation、Sparse Goal Reward → ✓ Generalization；方块旁的坐标轴是目标位姿，即 Stage 4。</li>
+    <li><b>中间 “Shared PPO Actor-Critic”：</b>上方写着 Shared Observation、Separate Goal Sampling, Reward &amp; Termination：两种环境只在 goal、reward、termination 上不同。</li>
+    <li><b>右栏下 “Sim2Sim / Sim2Real”：</b>同一个 policy 进 MuJoCo 和真机，即 Stage 6。图里没画 Stage 2（retarget）和 Stage 5（coding agent 出 goal）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Real2Sim reference</b><br/><span class='ex'>锤子 353 帧 τ̂</span>"] --> S2["<b>2 · Retarget</b><br/><span class='ex'>MANO → Arti-MANO</span>"]
+  S2 --> S3["<b>3 · TrackEnv</b><br/><span class='ex'>跟着人手挥锤</span>"]:::win
+  S2 --> S4["<b>4 · GenEnv</b><br/><span class='ex'>锤子目标随机挪</span>"]:::win
+  S3 --> P["<b>共享 policy π(a | s, g)</b><br/><span class='ex'>锤子 skill</span>"]
+  S4 --> P
+  P --> S5["<b>5 · Coding agent 出 goal</b><br/><span class='ex'>敲两个新位置的钉子</span>"]
+  P --> S6["<b>6 · Sim2Sim / Sim2Real</b><br/><span class='ex'>MuJoCo、xArm6 + XHand</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click P href "#stage-all"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；贯穿全程的共享 policy 见 <a href="#stage-all">共享 policy 和 goal 接口</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Real2Sim reference</span>
+      <span class="stage-io">人手-物体 clip（mocap 或 RGB-D 视频）→ HOI reference τ̂ + 物体 mesh</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>整个方法只吃一条 τ̂；mocap 现成可用，日常视频要先重建成仿真能跟踪的 reference。</li>
+        <li><b>How：</b>τ̂ = 每帧腕位姿 x̂ʷ、MANO 手参数 q̂ʰ、物体位姿 x̂ᵒ，共 T 帧（通常几秒、60 Hz），再加 watertight 物体 mesh O（Eq. 1）。</li>
+        <li>Mocap（GRAB）直接接在重建的输出端（§3.3）。</li>
+        <li>视频路线（App. B.1）：RealSense D455 拍 RGB-D → Dyn-HaMR 出手部动作（WiLoR 初始化）→ 沿相机射线做 3 步深度对齐，只修手根平移。</li>
+        <li>物体：SAM 3D 出 metric mesh（改用观测深度）→ FoundationPose++ 逐帧跟 6-DoF 位姿；假设物体是刚体。</li>
+        <li>桌面：用户框选区域，RANSAC 拟合平面；GeoCalib 估重力方向，手、物体、桌面统一到重力对齐的世界坐标。</li>
+        <li><b>效果（Table 3）：</b>DexYCB 上 MPJPE 25.03 mm、CD_h 7.64 cm（Do-As-I-Do 42.11 / 19.11，EgoInfinity 167.81 / 32.24，两者都改成用 RGB-D）；每帧 0.97 s，对方 76.04 s、27.06 s。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-AdaDex/fig7.jpg" alt="RGB-D 视频分成手部动作、物体 mesh、物体位姿轨迹、桌面平面四个分支，最后重力对齐"></div>
+        <figcaption><b>Fig. 7</b>（作者原图）RGB-D 手-物体重建流程。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>顶部虚线框 “RGB-D video + intrinsics”：</b>输入；例子里是下面那段 sweep 视频。</li>
+        <li><b>四个分支：</b>“Hand motion / Dyn-HaMR”、“Metric object mesh / SAM 3D”、“Object pose trajectory / FoundationPose++”（Mesh 箭头：拿 SAM 3D 的 mesh 去跟踪）、“Table plane / Depth points + RANSAC”。</li>
+        <li><b>左下 “Depth-aligned hand motion”：</b>用观测深度修正手的平移。</li>
+        <li><b>灰色大框 “Gravity-aligned object reconstruction + table plane”：</b>GeoCalib 重力对齐 + 桌面高度对齐，输出 τ̂。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  M["<b>GRAB mocap</b><br/><span class='ex'>s1_hammer_use_1</span>"] --> T["<b>HOI reference τ̂</b><br/><span class='ex'>353 帧 + 锤子 mesh</span>"]
+  V["<b>RGB-D 视频</b><br/><span class='ex'>sweep，4.42 s</span>"] --> RC["<b>重建（Fig. 7）</b><br/><span class='ex'>手、物体、桌面、重力</span>"]
+  RC --> T2["<b>HOI reference τ̂</b><br/><span class='ex'>265 帧 + sweep mesh</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>锤子 clip 来自 GRAB mocap，跳过重建：τ̂ = 353 帧（5.88 s）的腕、MANO 手和锤子位姿，加锤子 mesh。</p>
+        <p><b>…然后第二段 clip 来了：</b>一段随手拍的 RGB-D 视频，人在用 sweep（手持小刷子，265 帧 / 4.42 s，Table 6）。走 Fig. 7 的流程得到它的 τ̂，之后 Stage 2–6 不变；这个 sweep skill 后来在真机上做了 in-hand gait switching（§4.4）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Retarget</span>
+      <span class="stage-io">MANO 手参数 → 各种机器人手的初始关节和腕位姿</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>τ̂ 是人手（MANO），policy 控制的是机器人手；reference state initialization 要用机器人手的关节角。</li>
+        <li><b>How：</b>基于 interaction mesh 的 kinematic retargeting（参考 OmniRetarget 和 Feng et al. 2026），把 MANO 参数变成各 embodiment 的关节位置和腕位姿（App. D）。</li>
+        <li>retarget 结果<b>只用于初始化</b>；tracking reward、termination 都直接用 MANO link，靠每种手的 MANO → 机器人一对一映射（App. D）。</li>
+        <li>手：Arti-MANO（22-DoF 浮动手 + 6-DoF 腕，定量实验都用它）、XHAND、Wuji、Sharpa、XHAND + xArm（§4.1、Fig. 5）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>MANO 手参数</b><br/><span class='ex'>锤子 clip 每帧</span>"] --> b["<b>Interaction-mesh retarget</b><br/><span class='ex'>MANO → 机器人手</span>"]
+  b --> c["<b>初始化用的状态</b><br/><span class='ex'>Arti-MANO 22-DoF</span>"]
+  a --> d["<b>Reward、termination</b><br/><span class='ex'>直接用 MANO link</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>锤子 clip 的人手 → Arti-MANO 的初始关节和腕位姿。项目页里同一个 hammering skill 也在 Sharpa、Wuji、XHand 上学成，方法不改。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">TrackEnv</span>
+      <span class="stage-io">τ̂ + 小噪声初始化 → 人的做法（human prior）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>补 goal-reaching RL 缺的“怎么做”：怎么接近物体、用哪种抓法、怎么 finger gaiting、何时松手（§3.2.1）。</li>
+        <li><b>RSI：</b>随机采起始帧 t₀，用 τ̂ 在 t₀ 的手、腕、物体位姿加小噪声初始化，动作的每个阶段并行学。</li>
+        <li><b>Adaptive sampling：</b>t₀ 分进 B 个 bin，按成功率方差采样 P(b) ∝ σ(s_b) + ε：太易和没希望的 bin 少采，前沿多采（B 的值论文没给）。</li>
+        <li><b>Goal：</b>g_t = τ̂ 往前看 k 帧的腕和物体位姿（Eq. 5），k 步后重采（k 的值论文没给）。</li>
+        <li><b>Dense reward：</b>物体位姿权重最大；再加腕、MANO link、速度匹配、指尖 contact reward（由 reference 的指尖-物体距离得出）和正则项（Eq. 6、Table 5）。</li>
+        <li><b>严格 termination：</b>物体、腕或 MANO link 偏出 τ̂ 周围的窄带，或物体掉落、出界就结束；阈值先除以 0.7（更宽），这个系数逐步升到 1.0，termination 越来越严（App. C.4）。</li>
+        <li>Stage I 早期重力小、摩擦大，之后逐步恢复正常（App. C.4）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-AdaDex/fig2-track.jpg" alt="Fig. 2 左栏蓝色部分：TrackEnv，参考轨迹加小偏差，dense tracking reward，得到 human prior"></div>
+        <figcaption><b>Fig. 2 局部</b>（作者原图）左栏蓝色的 TrackEnv。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>左下粉色曲线 τ̂ 和 “+ Small Deviation”：</b>起点在 reference 附近，只加小噪声。</li>
+        <li><b>一排手和方块：</b>reference 的不同阶段（图里是方块的抓起、翻转、抛起、接住），对应 RSI 的不同 t₀。</li>
+        <li><b>“Dense Tracking Reward” → “✓ Human Prior”：</b>每一步都按人的动作打分，学到的是人的做法。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>RSI + adaptive bin</b><br/><span class='ex'>t₀ 取自 353 帧</span>"] --> b["<b>Goal：τ̂ 的 t+k 帧</b><br/><span class='ex'>人手当时的锤子位姿</span>"]
+  b --> c["<b>Dense reward</b><br/><span class='ex'>锤子、腕、手指、接触</span>"]
+  c --> d["<b>严格 termination</b><br/><span class='ex'>偏出窄带就重来</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>每个 TrackEnv 从锤子 clip 的某一帧开始，goal 是 k 帧后人手和锤子的位姿；手指偏离人的握法就少得分，偏太多就结束。§1 说 tracking 由此继承人的 functional grasp、in-hand regrasp 和挥锤。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">GenEnv</span>
+      <span class="stage-io">大噪声初始化 + 随机挪过的 goal → 泛化（generalization）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>补 motion tracking 缺的泛化：逼 policy 从偏离 reference 的状态出发，去偏离 reference 的目标（§3.2.2）。</li>
+        <li><b>初始化：</b>t₀ 均匀采样（不用 adaptive），物体和手的噪声大得多，起点离 τ̂ 很远。</li>
+        <li><b>Goal：</b>τ̂ 往前看 k 帧的腕和物体位姿，再复合一个随机 SE(3) 变换 ε（Eq. 7–8）；噪声幅度 Δp、ΔR 可以很大，具体值论文没给。</li>
+        <li><b>Goal 链：</b>到达一个 goal 就从新的 look-ahead 帧再采一个，一个 episode 串起多次移动。</li>
+        <li><b>Reward：</b>sparse 物体成功（每个 goal +20，最后一个再 +50）+ dense 腕部引导 + 正则；<b>没有手指项</b>（Eq. 9、Table 5）。</li>
+        <li><b>Termination：</b>连续 30 步（0.5 s）没到 goal、物体离 goal 超过 50 cm（前 8 步宽限）、或腕离物体超过 30 cm 持续 3 s（App. C.4）。</li>
+        <li><b>为什么泛化又像人：</b>只做 goal reaching 时，大噪声会把 policy 推向最先找到的不自然手指策略；这里 TrackEnv 一直把共享 actor 拉回人的动作流形，GenEnv 要它把流形拉伸到新状态和新 goal（§3.2.2）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-AdaDex/fig2-gen.jpg" alt="Fig. 2 左栏绿色部分：GenEnv，参考轨迹加大偏差，sparse goal reward，得到 generalization"></div>
+        <figcaption><b>Fig. 2 局部</b>（作者原图）左栏绿色的 GenEnv。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>“τ̂ + Large Deviation”：</b>起点离 reference 很远。</li>
+        <li><b>方块旁的三色坐标轴：</b>被随机挪过的目标位姿，方块要转到那里。</li>
+        <li><b>“Sparse Goal Reward” → “✓ Generalization”：</b>只看物体到没到，手指怎么动不直接打分。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-AdaDex/tab5.jpg" alt="Table 5：TrackEnv 和 GenEnv 各项 reward 的公式和权重"></div>
+        <figcaption><b>Table 5</b>（作者原表）TrackEnv 和 GenEnv 的 reward。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>Object pose 一行：</b>TrackEnv 是 dense 项，GenEnv 是 0；GenEnv 里物体只靠 “Goal reached” 的 20 和 “Final-goal bonus” 的 50 得分。</li>
+        <li><b>Finger pose、Velocity matching：</b>只在 TrackEnv 里有，手指的做法全来自 TrackEnv。</li>
+        <li><b>Wrist pose：</b>两边都有，在 GenEnv 里起引导作用。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>大噪声初始化</b><br/><span class='ex'>锤子远离 clip 状态</span>"] --> b["<b>Goal：t+k 帧 ⊕ ε</b><br/><span class='ex'>锤子目标被随机挪</span>"]
+  b --> c["<b>Sparse 成功 + 腕引导</b><br/><span class='ex'>到位 +20，最后 +50</span>"]
+  c --> d["<b>换下一个 goal</b><br/><span class='ex'>一个 episode 多次</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>同一个锤子 skill，但锤子从偏离 clip 的状态开始，锤子的目标位姿被随机平移、旋转（好比钉子换了位置）；只有锤子到位才给分。因为同一个 actor 也在 TrackEnv 里练，它会用人的握法去够新目标，而不是抓锤头（§3.2.2 的论证，论文没单独测锤子）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Coding agent 出 goal</span>
+      <span class="stage-io">任务 → 腕 + 物体位姿 waypoints → skill 执行</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>推理只要 goal，高层计划就能交给 VLM coding agent：agent 低频出计划，skill 高频执行（§4.3）。</li>
+        <li><b>How：</b>VLM agent（Codex w/ GPT-6 Astra）为 skill 生成一串 waypoints g_t = (gʷ_t, gᵒ_t)，t = 0, 1, 2, …（§4.3）。</li>
+        <li>五个任务（App. G）：<b>Hammer</b>（拿起桌上的锤子，敲两个不同位置的钉子）、MugPour、Marker（转笔后在白板写 AdaDex）、Sweep（把方块扫进 dustbin）、PanToss。</li>
+        <li>跑在多种手上：Arti-MANO、XHAND、Wuji、Sharpa、XHAND + xArm（Fig. 5）。</li>
+        <li>论文没给 agent 的 prompt，也没给任务成功率；证据是 Fig. 5 和项目页视频。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-AdaDex/fig5.jpg" alt="多种机器人手做 downstream 任务：写字、倒水、抛接方块、扫地、颠锅、敲锤，底部是五种手的图例"></div>
+        <figcaption><b>Fig. 5</b>（作者原图）functional grasping、in-hand reorientation、动态抛接等技能和 downstream 任务，跨多种手和真实 arm-hand 系统。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>底部图例：</b>五种 embodiment：青 Arti-MANO、黄 XHAND、粉 Wuji、橙 Sharpa、紫 XHAND + xArm。</li>
+        <li><b>下排第四格：</b>橙色 Sharpa 拿锤子，旁边是灰色小柱，看起来就是 Hammer 任务（图里没标任务名）。</li>
+        <li><b>两块 “AdaDex” 白板：</b>Marker 任务，上排 Wuji、下排 Arti-MANO 在写字。</li>
+        <li><b>其他格：</b>上排 Sharpa 拿杯子（MugPour）、XHAND 抛接方块、紫色 xArm 拿刷子和簸箕（Sweep）；下排左 Sharpa 拿平底锅（PanToss）。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>任务</b><br/><span class='ex'>敲两个不同位置的钉子</span>"] --> b["<b>Coding agent</b><br/><span class='ex'>Codex w/ GPT-6 Astra</span>"]
+  b --> c["<b>Waypoints g₀, g₁, …</b><br/><span class='ex'>腕 + 锤子位姿</span>"]
+  c --> d["<b>锤子 skill</b><br/><span class='ex'>逐个去够</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Hammer 任务：agent 把“拿起锤子、敲钉子 A、再敲钉子 B”写成一串腕 + 锤子位姿（这种拆法是推断，论文只说 agent 生成 waypoints）。钉子位置不在人手 clip 里，靠的是 GenEnv 练出的泛化。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">Sim2Sim / Sim2Real</span>
+      <span class="stage-io">Isaac Gym 里的 policy → MuJoCo、真实 xArm6 + XHand（30 Hz）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>证明学到的动作物理上可行，不只是仿真里的动画（§4.4、App. G）。</li>
+        <li><b>Sim2Sim：</b>Isaac Gym 训练的 policy 零样本、闭环导入 MuJoCo（§4.4）。</li>
+        <li><b>仿真侧准备：</b>system identification、domain randomization、sim2sim 检查；真机版训练时，动作前 6 维改成 xArm6 六个关节的增量（§3.3、App. C.1）。</li>
+        <li><b>真机开环：</b>按 1x 速度（30 Hz）回放 policy 在仿真里生成的关节目标。</li>
+        <li><b>真机闭环：</b>FoundationPose（物体 mesh、RGB、Fast-FoundationStereo 深度）实时估物体位姿；policy 输入 RMA 编码的本体历史、BPS、当前和目标的物体 / 腕位姿，30 Hz 推理。</li>
+        <li>真机测了 GRAB 的 apple、hammer、cup 和 real2sim 的 sweep、两个 AprilCube；没报成功率。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-AdaDex/fig6.jpg" alt="上排是 MuJoCo 里的 rollout；下排四张真机照片：倒杯子、手里转方块、抓锤子、拿刷子"></div>
+        <figcaption><b>Fig. 6</b>（作者原图）Sim-to-sim 和 sim-to-real，实时 1x 速度（30 Hz）。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>上排 “Sim2Sim”：</b>同一个 policy 在 MuJoCo 里的 rollout。</li>
+        <li><b>下排 “Sim2Real” 从左到右：</b>倒绿色杯子、手里转贴码的方块（AprilCube）、抓黄绿色细锤子、sweep 的 in-hand gait switching。</li>
+        <li><b>第三格就是例子里的锤子：</b>§4.4 说的 “functional grasping of a thin hammer”。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Isaac Gym policy</b><br/><span class='ex'>锤子 skill</span>"] --> b["<b>Sim2Sim</b><br/><span class='ex'>MuJoCo 零样本</span>"]
+  a --> c["<b>真机开环</b><br/><span class='ex'>回放关节目标 30 Hz</span>"]
+  a --> d["<b>真机闭环</b><br/><span class='ex'>FoundationPose 30 Hz</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>锤子 skill 原样放进 MuJoCo，仍能做 Hammer · use（项目页 sim2sim 视频）；真机上 xArm6 + XHand 抓起黄绿色细锤子，开环、闭环各有视频（Fig. 6、项目页），没有成功率数字。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">All stages</span>
+      <span class="stage-name">共享 policy 和 goal 接口</span>
+      <span class="stage-io">(状态 s, goal g) → 动作 a；训练、agent 规划、真机用的都是它</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>核心观察：tracking 和 goal reaching 都是“把物体和腕带到目标位姿 g”，只差 g 从哪来、奖励怎么给（§3.2）；所以一个 actor 能被两种环境一起训，部署时 g 来自哪都行。</li>
+        <li><b>State：</b>关节位置、机器人腕位姿和速度、物体位姿、BPS 物体形状编码，没有特权信息（Eq. 2）。</li>
+        <li><b>Goal：</b>g = (目标腕位姿, 目标物体位姿) ∈ SE(3) × SE(3)；<b>推理不需要 τ̂</b>（§3.1）。</li>
+        <li><b>Action：</b>6-DoF 腕部增量 + n 个手指的绝对目标（Arti-MANO 是 22），EMA（α = 0.4）滤波后当 PD 目标（App. C.1）。</li>
+        <li><b>目标函数：</b>比例 p 的环境是 TrackEnv、1 − p 是 GenEnv，一个 π_θ 用 PPO 在两者 rollout 的并集上优化（Eq. 4）。</li>
+        <li><b>Asymmetric critic：</b>critic 另看特权状态（接触力、物体速度、COM、重量）和 τ̂；GenEnv 里 τ̂ 置零，critic 不用任务标记也能分清两种环境。</li>
+        <li><b>两阶段 curriculum：</b>Stage I 全是 TrackEnv（1.0 / 0.0）；Stage II 从 Stage I 初始化，两种各一半（0.5 / 0.5）（Table 4）。</li>
+        <li><b>规模：</b>Isaac Gym 每张 GPU 8,192 个并行环境，MLP [1024, 1024, 512]，每阶段最多 20k iteration，单张 RTX 4090 约 1–2 天（App. C.2）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  T["<b>TrackEnv</b><br/><span class='ex'>g = clip 里的锤子位姿</span>"] --> A["<b>共享 actor π(a | s, g)</b><br/><span class='ex'>锤子 skill</span>"]:::win
+  G["<b>GenEnv</b><br/><span class='ex'>g = 挪过的锤子位姿</span>"] --> A
+  D["<b>部署</b><br/><span class='ex'>g = agent 的 waypoint</span>"] --> A
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>锤子 skill 从头到尾只有这一个 policy：Stage I 只练 TrackEnv（先学会人怎么握锤、挥锤），Stage II 一半 TrackEnv、一半 GenEnv。部署时它只看当前状态和下一个腕 + 锤子目标，看不到那段 5.88 s 的 clip。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>Tracking 和 goal reaching 是同一个 goal-conditioned 问题（§3.2）</td><td>共享 policy：锤子 skill 的 g 依次来自人手 clip、挪过的目标、agent 的 waypoint</td></tr>
+        <tr><td>推理不需要 dense reference（§3.1）</td><td>Stage 5–6：部署时锤子 skill 看不到 5.88 s 的 clip</td></tr>
+        <tr><td>Real2Sim HOI 重建（§3.3、App. B）</td><td>Stage 1：第二段 clip，sweep 的 RGB-D 视频</td></tr>
+        <tr><td>Kinematic retargeting 到多种手（App. D）</td><td>Stage 2：MANO → Arti-MANO；hammering 也在 Sharpa、Wuji、XHand 上学成</td></tr>
+        <tr><td>TrackEnv：RSI、adaptive sampling、dense reward、严格 termination（§3.2.1）</td><td>Stage 3：沿锤子 clip 学握法、换握、挥锤</td></tr>
+        <tr><td>GenEnv：大噪声、SE(3) 挪动的 goal、goal 链、sparse reward、无手指项（§3.2.2）</td><td>Stage 4：锤子目标被随机挪，只看锤子到没到</td></tr>
+        <tr><td>Asymmetric critic、两阶段 curriculum（§3.2、App. C）</td><td>共享 policy：Stage I 只练 TrackEnv，Stage II 各一半</td></tr>
+        <tr><td>Downstream 任务由 coding agent 出 waypoints（§4.3、App. G）</td><td>Stage 5：Hammer 任务敲两个不同位置的钉子</td></tr>
+        <tr><td>Sim2Sim、Sim2Real（§4.4）</td><td>Stage 6：MuJoCo 里的 Hammer · use，真机抓黄绿色锤子</td></tr>
+        <tr><td>主结果（Table 1–2、Fig. 4）</td><td>Results：hammer 是 12 个 GRAB 物体之一，数字是平均</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览</h2>
+  <ul class="tight results">
+    <li><b>80.02%</b> 没见过的相似动作上的 tracking progress；ManipTrans 7.28%，SimToolReal 13.68%，只用 TrackEnv（w/o GenEnv）31.75%（Table 1 setting ii）：泛化来自 GenEnv。</li>
+    <li><b>96.74%</b> 训练过的动作上的 progress，只比 w/o GenEnv 的 97.47% 低不到 1%（Table 1 setting i）：加 GenEnv 几乎不损跟踪。</li>
+    <li><b>51.80%</b> random goal progress，高于专门为此训练的 SimToolReal（44.60%，+7.20%）；但 SR 27.08% 低于它的 31.71%（−4.63%）（Table 2）。</li>
+    <li><b>8.45%</b> w/o TrackEnv 在训练过的动作上的 progress，random goal 也只有 4.34%（Table 1–2）：没有 TrackEnv 的先验和探索，sparse reward 很难单独学会（§1 的论证）。</li>
+    <li><b>80.53%</b> 9 段 real2sim 动作的平均 tracking progress，ManipTrans 31.70%（Fig. 4）。</li>
+    <li><b>0.97 s</b> 每帧 HOI 重建时间，Do-As-I-Do 76.04 s、EgoInfinity 27.06 s；DexYCB 和 HO3D 上 MPJPE、CD_h 都最低（Table 3）。</li>
+    <li>评测设置：12 个 GRAB 物体（hammer 是其一），每个物体只用 1 段动作训练、另 2 段做 unseen 测试；每段 128 次 rollout；定量实验都用 22-DoF Arti-MANO（§4.1）。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-23-AdaDex/tab1.jpg" alt="Table 1：seen 和 similar but unseen 动作上的 tracking progress 和物体、腕部误差"></div>
+    <figcaption><b>Table 1</b>（作者原表）先看 Setting (ii) 的 Progress 列：AdaDex 80.02，其余都不超过 31.75。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-23-AdaDex/tab2.jpg" alt="Table 2：random goal reaching 的 progress 和 SR"></div>
+    <figcaption><b>Table 2</b>（作者原表）Progress 列 AdaDex 最高；SR 列 SimToolReal 最高。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-23-AdaDex/fig3.jpg" alt="四列对比：人手 reference、ManipTrans、SimToolReal、AdaDex，左半训练过的动作，右半相似的新动作"></div>
+    <figcaption><b>Fig. 3</b>（作者原图）四列依次是 Ref.（灰，人手 reference）、ManipTrans（紫）、SimToolReal（橙）、AdaDex（青）；左半 Seen Motions，右半 Similar Motions。先比橙色和灰色的手形：SimToolReal 的抓法和人差得最远。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-23-AdaDex/fig4.jpg" alt="小提琴图：9 段 real2sim 动作上 ManipTrans 和 AdaDex 的 tracking progress 分布"></div>
+    <figcaption><b>Fig. 4</b>（作者原图）9 段 real2sim 动作的 tracking progress 分布：菱形是均值（31.70% vs 80.53%），白点是中位数，AdaDex 的中位数在 100%。</figcaption>
+  </figure>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>每个物体、每条 reference 单独训一个 policy；一个 policy 覆盖多物体、多动作留作未来工作（App. H）。</li>
+    <li>物体只用 6-DoF pose + BPS 形状编码，articulated、deformable 物体还做不了（App. H）。</li>
+    <li>random goal 的 SR 27.08%，低于 SimToolReal 的 31.71%（Table 2）；没见过的动作上腕朝向误差仍有 72.68°（Table 1，这条是我们的观察）。</li>
+    <li>Downstream 任务和真机只有视频，没报成功率；coding agent 的 prompt 也没公开（§4.3–4.4）。</li>
+    <li>每个 skill 两阶段训练，每阶段在单张 RTX 4090 上约 1–2 天（App. C.2）。</li>
+    <li>Real2Sim 假设物体是刚体，桌面区域要人手框选（App. B.1）。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Robot learning in simulation</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>Robotic-harness：</b>AdaDex 的分工是 coding agent 低频出腕 + 物体位姿 waypoints、skill 高频执行（§4.3）；harness 的 Codex / Claude Code policy 若接多指手，可以只输出这种 goal 序列，Supervisor 也只需审 goal（我们的设想）。</li>
+    <li><b>Agent-centric-real-to-sim：</b>App. B 的 RGB-D HOI 重建（Dyn-HaMR + SAM 3D + FoundationPose++ + GeoCalib，0.97 s/帧）可以给 real2sim-anything-indoor 补上手和物体的交互，那边目前用 GVHMR 出人体动作。</li>
+    <li><b>仿真迁移：</b>policy 在 Isaac Gym 训、零样本进 MuJoCo；同样的 sim2sim 检查可以用来看 skill 能否搬进 WorldClaw 的 Genesis 或 harness 跑的 RoboTwin / LIBERO / RoboDojo（论文只测了 MuJoCo）。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Sim-robot-learning/2026-10-23-AdaDex.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>

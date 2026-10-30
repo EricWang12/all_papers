@@ -14,11 +14,14 @@ papers explained in general rather than about one paper.
 - **Problem first, told on the example.** Open with the problem, explained on the running
   example rather than as a literature survey:
   - what the example's input is and what we want out of it;
-  - which baselines the paper builds on or compares against;
-  - for each baseline, what it does and the exact step where it breaks on this
-    example, with its number;
+  - for each baseline the paper builds on or compares against, the exact step where it
+    breaks on this example, with its number, in one flowchart;
   - then one line on the root cause.
-  Keep it short: one flowchart and a table of at most 4 rows.
+- **Related work, concise and intuitive.** Related works are existing efforts that solve
+  a similar problem, or solve it with a similar approach. For each one, make three things
+  clear, one short line each: what it solves, how it solves it, and how it differs from
+  the paper. By default trust the paper's own related-work section; search in depth only
+  when I ask for it.
 - **Order.** Problem, then Big picture right after it, then Stages, then Details. The
   running example is introduced inside the problem, not as its own block in between.
 - **Concise, TL;DR style, but complete.** Bullets and short phrases, no paragraphs.
@@ -41,6 +44,7 @@ Each project is one folder in the library. The scope line decides where a paper 
 |---|---|---|---|
 | `Robotic-harness` | Robotic harness | Harnesses that let LLM/VLM agents drive robots: agent runtimes and supervisors, coding agents as robot policies, tool and skill libraries, code-as-policy, agentic planning and verification, benchmarks for agent-controlled manipulation. | `robot-harness-robodojo-mas/robot-harness`: one Runtime running Native API, Codex and Claude Code policies on RoboTwin, LIBERO/LIBERO-Pro and RoboDojo; a Supervisor owns robot mutation, admission and evidence. Real arms: SO-101 (`Real-Robotics/`). |
 | `Agent-centric-real-to-sim` | Agent-centric real-to-sim | Agents that turn the real world (videos, scans, photos, prompts) into simulation: scene and room reconstruction, asset and articulation generation, human and object motion into sim, digital twins, world building and world models for training or evaluating robots. | `Harness-WM/real2sim-anything-indoor` (video → Blender room, GVHMR human motion), WorldClaw skills (prompt → white-box scene → Genesis sim → render), notes in `Harness-WM/world-building-landscape.md`. |
+| `Sim-robot-learning` | Robot learning in simulation | Simulators and physics/rendering frameworks, RL and imitation for dexterous, mobile and whole-body manipulation, skills learned from human motion, sim-to-real transfer. | No project of ours here yet. Relate the paper to the other two: the simulators the harness runs on (RoboTwin, LIBERO, RoboDojo) and WorldClaw's Genesis sim. |
 
 ## Library
 
@@ -49,7 +53,11 @@ Each project is one folder in the library. The scope line decides where a paper 
   authorized.
 - Lab-machine clone: `/nfs/turbo/coe-jungaocv/wzn/workspace/papers`
 - Artifact title: Zhaoning Paper Pile
-- Artifact: https://claude.ai/artifact/GGxYmvE3MgSAJUQDSi9EHb (first published 2026-10-15). It belongs to one Claude account; a session logged into another account cannot publish into it, even with editor access. A copy made from the other account on 2026-10-21, https://claude.ai/artifact/WwBLzpin698pYEu9brsyot, is not kept up to date.
+- Artifact: every run finds it by the title above in the artifact list and adds the paper
+  as a new page; if the list has none, the run creates it. Each Claude account has its
+  own copy: https://claude.ai/artifact/GGxYmvE3MgSAJUQDSi9EHb (first published 2026-10-15)
+  and https://claude.ai/artifact/3cWGRMjRFMuRxzmapBvXqp (created 2026-10-23 from an
+  account that sees the first one only as shared).
 - Papers I am reviewing are confidential submissions. They never go into this library or this
   public repo. Their explainers are filed in the review library (`Paper-Reviews/` on the lab
   machine, with its own `preferences.md`) and published to the separate artifact
@@ -68,3 +76,11 @@ Each project is one folder in the library. The scope line decides where a paper 
 - 2026-10-20: papers under review get their own artifact ("Zhaoning Review Pile") and stay out of this public repo.
 - 2026-10-21: library artifact moved to https://claude.ai/artifact/WwBLzpin698pYEu9brsyot; the old artifact is in another organization and the Artifact tool refuses cross-organization publishes.
 - 2026-10-22: back on the original artifact (GGxYmvE3MgSAJUQDSi9EHb) after the session returned to its owning account; MAST published there.
+- 2026-10-23, with AdaDex, COWBOY and Isaac Lab 3.0:
+  - Related work must be concise and intuitive: for each neighbor, what it solves, how,
+    and how it differs from the paper. Taken from the paper's related-work section unless
+    I ask for an in-depth search.
+  - The artifact is found by its title in the artifact list, and created if missing. This
+    session's account saw the original only as shared and could not read it, so the run
+    created https://claude.ai/artifact/3cWGRMjRFMuRxzmapBvXqp with the whole library.
+  - New project folder `Sim-robot-learning`.

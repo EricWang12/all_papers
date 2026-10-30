@@ -1,0 +1,700 @@
+<!doctype html>
+<!-- Paper page template. Copy to <Project>/artifact/<name>.html, replace every placeholder
+     in double braces, and drop optional blocks you do not use. Keep the section order: it is
+     the reader's order (preferences.md). Figures live in artifact/<name>/ next to this file.
+     This page loads Mermaid itself: pages other than the library home are served without the
+     artifact skeleton, so nothing else draws the charts. In chart labels write class='ex'
+     with single quotes. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>IsaacLab3</title>
+<meta name="description" content="Isaac Lab 3.0：一个 task API 跑 PhysX / Newton / OV 多个后端，Isaac Sim 变成可选；同一 checkpoint 可在 PhysX↔Newton 间迁移。">
+<meta name="paper:title" content="Isaac Lab 3.0 (v3.0.0 GA release)">
+<meta name="paper:source" content="https://github.com/isaac-sim/IsaacLab/releases/tag/v3.0.0">
+<meta name="paper:venue" content="GitHub release 2026-10-20; paper arXiv 2025">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2511.04831v1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Sim-robot-learning</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Sim-robot-learning · 归档于 2026-10-23</p>
+  <h1>IsaacLab3</h1>
+  <p class="full-title">Isaac Lab 3.0（v3.0.0 GA release）· 论文：Isaac Lab: A GPU-Accelerated Simulation Framework for Multi-Modal Robot Learning</p>
+  <p class="meta">NVIDIA（Mayank Mittal, Pascal Roth, James Tigue, Antoine Richard, Octi Zhang, Peter Du et al.）· NVIDIA、ETH Zürich、RAI Institute 等 · GitHub release 2026-10-20；论文 arXiv 2511.04831v1（2025-11-06，写的是 2.x）</p>
+  <p class="links">
+    <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v3.0.0">Release</a><a href="https://isaac-sim.github.io/IsaacLab/v3.0.0/">Docs</a>
+    <a href="https://arxiv.org/abs/2511.04831v1">arXiv</a><a href="https://arxiv.org/pdf/2511.04831v1">PDF</a><a href="https://github.com/isaac-sim/IsaacLab">Code</a>
+  </p>
+  <p class="filed">归档到 <b>Robot learning in simulation</b>：GPU 并行的机器人学习仿真框架，正是本项目的 simulators / physics-rendering frameworks；也和 Robotic-harness 相关（自带给 coding agent 的 skills 和统一 CLI）。</p>
+  <p class="filed">来源标记：<span class="win">3.0 新</span> = release notes 和 v3.0.0 文档；<span class="muted">2.x 论文</span> = arXiv 2511.04831，3.0 仍沿用。流程图里绿框 = 3.0 新增。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>2.x 的 task 绑死在 Isaac Sim + PhysX 上：换 Newton 要改 task 代码，最小的实验也得装整套 Isaac Sim。</dd></div>
+    <div><dt>Idea</dt><dd>3.0 在 task 和引擎之间加一层：backend-neutral 的 asset / sensor API，<code>physics=</code> preset 选引擎，factory 在构造时派发到 PhysX / Newton / OvPhysX；Isaac Sim 变成可选 extra。</dd></div>
+    <div><dt>Result</dt><dd>同一个 checkpoint 可在 PhysX↔Newton 间回放，官方验证了 3 个 task（含 ANYmal-D rough）；release notes 没有给新的吞吐数字。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>同一个 ANYmal-D task，2.x 只能跑在 Isaac Sim 的 PhysX 上</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>ANYmal-D 崎岖地形速度跟踪</b>：task <span class="ex">Isaac-Velocity-Rough-AnymalD</span> + 一个在 <span class="ex">physics=isaacsim_physx</span> 上用 RSL-RL 训好的 checkpoint → 想要：task 代码一行不改、不装 Isaac Sim，就在 <span class="ex">physics=newton_mjwarp</span> 上回放它（PN）；反过来 Newton 训、PhysX 回放（NP）也行，行为相近。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>Rough-AnymalD</span><br/><span class='ex'>PhysX checkpoint</span>"] --> A1["<b>Isaac Lab 2.x</b><br/>task 里写死 PhysxCfg"]
+  A1 --> AX["换 Newton 得改 task<br/><span class='ex'>Newton 仅在实验分支</span>"]:::gap
+  IN --> B1["<b>换个模拟器重写</b><br/>MJCF + 新 MDP 代码"]
+  B1 --> BX["policy 接口对不上<br/><span class='ex'>当新 task 重训（推断）</span>"]:::gap
+  IN --> C1["<b>直接换引擎回放</b><br/>同一 checkpoint 进 Newton"]
+  C1 --> CX["branched 关节轴错位<br/><span class='ex'>几十步内全体摔倒</span>"]:::gap
+  </pre></div>
+  <p class="note">Lane B 的“坏在哪”是推断，依据 3.0 文档 Transfer Policies 页：policy 接口变了，就当作不同的 task，恢复原接口或重训。</p>
+  <p class="crux"><b>根本问题：</b>task 代码、运行时和 policy 张量的顺序都跟着一个引擎走，中间没有 backend-neutral 的一层。　<b>3.0 的切入点：</b>在 task 和引擎之间插一层：公共 API + preset 选择 + factory 派发，再用固定的 public joint / body 顺序钉住 policy 接口。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Isaac Gym（前身）</b><br><span class="muted">Makoviychuk et al. 2021</span></td><td>单张 GPU 上端到端训练 RL</td><td>PhysX 在 GPU 上仿真，结果直接给成 PyTorch tensor</td><td>raw buffer 手动索引，无 deformable、闭链 → USD 场景 + View API；3.0 再加多引擎</td></tr>
+      <tr><td><b>其他 GPU 并行仿真</b><br><span class="muted">ManiSkill3、MuJoCo Playground</span></td><td>同样：成千上万个 env 并行训策略</td><td>整个 agent–env loop 放在 GPU 上，免去 CPU–GPU 拷贝</td><td>论文没逐项比；它多了 RTX 渲染、USD、成套 sensor / actuator；3.0 一个 task 可切多个引擎</td></tr>
+      <tr><td><b>CPU 仿真器</b><br><span class="muted">MuJoCo、PyBullet、DART</span></td><td>机器人物理仿真</td><td>在 CPU 上算，靠多核集群扩展</td><td>大规模并行时慢、集群贵 → GPU 全流程；3.0 经 Newton 用上 MuJoCo-Warp</td></tr>
+      <tr><td><b>场景格式与游戏引擎</b><br><span class="muted">Gazebo SDF、URDF、MJCF；Unity、Unreal、AirSim</span></td><td>描述、搭建仿真场景</td><td>XML 做组件级描述；或把仿真编译成整体的"游戏"</td><td>SDF 难写闭链、改场景要回引擎 → USD 场景图；3.0 导入的 USD 可跑多个后端</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>跨引擎的 USD 物理 schema</b><br><span class="muted">USDPhysics + PhysxSchema / MjcPhysics；Newton USD schema</span></td><td>让不同引擎读同一份物理场景</td><td>通用 schema 打底，各引擎加自己的扩展 schema</td><td>只统一场景数据，不管 task 代码 → 3.0 把同样的拆法用到 task 层</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文没有单独的 Related Work 一节，各行取自 §1 Introduction、§2.1 USD for Robotics、§7.1.3–7.1.4 和 Fig. 34 的对比段落；“3.0：”后的半句出自 release notes 和 v3.0.0 文档。未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>一个 task API，多个后端：preset 选引擎，factory 在构造时派发</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-23-IsaacLab3/docs-arch.png" alt="Isaac Lab 3.0 backend architecture: task code, public asset and sensor API, backend-agnostic base classes, FactoryBase dispatch and the physics preset, over the isaaclab_physx, isaaclab_newton and isaaclab_ov packages and their engines"></div>
+    <figcaption><b>Fig. A</b>（作者原图，取自 v3.0.0 文档 Backends and Presets 页的 "Backend architecture" 一节，论文里没有）3.0 的后端架构：从 task 代码经 factory 和 physics preset，到三个后端包和各自的引擎。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>顶 "Environment and task code"：</b>ManagerBasedRLEnv / DirectRLEnv / InteractiveScene，"the same public API on every backend"；ANYmal-D 的 task 代码在这一层。</li>
+    <li><b>绿框 "Public asset and sensor API"：</b><code>Articulation</code>、<code>ContactSensor</code>、<code>RayCaster</code>…，每个类都是 <code>class Articulation(FactoryBase, BaseArticulation)</code>。</li>
+    <li><b>蓝框 "Backend-agnostic base classes"：</b>契约 <code>BaseArticulation</code>、<code>PhysicsManager</code>、<code>SceneDataBackend</code>，"implemented by every backend package"。</li>
+    <li><b>橙框 "Physics preset (configuration time)"：</b><code>physics=newton_mjwarp → PresetCfg alternative</code>，core 只收到一个具体的 <code>NewtonCfg</code>；虚线 "selects" 指向 factory。</li>
+    <li><b>黄框 "FactoryBase.__new__() (construction time)"：</b><code>_get_backend()</code> → "newton"，<code>_get_module_name()</code> → <code>isaaclab_newton.&lt;subpath&gt;</code>，lazy import 后缓存。</li>
+    <li><b>紫框三个后端包 + 灰框引擎：</b>isaaclab_physx → Isaac Sim PhysX（Kit runtime）；isaaclab_newton → Newton on Warp（MuJoCo-Warp、Kamino、XPBD、VBD、Featherstone、MPM）；isaaclab_ov → OvPhysX（PhysX without Kit）。例子训练走左列，PN 回放走中列。</li>
+    <li><b>底行：</b>renderer（<code>renderer=</code>）和 visualizer（<code>--viz</code>）另外独立选，见<a href="#stage-all">贯穿机制</a>。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Task</b><br/><span class='ex'>Rough-AnymalD</span>"] --> P["<b>Preset</b><br/><span class='ex'>physics=newton_mjwarp</span>"]:::win
+  P --> F["<b>Factory</b><br/><span class='ex'>isaaclab_newton</span>"]:::win
+  F --> O["<b>Output</b><br/><span class='ex'>同一 checkpoint</span><br/><span class='ex'>PhysX ↔ Newton</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>6 个 stage：从一条命令到 PhysX↔Newton 四格验证</h2>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · 启动与选后端</b><br/><span class='ex'>uv run + physics=</span>"]:::win --> S2["<b>2 · Factory 派发</b><br/><span class='ex'>→ isaaclab_newton</span>"]:::win
+  S2 --> S3["<b>3 · Newton 后端</b><br/><span class='ex'>MuJoCo-Warp 步进</span>"]:::win
+  S3 --> S4["<b>4 · MDP 步进</b><br/><span class='ex'>ActuatorNet + 高度扫描</span>"]
+  S4 --> S5["<b>5 · 训练与回放</b><br/><span class='ex'>isaaclab train / play</span>"]:::win
+  S5 --> S6["<b>6 · 跨引擎迁移</b><br/><span class='ex'>PP · PN · NN · NP</span>"]:::win
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。绿框 = 3.0 新增，Stage 4 的主体沿用 2.x 论文。贯穿所有 stage：<a href="#stage-all">renderer / visualizer 独立选择</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">启动与选后端（uv extras + preset）</span>
+      <span class="stage-io">一条 <code>uv run … isaaclab</code> 命令 → 只装需要的运行时 + 一个具体的 physics cfg</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>2.x 先建 conda 环境、<code>./isaaclab.sh --install</code>，task 里直接写 <code>sim_utils.PhysxCfg(...)</code>：换引擎要改代码，跑什么都离不开 Isaac Sim。</li>
+        <li><span class="win">3.0 新</span> <b>uv extras：</b><code>uv run</code> 自动建 Python 3.12 环境，默认只装 Newton；<code>--extra ov</code> 加 OVPhysX + OVRTX，<code>--extra isaacsim</code> 加 Isaac Sim 6.2（PhysX / RTX、ROS、XR、Kit）。</li>
+        <li><b>extra ≠ 选择：</b>extra 只让能力可用；task 用哪个由 <code>physics=</code> / <code>renderer=</code> / <code>presets=</code> 决定（Hydra token，不带 <code>--</code>）。</li>
+        <li><span class="win">3.0 新</span> <b>PresetCfg：</b>task 作者列出备选（<code>isaacsim_physx = PhysxCfg()</code>、<code>ovphysx = OvPhysxCfg()</code>、<code>newton_mjwarp = NewtonCfg(<wbr>solver_cfg=<wbr>MJWarpSolverCfg())</code>）并指定 <code>default</code>。</li>
+        <li><b>解析顺序：</b>各 preset 的 default → 全局 <code>presets=</code> → 路径级 <code>env.sim.physics=…</code> → 标量 override <code>env.sim.dt=0.002</code>；preset 整段替换，不合并字段。</li>
+        <li><b>先查再跑：</b><code>uv run isaaclab list_envs --show_presets</code> 列出每个 task 能通过配置检查的组合；不支持的名字在配置校验时就报错。</li>
+        <li><b>硬件：</b>Isaac Sim extra 要 ≥32 GB RAM、16 GB VRAM 和 RTX GPU；headless Newton 不需要 RTX（安装文档）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>uv run</b><br/><span class='ex'>--extra isaacsim?</span>"] --> b["<b>isaaclab</b><br/><span class='ex'>train / play</span>"]
+  b --> c["<b>PresetCfg</b><br/><span class='ex'>newton_mjwarp</span>"]
+  c --> d["<b>SimulationCfg.physics</b><br/><span class='ex'>NewtonCfg(MJWarp)</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>训练（PhysX 侧，要 Isaac Sim）：<span class="ex">uv run --extra isaacsim isaaclab train --rl_library rsl_rl --task Isaac-Velocity-Rough-AnymalD physics=isaacsim_physx</span> + 两个 ordering override（Stage 6）。</p>
+        <p>回放（PN，不装 Isaac Sim）：同一 task 换成 <span class="ex">physics=newton_mjwarp</span>，<code>SimulationCfg.physics</code> 变成 <code>NewtonCfg(<wbr>solver_cfg=<wbr>MJWarpSolverCfg())</code>。</p>
+        <p class="muted">命令按 Transfer Policies 页的模板代入 task 名；<code>--extra isaacsim</code> 是按 release notes 的写法补上的。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Factory 派发（backend-neutral API）</span>
+      <span class="stage-io"><code>Articulation(cfg)</code> → 当前后端的 Articulation 实现</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b><span class="muted">2.x 论文</span> 资产类直接包着 PhysX 的 View（Fig. 3），换引擎就得换类、改 import。</li>
+        <li><span class="win">3.0 新</span> <b>公共类 = FactoryBase + 抽象基类：</b><code>class Articulation(FactoryBase, BaseArticulation)</code>；sensor 与 sensor data 同理。</li>
+        <li><b><code>_get_backend()</code>：</b>读 <code>SimulationContext.physics_manager</code> → "physx" / "newton" / "ovphysx"。</li>
+        <li><b><code>_get_module_name()</code>：</b><code>isaaclab.assets.articulation</code> → <code>isaaclab_newton.assets.articulation</code>（ovphysx 走 <code>isaaclab_ov</code>）。</li>
+        <li><b>零运行时开销：</b>第一次用到才 import、缓存进 registry；选择只发生在实例化时，不进仿真 hot path。</li>
+        <li><b>后端契约：</b>每个后端实现 <code>PhysicsManager</code>（<code>forward / step / reset / close</code>）和 <code>SceneDataBackend</code>。</li>
+        <li><b>逃生口：</b>也能直接用引擎底层 API（PhysX typed views、Newton model / state、OvPhysX tensor bindings），但就离开了可移植层。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-IsaacLab3/fig3.jpg" alt="OpenUSD scene parsed into PhysX GPU tensors, exposed to Isaac Lab as views through an API"></div>
+        <figcaption><b>Fig. 3</b>（作者原图，2.x）USD 与 PhysX 在 OmniPhysics 里的衔接：USD stage → PhysX 的 GPU 张量 → Isaac Lab 的 View API。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左 "OpenUSD"：</b>三个 env 的场景（机器人 + 桌子）写在 USD stage 里；ANYmal-D 的资产在 2.x 和 3.0 都是 USD。</li>
+        <li><b>中 "PhysX · GPU Tensors"：</b>PhysX 解析 USD，在 GPU 上分配仿真状态张量（Algorithm 1 的 "Start simulation"）。</li>
+        <li><b>右 "Isaac Lab · Views" 和 "API"：</b>按 prim path pattern（如 <code>/World/envs/*/Robot</code>）把 N 个 env 的同类对象收成一个 view，批量读写。</li>
+        <li><b>3.0 里：</b>这条路还在，但只是 <code>isaaclab_physx</code> 这一支（Fig. A 左列）；Newton 那一支见 Stage 3。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Articulation(cfg)</b><br/><span class='ex'>ANYmal-D</span>"] --> b["<b>_get_backend()</b><br/><span class='ex'>newton</span>"]
+  b --> c["<b>import 后端模块</b><br/><span class='ex'>isaaclab_newton</span>"]
+  c --> d["<b>实例</b><br/><span class='ex'>BaseArticulation 契约</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>PN 回放时 <code>_get_backend()</code> 得到 "newton"，ANYmal-D 的 <span class="ex">Articulation(cfg)</span> 构造出 <code>isaaclab_newton</code> 的实现；训练时同一行代码得到 <code>isaaclab_physx</code> 的实现。task 代码不变。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Newton 后端（论文 §7 的预告，3.0 落地）</span>
+      <span class="stage-io">ANYmal-D 的 USD → Newton Model / State → MuJoCo-Warp 步进</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>论文写作时 Newton 只在 experimental branch，只支持一部分 task（flat-terrain locomotion、manipulation、vision，§7.1.5）。</li>
+        <li><span class="muted">2.x 论文</span> <b>结构：</b>Newton 建在 NVIDIA Warp 上，<code>ModelBuilder</code> 建模 → <code>Model</code>（不随时间变）+ <code>State</code>（随时间变）→ <code>Solver</code> 推进（§7.1.2）。</li>
+        <li><span class="muted">2.x 论文</span> <b>MuJoCo Solver：</b>MuJoCo 算法的 Warp 重写；论文称在多接触场景下比 JAX 版 MJX 快很多（§7.1.3）。</li>
+        <li><span class="win">3.0 新</span> <b>两种资源：</b><code>ModelBuilder</code>（可变的构建数据，hard reset 时还在）和 <code>NewtonBackend</code>（最终 model 与 native buffer，physics 和渲染都借用）。</li>
+        <li><span class="win">3.0 新</span> <b>solver：</b>MuJoCo-Warp、VBD、MPM、coupled solvers、实验性 Kamino；Newton 1.6.1、Warp 1.17。</li>
+        <li><b>solver 不是 backend：</b><code>newton_mjwarp</code> 和 <code>newton_kamino</code> 是同一个 Newton 后端的两种 solver 配置。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-IsaacLab3/fig34.jpg" alt="Newton architecture: OpenUSD on top; Isaac Lab, Newton (Model, State, Solver, Collision, MuJoCo/Kamino/Canonical/Custom solvers), MuJoCo (Playground, MJX, MuJoCo Warp) and Warp columns"></div>
+        <figcaption><b>Fig. 34</b>（作者原图，2.x 论文 §7 的预告）Newton 物理引擎：建在 NVIDIA Warp 上，把 Model（不随时间变）和 State（随时间变）分开，由 Solver 推进。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>顶 "OpenUSD"：</b>四栏都从 USD 读场景，ANYmal-D 的资产从这里进来。</li>
+        <li><b>左 "Isaac Lab"（Isaac Lab、omni.newton）：</b>论文时通过 <code>omni.newton</code> 扩展接 Newton；3.0 换成 <code>isaaclab_newton</code> 包。</li>
+        <li><b>中 "Newton"：</b>Model、State、Solver、Collision 四块；solver 列表 MuJoCo Solver / Kamino Solver / Canonical Solvers / Custom Solver。</li>
+        <li><b>右两栏：</b>"MuJoCo"（Playground、MJX、MuJoCo Warp）和 "Warp"（Warp、CUDA）；箭头 MuJoCo Solver → MuJoCo Warp → Warp。例子的 <code>physics=newton_mjwarp</code> 走的就是这条箭头。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-IsaacLab3/fig33.jpg" alt="Left: a Franka arm folding cloth simulated with VBD. Right: an ANYmal robot walking on granular terrain simulated with MPM"></div>
+        <figcaption><b>Fig. 33</b>（作者原图，2.x 论文 §7 的预告）Newton 把不同 solver 耦合起来：左，MuJoCo 解的 Franka 叠 VBD 解的布；右，PhysX 解的 ANYmal 走在 MPM 解的非刚性地面上。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左：</b>刚体臂 + 布，两个 solver 各管一类 dynamics。</li>
+        <li><b>右：</b>例子的延伸：同一种机器人走在颗粒地面上。3.0 release notes 列出 "Newton VBD and rigid/deformable/MPM coupling"；有没有现成的 ANYmal-on-MPM task，release notes 没说。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>USD 资产</b><br/><span class='ex'>ANYmal-D</span>"] --> b["<b>ModelBuilder</b><br/><span class='ex'>clone 出 N 个 env</span>"]
+  b --> c["<b>NewtonBackend</b><br/><span class='ex'>finalized model</span>"]
+  c --> d["<b>Solver.step</b><br/><span class='ex'>MuJoCo-Warp</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>PN 回放时，ANYmal-D 的关节和接触都由 MuJoCo-Warp 解。Newton 的 substeps 可以和 PhysX 不同，但 policy 周期 <span class="ex">dt × decimation</span> 和 action hold 必须一致（Transfer Policies 页）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">MDP 步进（2.x 的 manager + 3.0 的数据通路）</span>
+      <span class="stage-io">policy 的 action → actuator → 物理 substep → obs / reward / reset</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b><span class="muted">2.x 论文</span> actuator 模型、多频率 sensor、DR 这些做法以前每个项目各写一遍（§1）；manager 把它们拆成可组合的 term。</li>
+        <li><span class="muted">2.x 论文</span> <b>step 顺序（Algorithm 2）：</b>处理 action → decimation 个 substep（经 actuator 写入、推进、更新 buffer）→ termination → reward → reset → command → obs。</li>
+        <li><span class="muted">2.x 论文</span> <b>actuator：</b>implicit 交给引擎的 PD；explicit（Ideal PD、DC Motor、Delayed PD、Remotized PD、Neural Net）自己算力矩再写入（§3.2）。</li>
+        <li><span class="muted">2.x 论文</span> <b>sensor：</b>contact、IMU、frame transformer、Warp ray-caster（height scan、LiDAR）（§3.3）。</li>
+        <li><span class="win">3.0 新</span> <b>ProxyArray：</b><code>robot.data.joint_pos</code> 返回 <code>ProxyArray</code>，<code>.torch</code> / <code>.warp</code> 零拷贝；另有 fused kernels、lazy buffers、CUDA graph。</li>
+        <li><span class="win">3.0 新</span> <b>改名改序：</b>四元数改成 (x, y, z, w)；2.x 的全状态 IMU 改名 <code>PVA</code>，新 <code>IMU</code> 只给角速度和线加速度；actuator 命令移到 <code>robot.actuators</code>。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-23-IsaacLab3/fig8.jpg" alt="Joint state targets for three joint groups pass through Implicit, DCMotor and ActuatorNet actuators, then PD, joint friction and an envelope, into a humanoid"></div>
+        <figcaption><b>Fig. 8</b>（作者原图，2.x）自定义 actuator：不同关节组可用不同 actuator 模型；implicit 靠仿真器的 PD，explicit（如神经网络）直接算出关节力矩。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左 "Joint State Target"：</b>policy 给的关节目标，按关节组分三色。</li>
+        <li><b>"Articulation" 列：</b>三种 actuator：Implicit、DCMotor、ActuatorNet。</li>
+        <li><b>"Simulation" 列：</b>Implicit 走引擎的 PD，之后统一过 "Joint Friction" 和 "Envelope"（力矩–速度包络）。</li>
+        <li><b>右：</b>力矩落到机器人对应的关节组上。例子走 ActuatorNet 那一路：论文 Fig. 16 注明 ANYmal rough-terrain 任务用 "an actuator network"。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>action</b><br/><span class='ex'>关节目标</span>"] --> b["<b>ActuatorNet</b><br/><span class='ex'>算力矩</span>"]
+  b --> c["<b>物理 substep</b><br/><span class='ex'>× decimation</span>"]
+  c --> d["<b>obs / reward</b><br/><span class='ex'>含 height scan</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>每个 RL step：RSL-RL policy 给关节目标 → actuator network 算力矩 → MuJoCo-Warp（PN）或 PhysX（PP）推进 decimation 个 substep → height scanner + 本体状态拼成 obs，经 <code>.torch</code> 零拷贝交给 policy。</p>
+        <p class="muted">"用 height scanner 和 actuator network" 出自论文 Fig. 16 的图注（2.x）；3.0 文档没说两个后端下是否用同一个 actuator 模型。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">训练与回放（统一 CLI）</span>
+      <span class="stage-io"><code>isaaclab train / play</code> → checkpoint → 回放</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>2.x 每个 RL 库各有 <code>train.py</code> / <code>play.py</code>，resume 参数也各不相同（如 <code>--resume --load_run</code>）。</li>
+        <li><span class="win">3.0 新</span> <b>一个命令：</b><code>isaaclab train</code>、<code>play</code>、<code>zero_agent</code>、<code>random_agent</code>、<code>benchmark</code>、<code>list_envs</code>。</li>
+        <li><span class="win">3.0 新</span> <b><code>--rl_library</code>：</b>RSL-RL、RL-Games、skrl（PyTorch / JAX）、Stable-Baselines3、RLinf、TorchRL。</li>
+        <li><b><code>--checkpoint latest | best | pretrained | &lt;path&gt;</code>：</b>只在兼容的 run 里找。</li>
+        <li><b><code>play</code>：</b>调 task 的 <code>play_mode()</code>，最多 50 个 env、关掉 obs noise。</li>
+        <li><span class="muted">2.x 论文</span> <b>沿用：</b>Gymnasium API、teacher–student distillation、PBT、DR / ADR（§5.1–5.3）；3.0 文档的 distillation 示例正是 <code>Isaac-Velocity-Flat-AnymalD</code>。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>train</b><br/><span class='ex'>--rl_library rsl_rl</span>"] --> b["<b>checkpoint</b><br/><span class='ex'>anymal_d_rough/…</span>"]
+  b --> c["<b>play</b><br/><span class='ex'>--checkpoint latest</span>"]
+  c --> d["<b>--viz</b><br/><span class='ex'>newton_gl</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>训练写出 <span class="ex">logs/<wbr>rsl_rl/<wbr>anymal_d_rough/<wbr>&lt;run&gt;/<wbr>model_&lt;iter&gt;.pt</span>；<code>uv run isaaclab play --rl_library rsl_rl --task Isaac-Velocity-Rough-AnymalD --checkpoint latest --viz newton_gl</code> 回放。浏览器 demo 里也有一个用已发布的 Isaac Lab Newton checkpoint 驱动的 ANYmal-D。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">跨引擎迁移（PhysX ↔ Newton）</span>
+      <span class="stage-io">PhysX 训的 checkpoint → PP / PN / NN / NP 四格验证</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>checkpoint 只是"有序 obs → action"的映射，不含引擎；两边的 policy 接口必须逐项相同。</li>
+        <li><span class="win">3.0 新</span> <b>先审接口：</b>actions、observations、policy state、timing（dt、decimation、action hold）、mechanism、episode 全部一致；preset 不许悄悄改 MDP term。</li>
+        <li><span class="win">3.0 新</span> <b>统一顺序：</b><code>joint_ordering</code> 和 <code>body_ordering</code> 设成同一约定（<code>physx</code> / <code>mjwarp</code> / <code>robot_schema</code> / 名字列表）；只设 joint 会让 body 留在后端顺序。</li>
+        <li><b>代价：</b>映射在初始化时算一次；Newton 上非恒等顺序每步多一次固定 reorder（录进 CUDA graph）；<code>None</code> 零开销。</li>
+        <li><b>DR：</b>随机化 solver 相关参数（friction、joint gains、armature、actuator response…），防止 policy 过拟合某个 solver；范围要合理，不靠极端分布硬过。</li>
+        <li><b>剩下的差距：</b>顺序对齐后仍不同 = solver dynamics（contact、friction、restitution、积分、substeps）。</li>
+        <li><b>Agent skill：</b>也可以让 coding agent 用 <code>isaaclab-transferring-policies-sim-to-sim</code> 跑这套评估（release notes）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  T1["<b>PhysX 训练</b><br/><span class='ex'>ordering=physx</span>"] --> PP["<b>PP</b><br/>PhysX 回放"]
+  T1 --> PN["<b>PN</b><br/>Newton 回放"]:::win
+  T2["<b>Newton 训练</b><br/><span class='ex'>本就是 mjwarp 序</span>"] --> NN["<b>NN</b><br/>Newton 回放"]
+  T2 --> NP["<b>NP</b><br/>PhysX 回放<br/><span class='ex'>ordering=mjwarp</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>ANYmal-D 是 branched topology，PhysX 和 MJWarp 的关节 / 身体顺序不同 → 训练和每次回放都加 <span class="ex">env.scene.robot.joint_ordering=physx env.scene.robot.body_ordering=physx</span>。</p>
+        <p>PN：<code>uv run isaaclab play --rl_library rsl_rl --task Isaac-Velocity-Rough-AnymalD --checkpoint logs/<wbr>rsl_rl/<wbr>anymal_d_rough/<wbr>&lt;run&gt;/<wbr>model_&lt;iter&gt;.pt physics=newton_mjwarp</code> + 上面两个 override。NP：Newton 训的 checkpoint 回 PhysX 时设 <code>joint_ordering=mjwarp</code>、<code>body_ordering=mjwarp</code>。</p>
+        <p>忘了设：不是慢慢变差，而是<span class="gap">几十步内所有 env 都摔倒</span>；先排除顺序，再怀疑 contact、friction。文档里的 ANYmal-D 视频：PhysX 训的 policy 不重训，直接在 Newton MJWarp 上走（不等于完整四格验证）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿</span>
+      <span class="stage-name">renderer / visualizer 独立选择</span>
+      <span class="stage-io">任一 physics 的状态 → SceneDataProvider → 任一 renderer / visualizer</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b><span class="muted">2.x 论文</span> 相机渲染走 Omniverse RTX（§2.3），交互界面是 Isaac Sim GUI；Newton 或 OvPhysX 的状态需要别的路才能被看到、被拍到。</li>
+        <li><span class="win">3.0 新</span> <b>数据通路：</b>physics manager → <code>SceneDataBackend</code> → <code>SceneDataProvider</code> → renderer 或 visualizer，renderer 不必知道是哪个引擎。</li>
+        <li><b><code>renderer=</code>：</b><code>newton_renderer</code>（Newton Warp）、<code>ovrtx</code>、<code>isaacsim_rtx</code>；<code>rtx</code> 自动选：需要 Kit 时用 Isaac Sim RTX，否则用 OVRTX。</li>
+        <li><b><code>--viz</code>：</b><code>newton_gl</code>、<code>newton_rtx</code>（实验）、<code>viser</code>、<code>rerun</code>、<code>kit</code>，可逗号并列；<code>--headless</code> 不再关 visualizer，<code>--viz none</code> 才关。</li>
+        <li><b>限制：</b>OvPhysX 和 OVRTX 不能和 Isaac Sim / Kit 同进程。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>physics manager</b><br/><span class='ex'>NewtonManager</span>"] --> b["<b>SceneDataBackend</b>"]
+  b --> c["<b>SceneDataProvider</b>"]
+  c --> d["<b>renderer / --viz</b><br/><span class='ex'>newton_gl</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>回放 ANYmal-D 时 <span class="ex">--viz newton_gl</span> 本地看、<span class="ex">--viz viser</span> 远程看，和 physics 选 PhysX 还是 Newton 无关；这个例子不用相机，所以不需要 <code>renderer=</code>。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了 3.0 和论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>Idea</th><th>例子里在哪体现</th></tr>
+        <tr><td><span class="win">3.0</span> kit-less 安装（uv extras）</td><td>Stage 1：PN 回放不装 Isaac Sim</td></tr>
+        <tr><td><span class="win">3.0</span> <code>physics=</code> preset（PresetCfg）</td><td>Stage 1：<code>newton_mjwarp</code> → <code>NewtonCfg(MJWarpSolverCfg)</code></td></tr>
+        <tr><td><span class="win">3.0</span> factory 派发 + backend-neutral 基类</td><td>Stage 2：同一行 <code>Articulation(cfg)</code> 两次得到不同后端的实现</td></tr>
+        <tr><td><span class="win">3.0</span> Newton 后端（MuJoCo-Warp 等 solver）</td><td>Stage 3：PN 的物理由 MuJoCo-Warp 解</td></tr>
+        <tr><td><span class="win">3.0</span> VBD / MPM / 多 solver 耦合</td><td>Stage 3 延伸：Fig. 33 的 ANYmal 走在 MPM 地面上（例子本身不用）</td></tr>
+        <tr><td><span class="win">3.0</span> OVPhysX / OVRTX（不带 Kit 的 PhysX / RTX）</td><td>Stage 1：<code>--extra ov</code> + <code>physics=ovphysx</code>；例子按文档用 <code>isaacsim_physx</code> 训练，没走这条</td></tr>
+        <tr><td><span class="win">3.0</span> Warp-native <code>ProxyArray</code></td><td>Stage 4：obs 经 <code>.torch</code> 零拷贝给 policy</td></tr>
+        <tr><td><span class="muted">2.x</span> manager-based MDP、actuator、sensor</td><td>Stage 4：ActuatorNet + height scan</td></tr>
+        <tr><td><span class="win">3.0</span> 统一 CLI、6 个 RL 库、<code>--checkpoint</code></td><td>Stage 5：<code>train</code> → <code>model_&lt;iter&gt;.pt</code> → <code>play --checkpoint latest</code></td></tr>
+        <tr><td><span class="win">3.0</span> PhysX↔Newton 迁移（ordering、四格、DR）</td><td>Stage 6：<code>ordering=physx</code>，PN / NP</td></tr>
+        <tr><td><span class="win">3.0</span> renderer / visualizer 独立</td><td>贯穿：<code>--viz newton_gl</code> / <code>viser</code></td></tr>
+        <tr><td><span class="win">3.0</span> 给 coding agent 的 skills</td><td>Stage 6：<code>isaaclab-transferring-policies-sim-to-sim</code></td></tr>
+        <tr><td><span class="win">3.0</span> 部署：Isaac Capture 遥操作、LEAPP 导出</td><td>例子未覆盖：release notes 只列了名字</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览</h2>
+  <p class="eyebrow">3.0：release notes 和文档（没有新的吞吐 benchmark）</p>
+  <ul class="tight results">
+    <li><b>3 个 task</b> 官方验证了 PhysX↔Newton 迁移：Isaac-Lift-Franka（两边顺序一致，不用 override）、Isaac-Velocity-Rough-G1 和 Isaac-Velocity-Rough-AnymalD（branched，需要 ordering override）。</li>
+    <li><b>2 段视频</b> ANYmal-D rough、Allegro 转方块（只有 PhysX→Newton）：PhysX 训的 policy 不重训就在 Newton MJWarp 上跑；文档注明这不等于完整的四格验证。</li>
+    <li><b>6 个 RL 库</b> 共用 <code>isaaclab train / play</code>：RSL-RL、RL-Games、skrl、SB3、RLinf、TorchRL。</li>
+    <li><b>17 个浏览器 demo</b> Newton 经 WebAssembly 在本机 CPU 上跑，其中 ANYmal-D 用的是已发布的 Isaac Lab Newton checkpoint。</li>
+    <li><b>依赖</b> Isaac Sim 6.2、Python 3.12、PyTorch 2.11 + CUDA 13.0、Warp 1.17、Newton 1.6.1、RSL-RL 5.5.1。</li>
+  </ul>
+  <p class="eyebrow">2.x 论文（仍是这套框架的性能参照，3.0 没有重测）</p>
+  <ul class="tight results">
+    <li><b>3.53%</b> ANYmal rough-terrain 上，direct workflow 比 manager-based 平均快这么多（单张 RTX PRO 6000，§4.1.3，Fig. 16）；env 越多，差距越可忽略。</li>
+    <li><b>&gt;900,000 FPS</b> DextrAH teacher 任务，8 GPU、16384 env；Franka 开柜子 <b>&gt;1.6M FPS</b>（§4.1.1，Fig. 13）。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-23-IsaacLab3/fig16.jpg" alt="Log-scale FPS versus number of environments for ANYmal rough-terrain locomotion, direct versus manager-based workflows, on single GPUs and on 1 to 8 RTX PRO 6000 GPUs"></div>
+    <figcaption><b>Fig. 16</b>（作者原图，2.x）ANYmal-D rough-terrain locomotion 在 manager-based 和 direct 两种 workflow 下的吞吐（log scale）；任务用 height scanner 做观测、actuator network 驱动机器人。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左图（图例 L40 / 5090 / RTX PRO 6000）：</b>单 GPU、三种卡；同色虚线 = direct，点线 = manager。先看同色两条线的间距：几乎重合，这就是 3.53%。</li>
+    <li><b>中图（图例 Single-GPU / 2 / 4 / 8-GPU）：</b>RTX PRO 6000 上分布式训练，FPS 随 GPU 数一档档上移。</li>
+    <li><b>右图 "ANYmal Rough Locomotion"：</b>本页例子的场景；横轴 2048–16384 个 env。</li>
+    <li><b>注意：</b>图注写 "Right: single GPU, Left: multi-GPU"，与图例相反，按图例读；正文给的 task 名是 Anymal-C 版（<code>Isaac-Velocity-Rough-Anymal-C-v0</code> / <code>-Direct-v0</code>），图注写 ANYmal-D。FPS = env 步数 /（仿真时间 + 学习时间）（式 1）。</li>
+  </ol>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>release notes 没有 PhysX 和 Newton 的吞吐或精度对比；迁移文档只承诺 "similar behavior, not identical trajectories"。</li>
+    <li>能选哪些后端按 task 而定，要用 <code>list_envs --show_presets</code> 查；OvPhysX / OVRTX 不能和 Isaac Sim / Kit 同进程。</li>
+    <li>ordering 只保证名字对上同一个张量元素，不消除 contact、friction、积分这些 solver 差异；Newton 的 friction 事件只有一个系数，和 PhysX 的静 / 动摩擦对不上。</li>
+    <li>没设 ordering 就在 PhysX 训的旧 checkpoint 要靠名字列表回放；两边命名不同（如 Humanoid-AMP 的多轴关节）或在 Newton 上 body 重名的资产做不到。</li>
+    <li>大版本 breaking change：四元数 (w, x, y, z) → (x, y, z, w)、<code>.data.*</code> 返回 <code>ProxyArray</code>、IMU → PVA、删掉各库的 <code>train.py</code>；要新建 Python 3.12 环境，不能原地升级。</li>
+    <li>论文 §7.2 预告的 Isaac Lab – Arena 评测框架，3.0 release notes 没有提。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Robot learning in simulation</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>Robotic harness：</b>3.0 自带给 coding agent 的 skills（<code>isaaclab-selecting-backends</code>、<code>isaaclab-transferring-policies-sim-to-sim</code>…）和统一 CLI，我们的 Claude Code / Codex 能直接用它搭环境、换后端；可作 RoboTwin、LIBERO、RoboDojo 之外的又一个环境。</li>
+    <li><b>评测证据：</b>PP / PN / NN / NP 四格是现成的"同一 policy 跨物理引擎"检查，可以借给 Supervisor 当 evidence（我们的推断，论文和文档都没提 harness）。</li>
+    <li><b>WorldClaw：</b>3.0 的 kit-less USD 路径（usd-exchange、URDF / MJCF importer 产出多后端 USD）意味着 WorldClaw 的场景若导出成 USD，就能不装 Isaac Sim 在 Newton 上跑，和 Genesis 做 sim-to-sim 对照；factory + preset 也是接第二个引擎时可照搬的结构。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Sim-robot-learning/2026-10-23-IsaacLab3.pdf</code>（论文，2.x）+ v3.0.0 release notes + v3.0.0 文档 · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
