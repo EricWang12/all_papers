@@ -114,7 +114,8 @@ table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; lette
 table.related { table-layout: fixed; min-width: 720px; }
 table.related tr:first-child th:nth-child(1) { width: 22%; }
 table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
-table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+table.grid tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+table.grid td.sym { white-space: nowrap; }
 .note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
 .crux { font-size: 1.05rem; margin: 1rem 0 0; }
 
@@ -302,13 +303,42 @@ flowchart LR
     <div class="mat"><img src="2026-10-30-SuperMimic/fig2.jpg" alt="三格训练循环：(1) Collect data，(2) Fit world model，(3) Improve policy，底部是 Replay buffer，顶部箭头 next iteration 回到 (1)"></div>
     <figcaption><b>Fig. 2</b>（作者原图）训练循环：(1) 采数据 → (2) 拟合 world model → (3) 改进 policy，再回到 (1)。❄ = 冻结，🔥 = 训练，虚线 = 梯度。</figcaption>
   </figure>
+  <p class="eyebrow">图里的符号</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>白话</th><th>在 side roll 里</th></tr>
+      <tr class="group"><th colspan="3">(1) Collect data</th></tr>
+      <tr><td class="sym">t</td><td>第几步。一步 = 0.02 s（50 Hz 控制）</td><td>侧滚开始后的第 t 步</td></tr>
+      <tr><td class="sym">π<sub>θ</sub></td><td>policy：一个神经网络，θ 是它的权重，也就是要训练的参数</td><td>控制 G1 做侧滚的那个控制器</td></tr>
+      <tr><td class="sym">g<sub>t</sub></td><td>goal：参考动作接下来的 10 帧</td><td>接下来 0.2 s 侧滚该是什么姿态</td></tr>
+      <tr><td class="sym">o<sub>t</sub>, o<sub>t+1</sub></td><td>观测：机器人自己的传感器读数，一帧 93 个数（关节角 29、关节速度 29、IMU 角速度 3、重力方向 3、上一步动作 29）；policy 看最近 10 帧</td><td>侧躺翻滚时这些读数是多少</td></tr>
+      <tr><td class="sym">a<sub>t</sub></td><td>动作：29 个关节的目标角（相对默认姿态，乘一个系数）</td><td>下一刻每个关节往哪转</td></tr>
+      <tr><td class="sym">ε<sub>t</sub></td><td>采数据时故意加的动作噪声，每维标准差 0.1</td><td>让 world model 见到更多样的动作</td></tr>
+      <tr><td class="sym">Sim</td><td>仿真器 MuJoCo Warp</td><td>算出 0.02 s 后真实会怎样</td></tr>
+      <tr><td class="sym">s<sub>t</sub></td><td>仿真器里机器人的完整状态（论文没逐项列出，见 Stage 2）</td><td>侧躺时身体各部分的位置和速度</td></tr>
+      <tr><td class="sym">ξ</td><td>这个 episode 的物理参数：摩擦、关节标定偏置、躯干质心偏移</td><td>比如摩擦系数抽到 0.7</td></tr>
+      <tr><td class="sym">𝓑</td><td>replay buffer：存最近的数据，每个环境 1000 步</td><td>侧滚和其他所有动作的数据都在里面</td></tr>
+      <tr><td class="sym">❄ / 🔥</td><td>这一步里冻结（不更新）/ 正在训练</td><td>采数据时 policy 不更新</td></tr>
+      <tr class="group"><th colspan="3">(2) Fit world model</th></tr>
+      <tr><td class="sym">f<sub>ω</sub></td><td>world model：一个 MLP，ω 是它的权重</td><td>学“侧躺时这样动，下一刻会怎样”</td></tr>
+      <tr><td class="sym">ŝ、r̂、ô</td><td>戴帽子的量是 world model 的预测；不戴帽子的是仿真器里的真值</td><td>ŝ<sub>j</sub> 是预测的姿态，s<sub>j</sub> 是真实姿态</td></tr>
+      <tr><td class="sym">s<sub>0</sub>, a<sub>0:k−1</sub></td><td>从 buffer 取出的一段：起点状态，加上接下来 k = 8 个实际执行的动作</td><td>从“侧躺”这一刻起的 8 步</td></tr>
+      <tr><td class="sym">𝓛<sub>WM</sub></td><td>world model 的误差（Eq. 1）：预测和真值差多少</td><td>8 步里预测的姿态偏了多少</td></tr>
+      <tr><td class="sym">∇<sub>ω</sub></td><td>梯度：往哪个方向改 ω 能让误差变小。图里的虚线箭头都是梯度</td><td>只改 world model，不改 policy</td></tr>
+      <tr class="group"><th colspan="3">(3) Improve policy</th></tr>
+      <tr><td class="sym">ô<sub>t</sub> + η<sub>t</sub></td><td>world model 预测的无噪声观测（帽子 = 预测，横线 = 无噪声），再加上传感器噪声 η<sub>t</sub></td><td>假装是传感器读数，喂给 policy</td></tr>
+      <tr><td class="sym">r̂<sub>t+1</sub></td><td>预测的 reward：这一步和参考动作有多像</td><td>想象中这一步侧滚做得多像</td></tr>
+      <tr><td class="sym">Ĵ(θ)</td><td>policy 的总分（Eq. 2）：32 步预测 reward 之和，加上 critic 对之后的估计</td><td>0.64 s 想象里的总分</td></tr>
+      <tr><td class="sym">∇<sub>θ</sub></td><td>梯度：往哪个方向改 policy 能让 Ĵ 变大。它穿过 f<sub>ω</sub> 传回来，这就是 BPTT</td><td>告诉 32 个动作各自该怎么改</td></tr>
+    </table>
+  </div>
   <p class="eyebrow">怎么读这张图</p>
   <ol class="read">
-    <li><b>(1) Collect data：</b>π_θ❄ 拿 goal g_t，把带噪动作 a_t+ε_t 交给 Sim，Sim 回 o_{t+1}；每步把 (s_t, a_t+ε_t, ξ) 写进底部的 Replay buffer 𝓑。</li>
-    <li><b>(2) Fit world model：</b>从 𝓑 取 (s_0, a_{0:k−1}, ξ) 喂给 f_ω🔥，它自回归吐出 ŝ_j；𝓑 里真实的 s_j 从左边进 𝓛_WM（Eq. 1），蓝色虚线 ∇_ω 更新 f_ω。</li>
-    <li><b>(3) Improve policy：</b>从 𝓑 只取起点 (s_0, ξ)，之后全在 f_ω❄ 里：π_θ🔥 看 ô_t+η_t 和 g_t 出 a_t，f_ω 给出 ŝ_t 和 r̂_{t+1}；Ĵ(θ)（Eq. 2）的梯度 ∇_θ 沿虚线穿过 f_ω 回到 π_θ。</li>
-    <li><b>顶部 “next iteration”：</b>更新后的 π_θ 回到 (1) 再采数据；三者每轮都更新。</li>
-    <li><b>f_ω 在 (2) 是🔥、在 (3) 是❄：</b>只在 policy 反向传播时冻住。Sim 那格没有梯度箭头：梯度从不穿过仿真器。</li>
+    <li><b>(1) Collect data：</b>冻结的 policy 看着目标（g<sub>t</sub>）出动作，加上噪声交给仿真器；仿真器回下一刻的观测，如此循环。每一步把“完整状态、实际执行的动作、物理参数”存进底部的 buffer。</li>
+    <li><b>(2) Fit world model：</b>从 buffer 取一段（起点 + 8 个动作），让 world model 自己往后推 8 步，把推出来的预测和 buffer 里的真值比；误差的梯度（蓝色虚线）只改 world model。</li>
+    <li><b>(3) Improve policy：</b>从 buffer 只取一个起点，之后 policy 和冻结的 world model 来回 32 步：policy 出动作，world model 给出下一刻的状态和这一步的 reward。32 步总分 Ĵ 的梯度沿蓝色虚线穿过 world model，回到 policy。</li>
+    <li><b>顶部 “next iteration”：</b>更新后的 policy 回到 (1) 再采数据，三步每轮都做。</li>
+    <li><b>仿真器那格没有梯度箭头：</b>梯度从不穿过仿真器，只穿过 world model；world model 在 (2) 里训练，在 (3) 里冻结。</li>
   </ol>
   <div class="flow"><pre>
 flowchart LR
@@ -321,7 +351,7 @@ flowchart LR
   click S3 href "#stage-3"
   click S4 href "#stage-4"
   </pre></div>
-  <p class="flow-hint">点击 stage 展开 Level 3 细节；贯穿全程的 <a href="#stage-all">一个循环、一个模型</a> 单独成块。</p>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；world model 的输入、输出和演示在 <a href="#stage-2">Stage 2</a>，贯穿全程的 <a href="#stage-all">一个循环、一个模型</a> 单独成块。</p>
 </section>
 
 <section id="l3">
@@ -334,7 +364,7 @@ flowchart LR
     <summary>
       <span class="stage-n">Stage 1</span>
       <span class="stage-name">Collect data · 仿真采数据</span>
-      <span class="stage-io">π_θ（冻结）+ 参考动作 + sim context ξ → replay buffer 𝓑 里的 (s_t, a_t+ε_t, ξ)</span>
+      <span class="stage-io">冻结的 policy、参考动作、物理参数 ξ → buffer 里一条条（状态、实际执行的动作、ξ）</span>
     </summary>
     <div class="stage-body">
       <ul class="tight">
@@ -365,7 +395,15 @@ flowchart LR
       </pre></div>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
-        <p>部分环境从 side roll 的某个 1 s bin 开始播放；若贴地翻滚那一段回报低，return-based sampling 会更常从那里重置（推断：论文只给规则，没报 side roll 的 bin）。每个环境抽一组 ξ（例如 μ 落在 [0.3, 1.2] 的某处）。π_θ 执行带噪动作，MuJoCo Warp 照常算躯干、手臂和地面的接触，(s_t, a_t+ε_t, ξ) 写进 buffer。</p>
+        <p>每 0.02 s，每张卡上 4096 个仿真 G1 同时做一遍下面五步：</p>
+        <ol class="read">
+          <li><b>读传感器（o<sub>t</sub>）：</b>关节角、关节速度、IMU 角速度、重力方向、上一步动作，一帧 93 个数，取最近 10 帧。</li>
+          <li><b>取目标（g<sub>t</sub>）：</b>side roll 参考动作接下来的 10 帧，也就是未来 0.2 s 该是什么姿态。</li>
+          <li><b>算动作（a<sub>t</sub>）：</b>冻结的 policy π<sub>θ</sub> 根据这两样，给出 29 个关节的目标角。</li>
+          <li><b>加噪声、执行（a<sub>t</sub> + ε<sub>t</sub>）：</b>每维加标准差 0.1 的噪声，交给 MuJoCo Warp 算 0.02 s（4 个 5 ms 小步），躯干、手臂和地面的接触照常算。</li>
+          <li><b>记下来：</b>把完整状态 s<sub>t</sub>、实际执行的动作 a<sub>t</sub> + ε<sub>t</sub>、这个 episode 的物理参数 ξ（比如摩擦 0.7）写进 buffer 𝓑。</li>
+        </ol>
+        <p>倒了（root 高度偏离超过 0.25 m，或倾斜误差超过 0.8）就重置。若贴地翻滚那一段回报低，return-based sampling 会更常从那里重置（推断：论文只给了规则，没报 side roll 的数据）。</p>
       </div>
     </div>
   </details>
@@ -378,9 +416,58 @@ flowchart LR
     </summary>
     <div class="stage-body">
       <ul class="tight">
-        <li><b>Why：</b>BPTT 需要可微的预测和 Jacobian，仿真器给不了，就学一个 surrogate；一个模型学所有动作共有的身体和接触动力学（§3.2）。</li>
-        <li><b>确定性：</b>仿真里的随机性来源已知，就把 ξ 当输入；模型预测无噪声的观测 ō_t，传感器噪声 η 在模型外面加。</li>
-        <li><b>四个 head（各自可学，或解析计算）：</b>ŝ_{t+1} = f_ω(ŝ_t, a_t, ξ)，r̂_{t+1} = r_ω(ŝ_t, a_t, g_t)，ô_t = g_ω(ŝ_t, ξ)，d̂_t = d_ω(ŝ_t, g_t)。</li>
+        <li><b>Why：</b>BPTT 需要可微的预测和 Jacobian，仿真器给不了，就学一个替身（论文原话 “a learned differentiable surrogate of the simulator”）；一个模型学所有动作共有的身体和接触动力学（§3.2）。</li>
+      </ul>
+      <p class="eyebrow">输入和输出</p>
+      <div class="flow"><pre>
+flowchart LR
+  S["<b>ŝ_t 机器人状态</b><br/><span class='ex'>侧躺、正在翻</span>"] --> F["<b>f_ω</b><br/><span class='ex'>MLP 2048×3</span>"]:::win
+  A["<b>a_t 动作</b><br/><span class='ex'>29 个关节目标角</span>"] --> F
+  X["<b>ξ 物理参数</b><br/><span class='ex'>摩擦、标定、质心</span>"] --> F
+  F --> N["<b>下一步状态 ŝ</b><br/><span class='ex'>0.02 s 后</span>"]
+      </pre></div>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>输入</th><th>是什么</th><th>侧滚这一步</th></tr>
+          <tr><td class="sym">ŝ<sub>t</sub> 状态</td><td>机器人自己的完整状态，一串数字。论文没列出具体内容；reward 要用各 body 的位置、朝向和速度，所以 s 至少能算出这些（推断）。下面的非官方复现用的是仿真器的 qpos + qvel。</td><td>G1 侧躺在地上、正在翻</td></tr>
+          <tr><td class="sym">a<sub>t</sub> 动作</td><td>29 个关节的目标角（setpoint = α·a<sub>t</sub> + 默认姿态 q⁰）；训练数据里是实际执行的带噪动作 a<sub>t</sub> + ε<sub>t</sub></td><td>这一步每个关节往哪转</td></tr>
+          <tr><td class="sym">ξ 物理参数</td><td>每个 episode 抽一次、整段不变的三组参数（下表）</td><td>比如摩擦系数 0.7</td></tr>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>ξ 里的参数</th><th>随机范围</th><th>物理意思</th></tr>
+          <tr><td>摩擦系数 μ</td><td>𝒰[0.3, 1.2]</td><td>接触面滑不滑：0.3 很滑，1.2 抓地很好</td></tr>
+          <tr><td>关节标定偏置 Δq⁰<sub>j</sub></td><td>每个关节 𝒰[−0.01, 0.01] rad（约 ±0.6°）</td><td>真机关节的零位和标称值有一点偏差</td></tr>
+          <tr><td>躯干质心偏移</td><td>Δx 𝒰[−0.025, 0.025] m；Δy、Δz 𝒰[−0.05, 0.05] m</td><td>躯干重心比标称位置偏前后 2.5 cm、左右和上下 5 cm 以内</td></tr>
+        </table>
+      </div>
+      <p class="note">来源 Table A.3（沿用 BeyondMimic 的 domain randomization，去掉了 root 速度推力）。world model 和 critic 拿到 ξ 的真值；部署的 actor 拿不到，只能对它们鲁棒。</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>输出（head）</th><th>公式</th><th>用来做什么</th></tr>
+          <tr><td>下一步状态</td><td class="sym">ŝ<sub>t+1</sub> = f<sub>ω</sub>(ŝ<sub>t</sub>, a<sub>t</sub>, ξ)</td><td>0.02 s 后的状态；连推 32 次就是想象 rollout</td></tr>
+          <tr><td>reward</td><td class="sym">r̂<sub>t+1</sub> = r<sub>ω</sub>(ŝ<sub>t</sub>, a<sub>t</sub>, g<sub>t</sub>)</td><td>这一步和参考动作多像；只有它和终止 head 用到 goal</td></tr>
+          <tr><td>观测</td><td class="sym">ô<sub>t</sub> = g<sub>ω</sub>(ŝ<sub>t</sub>, ξ)</td><td>无噪声的传感器读数，加噪声后喂给 policy</td></tr>
+          <tr><td>终止概率</td><td class="sym">d̂<sub>t</sub> = d<sub>ω</sub>(ŝ<sub>t</sub>, g<sub>t</sub>)</td><td>摔倒的概率，用在 soft survival weight</td></tr>
+        </table>
+      </div>
+      <p class="note">每个 head 可以学出来，也可以直接按公式算，论文没说哪个是哪个；只有动力学 f<sub>ω</sub> 的结构写明了：MLP (2048, 2048, 2048)（Table A.4）。</p>
+      <ul class="tight">
+        <li><b>时间不是输入：</b>第几步、第几段动作都不进 f<sub>ω</sub>。物理规律对所有动作都一样，所以一个模型能服务全部 129,514 段动作；时间只体现在“调用一次 = 往前 0.02 s”。</li>
+        <li><b>goal 不进动力学：</b>g<sub>t</sub> 只进 reward 和终止 head。</li>
+        <li><b>没有历史：</b>只看当前这一步的状态，不看前几帧。</li>
+        <li><b>没有噪声：</b>它是确定性的；传感器噪声 η 在模型外加，root 速度推力被去掉，因为这种突变它学不了（App. A）。</li>
+      </ul>
+      <p class="eyebrow">一个非官方复现怎么定义 s</p>
+      <ul class="tight">
+        <li><a href="https://huggingface.co/kevinhenryz/realmimic">realmimic</a>（2026-10-27 发布，与原作者无关，单张 RTX 4090 训 10.5 h）导出的 world model：输入 state 71 维 = MuJoCo 的 qpos 36 + qvel 35，action 29 维，foot friction 1 维；输出 20 ms 后的 71 维 state（见它的 <code>web/world_model.json</code>）。</li>
+        <li>按 MuJoCo 的惯例，qpos 36 = 根位置 3 + 根朝向四元数 4 + 29 个关节角；qvel 35 = 根线速度 3 + 根角速度 3 + 29 个关节速度。</li>
+        <li>它把状态放在 body frame 里：原来的 heading frame 在骨盆朝正上或正下（翻跟头中途）时是奇异的。导出版只把摩擦当输入，标定偏置和质心偏移固定为 0。</li>
+        <li>这些是复现者的选择，不是论文写的，但给了 s 最直接的一种具体形式：仿真器的广义坐标和速度。</li>
+      </ul>
+      <p class="eyebrow">怎么训练</p>
+      <ul class="tight">
         <li><b>Eq. 1：</b>从 ŝ_0 = s_0 起，用记录的动作自回归推 k = 8 步，每步罚 ‖ŝ_j − s_j‖² + (r̂_j − r_j)² + ‖ô_j − ō_j‖² + BCE(d̂_j, d_j)；解析 head 没有 loss 项。</li>
         <li><b>k = 8 为什么够：</b>自回归拟合让模型学会纠正自己的预测误差，所以推 32 步（比 8 长）甚至更久也稳（§3.3）。</li>
         <li><b>网络与训练：</b>f_ω 是 MLP (2048, 2048, 2048)；Adam，lr 2×10⁻⁴（1 卡），每次更新 10 个 batch × 2048 个窗口。每轮都更新，不是先训好再冻住。</li>
@@ -410,6 +497,32 @@ flowchart LR
   b --> c["<b>Eq. 1 loss</b><br/><span class='ex'>状态、reward</span><br/><span class='ex'>观测、终止</span>"]
   c --> d["<b>∇_ω</b><br/><span class='ex'>更新同一个 f_ω</span>"]
       </pre></div>
+      <p class="eyebrow">项目主页上的演示</p>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/wm-demo.jpg" alt="三幅截帧：Policy off 时白色机器人倒地，蓝色预测也倒在地上；Policy on 时翻跟头途中蓝色预测贴着白色机器人；Slippery floor 摩擦 0.3 时刹车滑步，蓝色预测也在滑"></div>
+        <figcaption><b>World-model predictions</b>（项目主页 “Take a closer look” 三段视频的截帧；视频是作者的，帧是我截的）白色实体 = 仿真器里的机器人，蓝色半透明 = world model 的预测。<a href="https://supermimic.github.io/#closer">在主页看视频</a></figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>蓝色残影：</b>叠了好几步的预测，越浅离当前时刻越远（读图）。预测准，蓝色就贴着白色。</li>
+        <li><b>Policy off：</b>policy 关掉，机器人倒下，world model 也预测出了倒下（主页原话）：它学到了没人控制时摔倒、触地的动力学。</li>
+        <li><b>Policy on：</b>policy 拿 world model 预测的状态当输入，预测一直贴着仿真器（主页原话）。整段远长于训练时的 32 步，对应 §3.3 说的长 rollout 也稳定。</li>
+        <li><b>Slippery floor：</b>机器人刹车时地面变滑（摩擦 0.3），脚在滑；world model 被告知了摩擦，预测出了滑动（主页原话）。这就是 ξ 作为输入的作用：同样的状态和动作，摩擦不同，下一步就不同。</li>
+      </ol>
+      <p class="eyebrow">它不是视频生成模型</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th></th><th>SuperMimic 的 world model</th><th>视频生成式 world model（一般背景）</th></tr>
+          <tr><td>预测什么</td><td>下一步的状态向量</td><td>未来帧的像素</td></tr>
+          <tr><td>网络</td><td>MLP，确定性</td><td>大型 diffusion 或 transformer，通常随机采样</td></tr>
+          <tr><td>训练数据</td><td>一个仿真器的 transitions</td><td>大量视频</td></tr>
+          <tr><td>用途</td><td>让梯度穿过它训 policy</td><td>生成数据、评测、规划</td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>它的“世界”只有一台 G1 和一块平地：</b>平地永远一样，被记进了权重；会变的摩擦等参数作为 ξ 输入。Fig. 1 左边和上面的截帧，都是把预测的状态套到机器人模型上画出来的（推断：模型只输出数字）。</li>
+        <li><b>要跳上箱子得改输入：</b>固定的箱子可以像 ξ 一样作为条件（位置、尺寸或高度图）；会被推动的箱子，位姿和速度得放进状态。论文 §6 只说地形和物体交互是 ongoing work，具体做法是推断。</li>
+      </ul>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
         <p>从 buffer 抽到一个 side roll 窗口，例如 s_0 是 G1 侧躺在地上，后面跟 8 个记录的动作。f_ω 只看 s_0 和这 8 个动作往后推 8 步（0.16 s），逐步和记录的 s_1 … s_8 比。同一批里还有走路、空翻等动作的窗口，更新的都是同一组权重 ω。</p>
@@ -485,6 +598,7 @@ flowchart LR
       <ul class="tight">
         <li><b>Why：</b>证明经 world model 训出的 policy 能上真机；同一个模型还能用接口自己的 task reward 训下游接口，而不只靠蒸馏（§4.4、§4.5）。</li>
         <li><b>部署：</b>一个通用 tracker，不逐动作调参。actor 只用带噪本体感知 + goal，ξ 只喂给 world model 和 critic。真机演示 4 个动作：skipping jump、side roll、90° flip、原地 360° flip（Fig. 6；只有视频帧，没有真机成功率）。</li>
+        <li><b>户外片段：</b>项目主页另有真机在桉树林和海湾边的视频，论文正文没提，也没有数字。policy 看不见周围，机器人都在空地上动，没碰过树；树林检验的是地面：落叶、树皮，比仿真的硬平地软、略不平（下面第二张图）。</li>
         <li><b>接口结构（App. B）：</b>每个接口一个 encoder enc_θ,i(g) → 32 维 latent z（tanh 限幅）→ 共享 decoder dec_θ(z, o) → 动作。接口举例：完整参考动作、速度指令、末端位姿、SMPL 身体姿态。各有自己的 reward、终止和 critic，都穿过同一个 f_ω，不按接口重训。</li>
         <li><b>Distill 和 RL：</b>distill 用 motion-tracking reward 训，指令从参考动作读出；RL 用接口自己的 task reward（速度跟踪，Table A.6）经 world model 训。下游 rollout 的梯度只到 encoder（decoder 权重 stop-gradient）；RL encoder 另有权重 0.1 的 latent 对齐 loss，拉向 motion encoder 的 latent。</li>
         <li><b>速度接口：</b>指令 (v_x, v_y, ω_z)，v_x ∈ [−1.5, 2] m/s，v_y ∈ [−1.32, 1.32] m/s，ω_z ∈ [−3.35, 3.35] rad/s；和 motion tracking 联训 100,000 iteration，数据是 LAFAN1 和 BONES-SEED 里的走跑动作。</li>
@@ -499,6 +613,15 @@ flowchart LR
         <li><b>(a) skipping jump，Δt = 0.2 s：</b>locomotion 类：单脚跳步、抬膝。</li>
         <li><b>(b) side roll，Δt = 0.3 s：</b>本页的例子：躯干和四肢着地的接触密集动作。</li>
         <li><b>(c) 90° flip、(d) 原地 360° flip，Δt = 0.2 s：</b>acrobatics：翻转、落地、站起。Table A.8 里 SONIC 的 44 段 flip 全部失败。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/real-grove.jpg" alt="桉树林里真机 G1 的 8 帧：站立、行走、翻滚、站起，始终在树之间的空地上，翻滚时踢起落叶"></div>
+        <figcaption><b>Real G1, eucalyptus grove</b>（项目主页 15 s 视频的 8 帧，帧是我截的）真机在落叶地上翻滚、站起、再走、再翻滚。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>树：</b>都在机器人身后一段距离，它始终在空地上动，没碰过树；policy 也看不见它们。</li>
+        <li><b>第 5、7 帧：</b>翻滚时踢起落叶。地面软而松，和仿真里的硬平地不一样，这才是这段视频检验的东西。</li>
       </ol>
       <figure class="paper-fig">
         <div class="mat"><img src="2026-10-30-SuperMimic/fig7.jpg" alt="Fig. 7 三个指令平面上的圆圈网格：蓝圈为 RL 更好，橙圈为 distill 更好，黑圈为 distill 摔倒；绿色底色为每格的参考动作数据秒数"></div>
@@ -584,6 +707,7 @@ flowchart LR
         <tr><td>真机 G1（§4.4）</td><td>Stage 4：side roll 上真机（Fig. 6b）</td></tr>
         <tr><td>下游接口 RL 对 distill（§4.5，App. B、G）</td><td>Stage 4：同一个 G1 改接速度指令，快速转身</td></tr>
         <tr><td>动作数据过滤（App. E）</td><td>Stage 1：side roll 在平地上，过了两道过滤</td></tr>
+        <tr><td>ξ 让一个模型适配不同摩擦（§3.2）</td><td>Stage 2：主页 slippery floor 演示，摩擦 0.3 时预测出滑步</td></tr>
       </table>
     </div>
   </details>
