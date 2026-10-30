@@ -179,7 +179,7 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
     <div class="jump">
       <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
       <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
-      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+      <a href="#limits">Limits</a><a href="#follow-ups">Follow-ups</a><a href="#for-you">For you</a>
     </div>
   </div>
 </nav>
@@ -806,6 +806,42 @@ flowchart LR
     <li><b>评测范围：</b>benchmark 动作就是训练动作，失败数衡量覆盖而非泛化（App. F.2）；图里不报 seed 方差（作者说多个 seed 都很稳，§4）；速度接口每个 policy 只有一个训练 seed（App. G.2）；真机只有 Fig. 6 的 4 段演示，没有成功率。</li>
     <li><b>算力对比跨硬件、跨数据：</b>SONIC 一侧是它报告的 128 L40 × 7 天和 released checkpoint，不是同条件重跑；同条件的对照只有 LAFAN1 上的 PPO-Sim（§4.1）。</li>
   </ul>
+</section>
+
+<section id="follow-ups">
+  <p class="eyebrow">Follow-ups · 截至 2026-10-30</p>
+  <h2>复现和后续工作</h2>
+  <ul class="tight">
+    <li><b>官方没放代码和权重：</b>只有论文、视频和浏览器 demo，demo 的许可证禁止提取参数。下面的复现都是社区做的，数字都是各自评测器里的自报，没有经过独立复核。</li>
+  </ul>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>复现</th><th>做到哪一步</th><th>硬件 · 时长</th><th>自报结果</th></tr>
+      <tr><td><a href="https://github.com/kevinhenryzz/realmimic">realmimic</a></td><td>全动作库，公开权重（.pt、ONNX）；真机承诺在 v1.1</td><td>1×RTX 4090，10.5 h</td><td>129,491 段失败 10 段</td></tr>
+      <tr><td><a href="https://github.com/CuboiLeo/SuperMimic-Reproduced">CuboiLeo</a></td><td>全动作库；列出论文没写清的 20 处</td><td>4×RTX 5090，7.1 h</td><td>失败 145 段（54 段空翻全失败）</td></tr>
+      <tr><td><a href="https://github.com/zita-ch/supermimic_vibed">supermimic_vibed</a></td><td>只做 LAFAN1 对照</td><td>1×RTX PRO 6000，1.47 h</td><td>0.829，40 段全过</td></tr>
+      <tr><td><a href="https://github.com/YanYuan98/Supermimic_mod">YanYuan98</a></td><td>只做 LAFAN1</td><td>1–2×RTX 5090，约 3 h</td><td>0.850；按论文观测字面实现只有 0.564</td></tr>
+    </table>
+  </div>
+  <p class="note">论文是 1×H100 训 3 h 失败 25 段、2 卡 9.8 h 零失败；零失败还没人报告复现出来。真机上只有一段专门 fine-tune 的舞蹈（带保护绳），全动作库的 tracker 还没公开上真机。</p>
+  <p class="eyebrow">决定结果的，是论文没写清的四处</p>
+  <ul class="tight">
+    <li><b>参考朝向（anchor）：</b>policy 输入里加上参考的相对朝向，LAFAN1 从 0.56–0.59 升到 0.80–0.90。Table A.1 只列本体感知，goal 每帧放什么论文没写；既然说沿用 BeyondMimic，它很可能本来就在 goal 里（我的判断）。</li>
+    <li><b>少见动作的重置采样：</b>空翻在时间轴上占比极小，采样不改就几乎练不到。</li>
+    <li><b>片段最后一帧：</b>32 步想象会跑出片段末尾；不把最后一帧冻住，policy 会学会在最后一帧摔倒。</li>
+    <li><b>critic 发散：</b>长时间训练 critic 会爆，需要截断它的目标值。</li>
+  </ul>
+  <p class="eyebrow">加上环境交互</p>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr><td><b>社区原型</b><br><span class="muted">supermimic-pera、supermimic_parkour 等</span></td><td>在 SuperMimic 上加地形、楼梯、搬箱</td><td>height map、深度图、物体状态，或冻结后加 residual</td><td>都只在仿真、自报；唯一同时试了楼梯和搬箱的项目两项都没成</td></tr>
+      <tr><td><b>PWM</b><br><span class="muted">ICLR 2025</span></td><td>多任务控制，含 50 个物体操作任务</td><td>一阶梯度穿过学到的 latent world model</td><td>同样对模型求梯度，物体在 latent 里；只在仿真</td></tr>
+      <tr><td><b>RWM、NeRD</b><br><span class="muted">ETH、NVIDIA</span></td><td>学一个神经仿真器，在里面训 policy</td><td>在模型里跑 PPO；NeRD 用碰撞检测算接触特征</td><td>上了真机，但不对模型求梯度</td></tr>
+      <tr><td><b>Model-free 交互 tracker</b><br><span class="muted">HDMI、OmniRetarget、VideoMimic、PGMT</span></td><td>真 G1 上开门、搬箱、上楼梯、跑酷</td><td>先训平地 tracker，再用 residual 或 adapter 接入物体位姿、高程图、深度</td><td>用 PPO；PGMT 的地形基准上，盲的 SONIC v1.1 只有 25%，PGMT 87.8%</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：2026-10-30 的一次网络调研（GitHub、Hugging Face、arXiv），社区数字均为自报。调研的建议：先做地形，再做物体；论文过滤掉的约 23 h 楼梯、箱子、椅子片段可以直接当数据。</p>
 </section>
 
 <section id="for-you">
