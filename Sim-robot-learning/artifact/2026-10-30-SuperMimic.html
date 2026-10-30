@@ -1,0 +1,751 @@
+<!doctype html>
+<!-- Paper page template. Copy to <Project>/artifact/<name>.html, replace every placeholder
+     in double braces, and drop optional blocks you do not use. Keep the section order: it is
+     the reader's order (preferences.md). Figures live in artifact/<name>/ next to this file.
+     This page loads Mermaid itself: pages other than the library home are served without the
+     artifact skeleton, so nothing else draws the charts. In chart labels write class='ex'
+     with single quotes. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>SuperMimic</title>
+<meta name="description" content="从仿真日志学一个所有动作共享的可微 world model，经它 BPTT 训 humanoid 全身 motion tracker：1 张 H100 训 3 h 超过 128 卡训 7 天的 SONIC，GPU-h 少 >1000×，真机 G1 侧滚、空翻。">
+<meta name="paper:title" content="SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.28480">
+<meta name="paper:venue" content="CoRL 2026 (Oral)">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.28480v1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Sim-robot-learning</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Sim-robot-learning · 归档于 2026-10-30</p>
+  <h1>SuperMimic</h1>
+  <p class="full-title">SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model</p>
+  <p class="meta">Qiayuan Liao, Yiyang Shao, Junfeng Long, Kevin Zakka, Roberto Horowitz, Pieter Abbeel et al. · UC Berkeley · CoRL 2026 Oral · arXiv 2026-10-20</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.28480">arXiv</a><a href="https://arxiv.org/pdf/2610.28480v1">PDF</a>
+    <a href="https://supermimic.github.io">Project page</a><a href="https://supermimic.github.io/demo/">Web demo</a>
+  </p>
+  <p class="filed">归档到 <b>Sim-robot-learning</b>：在仿真里用 RL 从人体动作学 humanoid 全身控制，再 sim-to-real；它的“可微 world model 训 policy”也沾 Agent-centric-real-to-sim 的 world model 一边。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>跟踪大规模人体动作库是训通用 humanoid 全身控制的主流路线，但 model-free PPO 的算力随动作数增长：SONIC 用 128 张 L40 训 7 天（约 21,000 GPU-h），仍有 179 段动作失败。</dd></div>
+    <div><dt>Idea</dt><dd>所有动作共用同一副 G1 刚体动力学：从普通仿真器（MuJoCo Warp）的日志学一个可微 world model，和 policy 在一个循环里一起训；在 32 步想象 rollout 上 BPTT 拿解析梯度，critic 补窗口外的回报。</dd></div>
+    <div><dt>Result</dt><dd>1 张 H100 训 3 h 超过 SONIC 的 normalized return（0.90），GPU-h 少 &gt;1000×；129,514 段动作只失败 25 段（SONIC 179），2 卡 9.8 h 后 0 段；同一个 policy 上真机 Unitree G1。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>动作越多，PPO 要的算力越多；侧滚、空翻这类难动作，128 卡训 7 天仍整组失败</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Side roll（侧滚）</b>：BONES-SEED 里 <span class="ex">22</span> 段 side roll 之一，retarget 到 Unitree G1（<span class="ex">29</span> 维关节），<span class="ex">50 Hz</span>。G1 从站立侧身倒下，躯干和四肢贴地滚过去，再站起来（下图，真机）。它和全部 <span class="ex">129,514</span> 段动作（<span class="ex">264.56 h</span>）放在一起训。</p>
+    <p>→ 想要：一个 policy <span class="ex">a_t = π_θ(o_t, g_t)</span>，只看本体感知 o_t（最近 10 帧）和未来 10 帧参考 g_t，在真机 G1 上把侧滚和其余所有动作都跟住：root 高度偏离不超过 <span class="ex">0.25 m</span>、倾斜误差不超过 <span class="ex">0.8</span>（越过就算失败，App. A），也不逐动作调参。</p>
+  </div>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-30-SuperMimic/fig6-b.jpg" alt="真机 Unitree G1 做侧滚的 8 帧：站立、侧身下压、躯干着地、翻滚、跪起、站直"></div>
+    <figcaption><b>Fig. 6(b)</b>（作者原图）真机 G1 的 side roll，帧间隔 Δt = 0.3 s。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>第 1–2 帧：</b>站立，侧身向下压。</li>
+    <li><b>第 3–5 帧：</b>躯干、手臂和腿着地翻滚：接触多、且不光滑，这正是 side roll 难的地方。</li>
+    <li><b>第 6–8 帧：</b>跪起、站直，回到直立。</li>
+  </ol>
+  <!-- One lane per baseline family, run on the example's input, ending at the exact step
+       where it breaks on this example (:::gap) with the visible symptom and its number. -->
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>Side roll clip</b><br/><span class='ex'>22 段之一</span><br/><span class='ex'>与 129,514 段同训</span>"]:::example
+  IN --> A1["<b>Model-free PPO</b><br/>SONIC · PPO-Sim<br/>从带噪 rollout 估梯度"]
+  A1 --> AX["动作越多 rollout 越多<br/>加卡也补不上<br/><span class='ex'>SONIC 22/22 败</span><br/><span class='ex'>PPO-Sim 8 卡 0.72</span>"]:::gap
+  IN --> B1["<b>Specialists + distill</b><br/>BeyondMimic · PHC<br/>先为它单训 expert"]
+  B1 --> BX["expert 随动作数增加<br/>合并靠有损蒸馏<br/><span class='ex'>未对比</span>"]:::gap
+  IN --> C1["<b>World model + PPO</b><br/>RWM · RWM-U · PPO-WM<br/>在模型里 rollout"]
+  C1 --> CX["模型可微，梯度没用上<br/><span class='ex'>多 ~64× imagined steps</span>"]:::gap
+  IN --> D1["<b>BPTT, no critic</b><br/>SuperTrack · ControlVAE<br/>只优化 H 步 reward"]
+  D1 --> DX["窗口外的回报看不到<br/><span class='ex'>H ≤ 16 训不出</span><br/><span class='ex'>4 m/s 推力下倒地</span>"]:::gap
+  </pre></div>
+  <p class="note">SONIC 的 22/22 来自 Table A.8（side roll 整组失败）。PPO-Sim 是同设定的对照：LAFAN1（40 段、2.45 h）上 18 h 内 1/4/8 卡只到 0.60/0.70/0.72，SuperMimic 1 卡 1.2 h 到 0.82（Fig. 4a）。Specialists + distill 没在 benchmark 上比，“有损”是 §1 的说法，落到 side roll 是推断。64× 是 LAFAN1 walk/run/sprint 上 PPO-WM 的对照（Fig. 5b）。No critic 是本文去掉 critic 的 ablation，对应 [12, 6] 的做法（§3.3、§4.3）；4 m/s 是站 T-pose 时被推，不是 side roll。</p>
+  <p class="crux"><b>根本问题：</b>所有动作都发生在同一副 G1 刚体动力学里，model-free RL 却对每个动作都从带噪的仿真 rollout 重新估计“动作会带来什么”，没把共享的结构学下来，所以动作越多算力越多。　<b>这篇的切入点：</b>把这份共享动力学学成一个可微 world model（只用普通仿真器的日志），在它的短想象 rollout 上 BPTT 拿解析梯度，再用 critic 补上窗口外的回报。</p>
+  <h3 id="related">Related work</h3>
+  <!-- Families from the paper's related-work section, closest first. 同一问题: other ways to
+       solve this problem. 相似做法: this kind of method, used on another problem. Drop a group
+       that has no rows. One short line per cell. -->
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>大规模 motion tracking</b><br><span class="muted">DeepMimic, PHC, SONIC</span></td><td>在仿真里复现参考动作，扩到大动作库，上真机</td><td>model-free RL（PPO）；SONIC 同时加数据、模型和算力</td><td>梯度靠 rollout 估 → 本文学一个所有动作共享的可微动力学，用解析梯度，1 卡</td></tr>
+      <tr><td><b>Learned differentiable dynamics</b><br><span class="muted">SuperTrack, ControlVAE, MoConVQ, SuperDyno</span></td><td>仿真角色（动画）的 motion control</td><td>学一个可微 surrogate 代替仿真器，解析 policy gradient；SuperDyno 扩到上万段 clip</td><td>停在仿真角色 → 本文单卡训大规模 tracker 并上真机：WM 以 sim context ξ 为条件，actor 用带噪本体感知 + goal；加 critic</td></tr>
+      <tr><td><b>运动表示 + 下游控制</b><br><span class="muted">NPMP, PhysicsVAE, PULSE, LATENT, MaskedMimic, BeyondMimic</span></td><td>把 tracker 接到下游 goal 接口（速度、部分身体等）</td><td>先学 latent motor 表示（BC / DAgger）再 RL；或 inpainting、guided diffusion；SONIC 联训 goal encoder</td><td>多为分阶段或只有 distill 信号 → 本文 encoder + 共享 decoder 都经同一个 WM 联训，接口可 distill 也可用自己的 task reward（RL）</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>World model + 想象</b><br><span class="muted">Dreamer, DreamerV3, TD-MPC, DayDreamer</span></td><td>通用控制：在学到的模型里学 policy</td><td>latent dynamics 上 actor-critic；TD-MPC 短视界规划 + terminal value；DayDreamer 直接在真机上学</td><td>通用 MBRL → 本文的模型直接预测仿真状态、以 ξ 为条件，从仿真日志学，专攻大规模 humanoid tracking + sim-to-real</td></tr>
+      <tr><td><b>可微仿真的解析梯度</b><br><span class="muted">SHAC, quadruped [20]</span></td><td>用解析梯度快速学 policy</td><td>SHAC 穿过可微仿真器做短视界 actor-critic；[20] 用简化的可微 surrogate + 高保真前向仿真</td><td>surrogate 从任意标准仿真器的 transitions 学；硬终止换成可微的 soft survival weight，critic 不用 target network</td></tr>
+      <tr><td><b>Neural simulator + PPO</b><br><span class="muted">RWM, RWM-U</span></td><td>在学到的神经仿真器里训 policy，再上真机</td><td>PPO 在想象 rollout 上；RWM-U 加不确定性惩罚、离线优化；WM 先用别的 policy 的轨迹预训</td><td>本文对 return 求导（BPTT 而非 PPO）；WM 用自己 policy 采的数据，训练中一直更新</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2、§3.3 和 Table 1，未另行检索。“直接预测仿真状态”取自 §3.2 的 f_ω 定义，§2 没有逐条和 Dreamer 对比。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-30-SuperMimic/tab1.jpg" alt="Table 1：NPMP 到 SuperMimic 九个方法在 Mimic、Latent、Downstream 三个阶段的训练方式、task signal 和是否上真机"></div>
+    <figcaption><b>Table 1</b>（作者原图）各方法在三个阶段的训练策略；绿色合并格 = 联合训练。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>Mimic / Latent / Downstream 三列：</b>模仿参考、学 latent 表示、训下游接口这三个阶段各用什么训练。</li>
+    <li><b>绿色合并格：</b>这几个阶段联合训练；相邻的未合并格是先训一个、冻住，再训下一个。</li>
+    <li><b>SONIC 一行：</b>三阶段 PPO 联训；Task signal 是 Distill²：goal encoder 只跟 tracking reward 和 latent 对齐 loss 训，没有接口自己的 task reward。</li>
+    <li><b>ControlVAE 一行：</b>唯一同样用 MBRL 的前作，但 Downstream 单独训，而且没上真机（✗）。</li>
+    <li><b>SuperMimic 一行：</b>三阶段全部 MBRL 联训，Task signal 是 Distill / RL（§4.5 正是速度接口的 RL 对 distill），并上了真机。</li>
+  </ol>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>一个从仿真日志学来的可微 world model 装下所有动作；policy 在它里面想象，拿解析梯度</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-30-SuperMimic/fig1.jpg" alt="左：一串半透明的 G1 从蓝渐变到粉，标着 World-Model Rollout；右：四排 GPU 标着 128 L40 GPUs, 168 h，箭头指向一张卡 1 H100 GPU, 3 h，顶部写着 > 1000× fewer GPU-h"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）左：policy 靠 world model 的想象 rollout 变好；右：SONIC 用 128 张 L40 训 168 h，本文用 1 张 H100 训 3 h。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左 “World-Model Rollout”：</b>最左实色的 G1 是起点，后面一串半透明的 G1 是 world model 往后预测出的状态，蓝到粉是先后顺序（颜色含义是我的读法，caption 只说这是 imagined rollout）。这串状态里没有仿真器参与。</li>
+    <li><b>右上 “128 L40 GPUs, 168 h [1]”：</b>SONIC 的训练规模，约 21,000 GPU-h。</li>
+    <li><b>右下 “1 H100 GPU, 3 h”：</b>SuperMimic 超过 SONIC 的 return 所需；顶部 “&gt; 1000× fewer GPU-h” 是两者之比（实际约 7200×，§4.1）。</li>
+  </ol>
+  <!-- Input -> 3-4 boxes -> output, each box carrying the example's value on a second line. -->
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>129,514 段动作</span><br/><span class='ex'>含 side roll</span>"]:::example
+  I --> W["<b>One world model f_ω</b><br/><span class='ex'>学自 MuJoCo Warp 日志</span>"]:::win
+  W --> B["<b>BPTT + critic</b><br/><span class='ex'>32 步想象 → ∇θ</span>"]:::win
+  B --> O["<b>Output：一个 π_θ</b><br/><span class='ex'>真机 G1 侧滚</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>4 个 stage：一个循环里的 3 步，加上部署</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-30-SuperMimic/fig2.jpg" alt="三格训练循环：(1) Collect data，(2) Fit world model，(3) Improve policy，底部是 Replay buffer，顶部箭头 next iteration 回到 (1)"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）训练循环：(1) 采数据 → (2) 拟合 world model → (3) 改进 policy，再回到 (1)。❄ = 冻结，🔥 = 训练，虚线 = 梯度。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>(1) Collect data：</b>π_θ❄ 拿 goal g_t，把带噪动作 a_t+ε_t 交给 Sim，Sim 回 o_{t+1}；每步把 (s_t, a_t+ε_t, ξ) 写进底部的 Replay buffer 𝓑。</li>
+    <li><b>(2) Fit world model：</b>从 𝓑 取 (s_0, a_{0:k−1}, ξ) 喂给 f_ω🔥，它自回归吐出 ŝ_j；𝓑 里真实的 s_j 从左边进 𝓛_WM（Eq. 1），蓝色虚线 ∇_ω 更新 f_ω。</li>
+    <li><b>(3) Improve policy：</b>从 𝓑 只取起点 (s_0, ξ)，之后全在 f_ω❄ 里：π_θ🔥 看 ô_t+η_t 和 g_t 出 a_t，f_ω 给出 ŝ_t 和 r̂_{t+1}；Ĵ(θ)（Eq. 2）的梯度 ∇_θ 沿虚线穿过 f_ω 回到 π_θ。</li>
+    <li><b>顶部 “next iteration”：</b>更新后的 π_θ 回到 (1) 再采数据；三者每轮都更新。</li>
+    <li><b>f_ω 在 (2) 是🔥、在 (3) 是❄：</b>只在 policy 反向传播时冻住。Sim 那格没有梯度箭头：梯度从不穿过仿真器。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  S1["<b>1 · Collect</b><br/><span class='ex'>side roll + 动作噪声</span>"] --> S2["<b>2 · Fit world model</b><br/><span class='ex'>8 步窗口 → f_ω</span>"]:::win
+  S2 --> S3["<b>3 · Improve policy</b><br/><span class='ex'>32 步想象 + BPTT</span>"]:::win
+  S3 -->|next iteration| S1
+  S3 --> S4["<b>4 · Deploy + downstream</b><br/><span class='ex'>真机 G1 侧滚</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；贯穿全程的 <a href="#stage-all">一个循环、一个模型</a> 单独成块。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Collect data · 仿真采数据</span>
+      <span class="stage-io">π_θ（冻结）+ 参考动作 + sim context ξ → replay buffer 𝓑 里的 (s_t, a_t+ε_t, ξ)</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>world model 要从真实的仿真 transitions 学动力学；仿真器只管前向，不必可微，带非光滑接触也照用（§1）。</li>
+        <li><b>仿真：</b>MuJoCo Warp（GPU 版 MuJoCo），每张卡 4096 个环境；一个控制步 50 Hz，即 4 个 5 ms substep。</li>
+        <li><b>动作：</b>policy 是确定性的 a_t = π_θ(o_t, g_t)；执行时加噪声 ε_t ~ 𝒩(0, 0.1²)，让 world model 见到更宽的动作范围（噪声可选）。a_t 映射成关节 setpoint q^sp = α a_t + q⁰，PD 增益低，setpoint 近似力矩。</li>
+        <li><b>观测 o_t：</b>关节位置 q − q⁰（29）、关节速度（29）、IMU 角速度（3）、投影重力（3）、上一步动作（29），各带传感器噪声 η（Table A.1）；policy 看最近 10 帧。goal g_t 是未来 K = 10 帧参考（BeyondMimic 只用 1 帧）。</li>
+        <li><b>Sim context ξ（每个 episode 抽一次）：</b>摩擦 μ ~ 𝒰[0.3, 1.2]，关节标定偏置 ~ 𝒰[−0.01, 0.01] rad，躯干质心偏移 Δx ~ 𝒰[−0.025, 0.025] m、Δy、Δz ~ 𝒰[−0.05, 0.05] m（Table A.3）。去掉了 BeyondMimic 的 root 速度推力：推力让状态跳变，确定性的 world model 学不了。</li>
+        <li><b>Return-based reset sampling（App. D.1）：</b>动作时间轴切成 1 s 的 bin，每个 bin 记折扣回报 G_b；重置点 50% 均匀、40% 按 softmax(−25 G_b / G_max)、10% 按各 bin 过去的 softmax 权重：做得差的片段多练，学会后仍保留少量练习。</li>
+        <li><b>Buffer：</b>每个环境 1000 步，新的挤掉最旧的。旧 policy 采的数据对拟合 world model 仍然有效：动力学和谁采的无关。</li>
+        <li><b>终止：</b>root 和参考的高度差 &gt; 0.25 m，或倾斜误差 &gt; 0.8（直立参考下约 78°）；不像 BeyondMimic 那样按末端偏差终止。</li>
+        <li><b>数据（App. E）：</b>BONES-SEED 的 G1 retarget 142,220 段 → 名字过滤（stair、ladder、box、chair、sit、climb 等）剩 129,667 → 可行性过滤（站在高处、穿地、双脚悬空）剩 129,514 段。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/fig2-s1.jpg" alt="Fig. 2 第 (1) 格：g_t 进入冻结的 π_θ，a_t+ε_t 进 Sim，o_{t+1} 回到 π_θ，向下把 (s_t, a_t+ε_t, ξ) 写进 replay buffer"></div>
+        <figcaption><b>Fig. 2 (1)</b>（作者原图）采数据这一格。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>π_θ❄ ⇄ Sim：</b>冻结的 policy 和仿真器来回一步一步走：a_t+ε_t 下去，o_{t+1} 回来。</li>
+        <li><b>向下的箭头：</b>每步把 (s_t, a_t+ε_t, ξ) 写进 buffer：存的是执行过的带噪动作，连同这个 episode 的 ξ。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Reset</b><br/><span class='ex'>side roll 某个 1 s bin</span>"] --> b["<b>π_θ + 噪声</b><br/><span class='ex'>a_t + ε_t</span>"]
+  b --> c["<b>MuJoCo Warp</b><br/><span class='ex'>躯干、四肢触地</span>"]
+  c --> d["<b>Replay buffer</b><br/><span class='ex'>(s_t, a_t+ε_t, ξ)</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>部分环境从 side roll 的某个 1 s bin 开始播放；若贴地翻滚那一段回报低，return-based sampling 会更常从那里重置（推断：论文只给规则，没报 side roll 的 bin）。每个环境抽一组 ξ（例如 μ 落在 [0.3, 1.2] 的某处）。π_θ 执行带噪动作，MuJoCo Warp 照常算躯干、手臂和地面的接触，(s_t, a_t+ε_t, ξ) 写进 buffer。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Fit world model · 拟合可微 world model</span>
+      <span class="stage-io">𝓑 里的 8 步窗口 (s_0, a_{0:7}, ξ) → 更新后的 f_ω（和 reward、观测、终止 head）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>BPTT 需要可微的预测和 Jacobian，仿真器给不了，就学一个 surrogate；一个模型学所有动作共有的身体和接触动力学（§3.2）。</li>
+        <li><b>确定性：</b>仿真里的随机性来源已知，就把 ξ 当输入；模型预测无噪声的观测 ō_t，传感器噪声 η 在模型外面加。</li>
+        <li><b>四个 head（各自可学，或解析计算）：</b>ŝ_{t+1} = f_ω(ŝ_t, a_t, ξ)，r̂_{t+1} = r_ω(ŝ_t, a_t, g_t)，ô_t = g_ω(ŝ_t, ξ)，d̂_t = d_ω(ŝ_t, g_t)。</li>
+        <li><b>Eq. 1：</b>从 ŝ_0 = s_0 起，用记录的动作自回归推 k = 8 步，每步罚 ‖ŝ_j − s_j‖² + (r̂_j − r_j)² + ‖ô_j − ō_j‖² + BCE(d̂_j, d_j)；解析 head 没有 loss 项。</li>
+        <li><b>k = 8 为什么够：</b>自回归拟合让模型学会纠正自己的预测误差，所以推 32 步（比 8 长）甚至更久也稳（§3.3）。</li>
+        <li><b>网络与训练：</b>f_ω 是 MLP (2048, 2048, 2048)；Adam，lr 2×10⁻⁴（1 卡），每次更新 10 个 batch × 2048 个窗口。每轮都更新，不是先训好再冻住。</li>
+        <li><b>证据（Fig. 3c）：</b>数据从 1 h 加到 264 h，8 步预测误差保持在 0.007–0.011（只算状态，按预设的 nominal error 归一，在 policy rollout 上在线测）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/fig2-s2.jpg" alt="Fig. 2 第 (2) 格：(s_0, a_{0:k−1}, ξ) 进入训练中的 f_ω，ŝ_j 绕回自己；s_j 和 ŝ_j 进 L_WM，梯度 ∇_ω 虚线回到 f_ω"></div>
+        <figcaption><b>Fig. 2 (2)</b>（作者原图）拟合 world model 这一格。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>f_ω🔥 右侧的小回路：</b>ŝ_j 喂回 f_ω，这就是自回归：后面的预测用的是自己前面的预测，不是真值。</li>
+        <li><b>𝓛_WM（Eq. 1）：</b>左边进真值 s_j，右边进预测 ŝ_j；蓝色虚线 ∇_ω 是唯一的梯度，只改 f_ω。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/fig3-bc.jpg" alt="Fig. 3 (b) 达到目标 return 的 GPU-h 随数据量缓慢上升，虚线是和数据量成正比；(c) 8 步预测误差在 1 到 264 h 之间保持在 7 到 11 乘 10 的负三次方"></div>
+        <figcaption><b>Fig. 3(b, c)</b>（作者原图）数据量从 1 h 到 264 h 的扫描。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(c) 8-step prediction error：</b>1、7、40、264 h 四个数据量，误差在 7 到 11（×10⁻³）之间，没有随数据变多而变差。</li>
+        <li><b>(b) Compute to target：</b>达到目标 return 的 GPU-h 只缓慢增长（读图约 0.5 → 1.9 GPU-h）；灰色虚线是“和数据量成正比”时的样子。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>8 步窗口</b><br/><span class='ex'>s_0 + a_0…a_7 + ξ</span>"] --> b["<b>f_ω 自回归</b><br/><span class='ex'>ŝ_1 … ŝ_8</span>"]
+  b --> c["<b>Eq. 1 loss</b><br/><span class='ex'>状态、reward</span><br/><span class='ex'>观测、终止</span>"]
+  c --> d["<b>∇_ω</b><br/><span class='ex'>更新同一个 f_ω</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>从 buffer 抽到一个 side roll 窗口，例如 s_0 是 G1 侧躺在地上，后面跟 8 个记录的动作。f_ω 只看 s_0 和这 8 个动作往后推 8 步（0.16 s），逐步和记录的 s_1 … s_8 比。同一批里还有走路、空翻等动作的窗口，更新的都是同一组权重 ω。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Improve policy · 在 world model 里想象 + BPTT</span>
+      <span class="stage-io">buffer 里的起点 (s_0, ξ) → 32 步想象 rollout → 解析梯度 ∇_θ Ĵ 和 critic V_ψ</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>PPO 把动力学当黑箱，用采样动作的 advantage 加权 ∇_θ log π_θ（似然比估计）；BPTT 直接对每个动作求 return 的导数，短视界内方差低得多（§3.3）。</li>
+        <li><b>想象：</b>起点 s_0 ~ ρ_0 来自 replay buffer，带它记录的 ξ；每步模型给出 ô_t，再加回传感器噪声 η_t，policy 出 a_t = π_θ(ô_t + η_t, g_t)，f_ω 给出 ŝ_{t+1}、r̂_{t+1}、d̂。</li>
+        <li><b>Soft survival weight：</b>c_0 = 1，c_{t+1} = c_t (1 − d̂_{t+1})：终止概率可微，摔倒的代价也能传梯度（SHAC 用硬终止）。</li>
+        <li><b>Eq. 2：</b>Ĵ(θ) = E[ Σ_{t=0}^{H−1} γ^t ĉ_t r̂_{t+1} + γ^H ĉ_H V_ψ(ŝ_H, g_H, ξ) ]，H = 32，γ = 0.99；BPTT 经 f_ω 对 ŝ_t 和 a_t 的 Jacobian 求出一阶梯度 ∇_θ Ĵ。</li>
+        <li><b>Critic（Eq. 3）：</b>V_ψ 拟合在想象 transition 上倒推的 GAE 目标（λ = 0.95），目标每条 rollout 算一次后固定，没有 EMA target network。它估 32 步之后的回报，所以模型只需在 32 步内准。</li>
+        <li><b>Reward：</b>BeyondMimic 的 tracking reward（body 位置、朝向、线速度、角速度，root 位置、朝向；Table A.2），去掉 self-collision 惩罚：它防的是随机 policy 把两个身体部位压在一起、压低动作噪声来刷速度分，想象里 policy 是确定性的，这招没有收益。joint-limit 权重从 −10 降到 −2。</li>
+        <li><b>规模：</b>每次更新 4096 条想象 rollout；Adam β = (0.9, 0.95)；梯度先按全局 norm 1.0、再逐元素 0.1 裁剪（Table A.5）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/fig2-s3.jpg" alt="Fig. 2 第 (3) 格：buffer 给出 (s_0, ξ)；训练中的 π_θ 和冻结的 f_ω 来回；Ĵ(θ) 的梯度虚线经 f_ω 指向 π_θ"></div>
+        <figcaption><b>Fig. 2 (3)</b>（作者原图）改进 policy 这一格。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>从下面进来的只有 (s_0, ξ)：</b>buffer 只提供起点，32 步全在模型里走。</li>
+        <li><b>π_θ🔥 ⇄ f_ω❄：</b>policy 看 ô_t+η_t（模型的观测加噪声）出 a_t，f_ω 回 ŝ_t 和 r̂_{t+1}。</li>
+        <li><b>蓝色虚线：</b>Ĵ(θ) → f_ω → ∇_θ → π_θ：梯度穿过冻结的 f_ω 回到 policy，这就是 BPTT。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/fig5.jpg" alt="Fig. 5 (a) 每秒步数：world model 在 512 到 64k 个并行环境上都比 MuJoCo Warp 快，标注 11×、26×、62×；(b) 训练 return 对 imagined steps：SuperMimic 比四种批大小的 PPO-WM 少用约 64× 步"></div>
+        <figcaption><b>Fig. 5</b>（作者原图）想象 rollout 又快、又可微。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(a) Steps per second：</b>一步 = 一个 50 Hz 控制步。灰色区是实际用的 2k–16k 个并行环境，world model（蓝）比 MuJoCo Warp（橙）快 &gt;10×（图上标 11×、26×），64k 时 62×。</li>
+        <li><b>(b) Training return：</b>横轴是 imagined steps（对数）。橙色几条是 PPO-WM：在同一个 world model 的 rollout 上跑 PPO，批大小 = 并行 rollout × 每条步数，最好的是 16k×32。SuperMimic（蓝）达到 PPO-WM 的最佳 return 少用约 64× 步，所以收益不只来自 rollout 快。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/fig4-bc.jpg" alt="Fig. 4 (b) 不同想象视界 H 的最终 return，有 critic 和没 critic 两条线；(c) 到 return 0.82 所需小时，H=8 两条都没到，H=16 无 critic 没到，H=32 阴影为默认"></div>
+        <figcaption><b>Fig. 4(b, c)</b>（作者原图）想象视界 H 和 critic 的 ablation（LAFAN1）。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(b) Final return：</b>实心点有 critic，空心点没有。没 critic 时 H ≤ 16 训不出来；有 critic 时 H = 16 就和无 critic 的 H = 32 一样好。</li>
+        <li><b>(c) Hours to return 0.82：</b>× 表示没到（H = 8 两种都没到，H = 16 无 critic 没到）。H = 32（阴影，默认值）最快；H 从 64 到 128，时间约翻三倍，最终 return 还降了。</li>
+        <li><b>只在正文里的推力测试（§4.3）：</b>站 T-pose 时被 0.5–4 m/s 推，有 critic 的 policy 0.5–2.4 s 内站稳；没 critic 的一直踉跄，4 m/s 时倒地。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>起点</b><br/><span class='ex'>buffer 里的 s_0, ξ</span>"] --> b["<b>想象 32 步</b><br/><span class='ex'>π_θ ⇄ f_ω（冻结）</span>"]
+  b --> c["<b>Ĵ(θ)，Eq. 2</b><br/><span class='ex'>Σ γ^t ĉ_t r̂ + V_ψ</span>"]
+  c --> d["<b>BPTT</b><br/><span class='ex'>∇θ 回到 32 个动作</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>从 buffer 抽到 side roll 中段的一个状态当起点，例如 G1 正侧躺翻滚。f_ω 往后想象 32 步 = 0.64 s，policy 每步只看模型给的观测加噪声。BPTT 告诉这 32 个动作各自该怎么改才跟得更紧；32 步之后的部分（比如滚完站起来）由 V_ψ 估（推断：论文没有拆 side roll 的回报）。视界再短又没有 critic，就训不出来（Fig. 4b）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Deploy + downstream · 上真机、接新接口</span>
+      <span class="stage-io">训好的 π_θ → 真机 Unitree G1；同一个 f_ω → 新的 goal 接口（速度指令）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>证明经 world model 训出的 policy 能上真机；同一个模型还能用接口自己的 task reward 训下游接口，而不只靠蒸馏（§4.4、§4.5）。</li>
+        <li><b>部署：</b>一个通用 tracker，不逐动作调参。actor 只用带噪本体感知 + goal，ξ 只喂给 world model 和 critic。真机演示 4 个动作：skipping jump、side roll、90° flip、原地 360° flip（Fig. 6；只有视频帧，没有真机成功率）。</li>
+        <li><b>接口结构（App. B）：</b>每个接口一个 encoder enc_θ,i(g) → 32 维 latent z（tanh 限幅）→ 共享 decoder dec_θ(z, o) → 动作。接口举例：完整参考动作、速度指令、末端位姿、SMPL 身体姿态。各有自己的 reward、终止和 critic，都穿过同一个 f_ω，不按接口重训。</li>
+        <li><b>Distill 和 RL：</b>distill 用 motion-tracking reward 训，指令从参考动作读出；RL 用接口自己的 task reward（速度跟踪，Table A.6）经 world model 训。下游 rollout 的梯度只到 encoder（decoder 权重 stop-gradient）；RL encoder 另有权重 0.1 的 latent 对齐 loss，拉向 motion encoder 的 latent。</li>
+        <li><b>速度接口：</b>指令 (v_x, v_y, ω_z)，v_x ∈ [−1.5, 2] m/s，v_y ∈ [−1.32, 1.32] m/s，ω_z ∈ [−3.35, 3.35] rad/s；和 motion tracking 联训 100,000 iteration，数据是 LAFAN1 和 BONES-SEED 里的走跑动作。</li>
+        <li><b>Step test（App. G.2）：</b>672 个指令（三个平面各 15×15 网格，去掉站立），每个从站立起跑 5 s、测 4 次。RL encoder 在 650 个上误差更低，distill 在 15 个上；中位相对误差 0.16 对 0.49。distill 在 7 个“平移 + 转速 ≥ 2.8 rad/s”的指令上每次都摔，那里动作库几乎没数据。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/fig6.jpg" alt="Fig. 6 四行真机 G1 连续帧：(a) skipping jump，(b) side roll，(c) 90° flip，(d) 原地 360° flip"></div>
+        <figcaption><b>Fig. 6</b>（作者原图）一个通用 tracker 经 world model 训练，上真机 Unitree G1。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(a) skipping jump，Δt = 0.2 s：</b>locomotion 类：单脚跳步、抬膝。</li>
+        <li><b>(b) side roll，Δt = 0.3 s：</b>本页的例子：躯干和四肢着地的接触密集动作。</li>
+        <li><b>(c) 90° flip、(d) 原地 360° flip，Δt = 0.2 s：</b>acrobatics：翻转、落地、站起。Table A.8 里 SONIC 的 44 段 flip 全部失败。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/fig7.jpg" alt="Fig. 7 三个指令平面上的圆圈网格：蓝圈为 RL 更好，橙圈为 distill 更好，黑圈为 distill 摔倒；绿色底色为每格的参考动作数据秒数"></div>
+        <figcaption><b>Fig. 7</b>（作者原图）RL 训的速度 encoder 比 distill 跟得更准。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>三个面板：</b>速度指令空间的三个平面（第三个分量为 0）：(a) v_y–v_x，(b) ω_z–v_x，(c) ω_z–v_y；每个圈是一个指令。</li>
+        <li><b>圈的颜色和大小：</b>蓝 = RL 更好，橙 = distill 更好，黑 = distill 摔倒；外圈面积 ∝ 两者中较大的相对误差，内孔 ∝ 较小的。</li>
+        <li><b>绿色底色：</b>该格动作库里的参考数据秒数（0.1 到 1000 s）。黑圈都在 (b)(c) 里 |ω_z| 接近 3 rad/s 的角落，正是数据最少的地方。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  m["<b>Motion encoder</b><br/><span class='ex'>side roll 未来 10 帧</span>"] --> z["<b>latent z</b><br/><span class='ex'>32 维</span>"]
+  v["<b>Velocity encoder</b><br/><span class='ex'>(v_x, v_y, ω_z)</span>"]:::win --> z
+  z --> d["<b>Shared decoder</b><br/><span class='ex'>+ 最近 10 帧 o</span>"]
+  d --> g["<b>G1 动作</b><br/><span class='ex'>29 维 setpoint</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>训完的同一个 π_θ 直接上真机 G1 做 side roll（Fig. 6b），没有为它单独调参。例子再往前走一步：同一个 G1 改接摇杆式的速度指令，比如边走边快速转身（ω_z ≥ 2.8 rad/s）。动作库几乎没有这种数据，distill 出的 encoder 在 7 个这样的指令上摔倒；用速度 reward 经 world model 训的 RL encoder 一次没摔。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿全程</span>
+      <span class="stage-name">One loop, one model · 一个循环、一个模型</span>
+      <span class="stage-io">buffer、world model、policy 每轮一起更新；一个 f_ω 服务全部 129,514 段动作</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Dyna 式循环：</b>采数据 → 拟合 world model → 改进 policy，每轮都做；f_ω 只在 policy 的反向传播里冻结（§3.1，Algorithm A.1）。</li>
+        <li><b>不预训练：</b>world model 用自己 policy 采的数据边训边更新；RWM、RWM-U 是先用别的 policy 的轨迹预训。</li>
+        <li><b>节奏（Table A.5）：</b>update-to-data ratio 0.4；每次 world-model 更新配 1 次 policy 更新；共 320,000 iteration；lr 用 250,000 iteration cosine 衰减到 0.03×，之后不变；多卡数据并行、梯度平均。</li>
+        <li><b>“3 h”包括什么：</b>完整循环（采数据 + 拟合模型 + 更新 policy）的墙钟时间；checkpoint 评测在训练后做，不计入（§4.1）。</li>
+        <li><b>一个模型摊销整个动作库：</b>side roll 的窗口和走路、空翻的窗口拟合同一个 f_ω；动作都由同一个人形身体执行，加数据只是给共享的身体和接触动力学更多证据，不要求新容量（§4.2）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-10-30-SuperMimic/algA1.jpg" alt="Algorithm A.1 SuperMimic training：每轮 Collect、Fit world model、Improve policy 三步，共 9 行伪代码"></div>
+        <figcaption><b>Algorithm A.1</b>（作者原图）SuperMimic 训练循环。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>第 2–3 行 Collect：</b>仿真里带噪 rollout，按 return 采样重置点（App. D.1）。</li>
+        <li><b>第 4 行 Fit world model：</b>取一个 k 步窗口自回归，按 Eq. 1 更新 ω。</li>
+        <li><b>第 5–8 行 Improve policy：</b>先抽一个接口 i ~ p(𝓘)，经冻结的 f_ω 想象 H 步，按 Eq. 2 走解析梯度更新 θ，按 Eq. 3 拟合 critic。</li>
+        <li><b>标题里的两句：</b>ω 和 θ 每轮都更新；下游接口的 Ĵ_i 只更新它自己的 encoder。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  w1["<b>走路窗口</b>"] --> F["<b>一个 f_ω</b><br/><span class='ex'>MLP 2048×3</span>"]:::win
+  w2["<b>side roll 窗口</b>"]:::example --> F
+  w3["<b>空翻窗口</b>"] --> F
+  F --> P["<b>一个 π_θ</b><br/><span class='ex'>129,514 段动作</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>side roll 只占 129,514 段里的 22 段，却和所有动作共享同一个 f_ω 和同一个 π_θ。训练从头到尾不是分阶段：每一轮，side roll 的新数据进 buffer，f_ω 吸收它，policy 再在 f_ω 里练它。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>共享动力学 → 一个可微 world model（§3.2）</td><td>Stage 2 与全程块：side roll 窗口和其他动作的窗口拟合同一个 f_ω</td></tr>
+        <tr><td>不微分仿真器，兼容非光滑接触（§1）</td><td>Stage 1：MuJoCo Warp 照常算 side roll 的触地；梯度只穿过 f_ω</td></tr>
+        <tr><td>ξ 条件、确定性模型、动作噪声（§3.1–3.2）</td><td>Stage 1–2：每个环境抽一组摩擦、质心、标定 ξ；模型预测无噪声观测</td></tr>
+        <tr><td>k = 8 自回归拟合（Eq. 1）</td><td>Stage 2：从侧躺状态推 8 步，和记录比</td></tr>
+        <tr><td>32 步想象 + BPTT 解析梯度（Eq. 2）</td><td>Stage 3：从翻滚中段想象 0.64 s，梯度回到 32 个动作</td></tr>
+        <tr><td>Soft survival weight</td><td>Stage 3：倒地概率 d̂ 可微，摔倒的代价能传梯度</td></tr>
+        <tr><td>Critic 补窗口外回报（Eq. 3，§4.3）</td><td>Stage 3：滚完站起来那部分由 V_ψ 估</td></tr>
+        <tr><td>Return-based reset sampling（App. D.1）</td><td>Stage 1：side roll 回报低的片段多练</td></tr>
+        <tr><td>想象快 &gt;10×；一阶梯度少 ~64× 步（§4.2）</td><td>Stage 3：Fig. 5</td></tr>
+        <tr><td>Dyna 循环，模型不预训练（§3.1）</td><td>全程块：三步每轮一起更新</td></tr>
+        <tr><td>3 h、1 卡超过 SONIC，GPU-h 少 &gt;1000×（§4.1）</td><td>Results：Fig. 3a</td></tr>
+        <tr><td>失败数 25 对 179，9.8 h 后 0（App. F）</td><td>Results：side roll 22 → 2 → 0（Table A.8）</td></tr>
+        <tr><td>扩数据：误差稳定，GPU-h 缓增（§4.2）</td><td>Stage 2：Fig. 3(b, c)</td></tr>
+        <tr><td>真机 G1（§4.4）</td><td>Stage 4：side roll 上真机（Fig. 6b）</td></tr>
+        <tr><td>下游接口 RL 对 distill（§4.5，App. B、G）</td><td>Stage 4：同一个 G1 改接速度指令，快速转身</td></tr>
+        <tr><td>动作数据过滤（App. E）</td><td>Stage 1：side roll 在平地上，过了两道过滤</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览</h2>
+  <ul class="tight results">
+    <li><b>3 h · 1 H100</b> 超过 SONIC released checkpoint 的 normalized return 0.90；SONIC 是 128 张 L40 × 168 h（约 21,000 GPU-h）。墙钟少 &gt;50×（约 56×），GPU-h 少 &gt;1000×（约 7200×）（§4.1，Fig. 3a）。</li>
+    <li><b>25 对 179</b> 129,514 段 benchmark 上的失败数（SuperMimic 1 卡 3 h 对 SONIC）；2 卡 9.8 h 后为 0（Table A.8）。SONIC 的 v1.1 checkpoint 失败 239 段。</li>
+    <li><b>22 → 2 → 0</b> side roll（22 段）的失败数：SONIC → SuperMimic 1 卡 3 h → 2 卡 9.8 h；flip（44 段）是 44 → 1 → 0。SuperMimic 3 h 时的 25 个失败里，14 个集中在前五组难动作（195 段），没有哪一组比 SONIC 失败得多。</li>
+    <li><b>0.82 · 1.2 h</b> 同设定对照（LAFAN1，40 段，2.45 h）：SuperMimic 1 卡 1.2 h 到 0.82；PPO-Sim 在 18 h 内 1/4/8 卡只到 0.60/0.70/0.72，从 4 卡加到 8 卡几乎不涨（Fig. 4a）。</li>
+    <li><b>0.007–0.011</b> 数据从 1 h 到 264 h（264×），world model 的 8 步预测误差保持在这个范围，到目标 return 的 GPU-h 只缓慢增长（Fig. 3b, c）。</li>
+    <li><b>&gt;10× · ~64×</b> 想象 rollout 比 MuJoCo Warp 快 &gt;10×（64k 个环境时 62×）；达到 PPO-WM 的最佳 return 少用约 64× imagined steps（Fig. 5）。</li>
+    <li><b>650 / 672</b> 速度接口 step test 里 RL encoder 误差更低的指令数（distill 15 个）；中位相对误差 0.16 对 0.49（App. G.2）。</li>
+    <li><b>公平性</b> 作者自己的核算（§4.1）：本文用 264.56 h 公开子集，SONIC 用 611 h（多 2.3×）；H100 的 fp32 峰值是 L40 的 0.74×、tensor-core 峰值 5.5×。2.3× 和至多 5.5× 解释不了 1000×。benchmark 动作也是两者的训练动作，失败数衡量覆盖，不衡量泛化。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-30-SuperMimic/fig3-a.jpg" alt="Fig. 3 (a) normalized return 对单卡墙钟 GPU-hours（对数轴）：SuperMimic 1 卡和 2 卡的曲线越过 SONIC 的 0.90 虚线；下方两条横杠标 3 h 对 168 h（>50×）、3 GPU-h 对 21k GPU-h（>1000×）"></div>
+    <figcaption><b>Fig. 3(a)</b>（作者原图）SuperMimic 用少得多的 GPU-h 超过 SONIC 的 tracking return。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>横轴：</b>GPU-hours（单卡墙钟，对数）；纵轴 normalized return：整个 episode 不打折的 reward 和除以它的最大值，提前终止就分低。</li>
+    <li><b>橙色虚线：</b>SONIC released checkpoint 的 0.90；深蓝是 1 卡、浅蓝是 2 卡的 SuperMimic，三者在同样 129,514 段动作上打分。</li>
+    <li><b>下方两条横杠：</b>3 h 对 168 h（&gt;50×），3 GPU-h 对 21k GPU-h（&gt;1000×）。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-30-SuperMimic/tabA8.jpg" alt="Table A.8 各动作组的失败数：SONIC、SuperMimic 1 卡 3 h、2 卡 9.8 h；side rolls 22、2、0；flips 44、1、0；总计 179、25、0"></div>
+    <figcaption><b>Table A.8</b>（作者原图）filtered BONES-SEED benchmark 上各动作组的失败数；加粗 = 整组失败。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>先看 side rolls、flips 两行：</b>SONIC 加粗的 22 和 44 是整组失败；SuperMimic 3 h 时剩 2 和 1，9.8 h 后为 0。</li>
+    <li><b>上半五组：</b>难动作，共 195 段；SuperMimic 3 h 时 25 个失败里有 14 个在这里。</li>
+    <li><b>最后一行：</b>总计 179 / 25 / 0。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-30-SuperMimic/figA1.jpg" alt="Fig. A.1 训练中的失败动作数随墙钟下降：1 卡和 2 卡曲线都很快降到 SONIC 的 179 虚线以下，之后接近 0"></div>
+    <figcaption><b>Fig. A.1</b>（作者原图）训练中的失败动作数，每 4000 iteration 评一次。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>橙色虚线：</b>SONIC checkpoint 的 179。</li>
+    <li><b>两条蓝线：</b>1 卡、2 卡的失败数都在 1 h 内降到 179 以下（读图），之后贴近 0；2 卡那条在 9.8 h 时到 0。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-10-30-SuperMimic/fig4-a.jpg" alt="Fig. 4 (a) normalized return 对墙钟小时：SuperMimic 1 卡很快到 0.8 以上的虚线；PPO-Sim 1、4、8 卡 18 小时内分别停在约 0.6、0.7、0.72"></div>
+    <figcaption><b>Fig. 4(a)</b>（作者原图）同设定对照：LAFAN1，40 段，2.45 h。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>蓝线：</b>SuperMimic 1 卡，在 world model 里 BPTT；1.2 h 到目标 0.82（虚线）。</li>
+    <li><b>三条橙线：</b>PPO-Sim 1、4、8 卡，和 SuperMimic 用同样的动作、观测、reward、终止、domain randomization 和网络大小，每卡 8192 个环境（SuperMimic 的两倍）；18 h 内都没到 0.82。</li>
+  </ol>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>多接口训练没研究透：</b>速度 reward 只更新速度 encoder，不更新共享 decoder，所以“联训”等于先训 tracker 再训 encoder；decoder 也更新时联训是否有帮助，没测（§6）。</li>
+    <li><b>只学仿真动力学：</b>world model 只用仿真 transitions；真机数据可以再细化它，它的可微性也可用于 system identification，都没做（§6）。</li>
+    <li><b>只有平地：</b>不涉及地形和物体交互（§6）；数据过滤直接去掉了楼梯、箱子、椅子这类动作（App. E）。</li>
+    <li><b>评测范围：</b>benchmark 动作就是训练动作，失败数衡量覆盖而非泛化（App. F.2）；图里不报 seed 方差（作者说多个 seed 都很稳，§4）；速度接口每个 policy 只有一个训练 seed（App. G.2）；真机只有 Fig. 6 的 4 段演示，没有成功率。</li>
+    <li><b>算力对比跨硬件、跨数据：</b>SONIC 一侧是它报告的 128 L40 × 7 天和 released checkpoint，不是同条件重跑；同条件的对照只有 LAFAN1 上的 PPO-Sim（§4.1）。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Robot learning in simulation</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>Agent-centric-real-to-sim：</b>real2sim-anything-indoor 用 GVHMR 从视频出人体动作，retarget 后正是这类 tracker 的输入。App. E 的可行性过滤可以直接拿来筛：最低的 link 离地 0.20 m 以上持续 ≥ 0.6 s（站在高处）、穿地超过 0.12 m、静止站立时双脚悬空超过 0.02 m 持续 ≥ 0.5 s。带家具的动作会被筛掉：SuperMimic 只做平地。</li>
+    <li><b>WorldClaw 的 Genesis sim：</b>这套做法不需要可微仿真器：从任意仿真器记录 transitions，学一个以仿真参数 ξ 为条件的可微模型，再经它求梯度，Genesis 也可以当数据源（推断，论文只用了 MuJoCo Warp）。但目前只验证了一个身体在平地上，WorldClaw 那种有物体、有家具的场景还是论文的 future work。</li>
+    <li><b>Robotic-harness：</b>App. B 的 goal 接口（完整参考、速度、末端位姿、SMPL 身体姿态）共用一个 decoder，很像 harness 里 agent 调用 humanoid 的 tool surface；§4.5 说明每个接口用自己的 task reward 训（RL）比蒸馏更准、更少摔。harness 若接 humanoid，可以把这些接口当工具暴露（我们的设想）。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Sim-robot-learning/2026-10-30-SuperMimic.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
