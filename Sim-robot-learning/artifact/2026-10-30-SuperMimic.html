@@ -541,6 +541,7 @@ flowchart LR
     <div class="stage-body">
       <ul class="tight">
         <li><b>Why：</b>PPO 把动力学当黑箱，用采样动作的 advantage 加权 ∇_θ log π_θ（似然比估计）；BPTT 直接对每个动作求 return 的导数，短视界内方差低得多（§3.3）。</li>
+        <li><b>BPTT 是什么：</b>backpropagation through time。把 32 步想象展开成一条长计算链（每一步都是 policy 出动作、world model 算下一刻），再用链式法则从最后一步倒推回第一步。第 20 步的分取决于第 1 步的动作，BPTT 能把这份影响一路传回去；32 步用的是同一个 policy，各步的梯度加在同一组权重上。名字来自训练循环神经网络（RNN）的同一招。链上每一环都得可微，所以要用 world model，不能直接用仿真器。</li>
         <li><b>想象：</b>起点 s_0 ~ ρ_0 来自 replay buffer，带它记录的 ξ；每步模型给出 ô_t，再加回传感器噪声 η_t，policy 出 a_t = π_θ(ô_t + η_t, g_t)，f_ω 给出 ŝ_{t+1}、r̂_{t+1}、d̂。</li>
         <li><b>Soft survival weight：</b>c_0 = 1，c_{t+1} = c_t (1 − d̂_{t+1})：终止概率可微，摔倒的代价也能传梯度（SHAC 用硬终止）。</li>
         <li><b>Eq. 2：</b>Ĵ(θ) = E[ Σ_{t=0}^{H−1} γ^t ĉ_t r̂_{t+1} + γ^H ĉ_H V_ψ(ŝ_H, g_H, ξ) ]，H = 32，γ = 0.99；BPTT 经 f_ω 对 ŝ_t 和 a_t 的 Jacobian 求出一阶梯度 ∇_θ Ĵ。</li>
