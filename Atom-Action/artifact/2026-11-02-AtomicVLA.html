@@ -630,17 +630,15 @@ flowchart LR
   <p class="note">RPent 指库里 Robotic-harness 的 Harness VLA（arXiv 2607.08448v5）：冻结的 VLA 被包成可重试的 primitive VLA_ACT，由 Claude Code / Codex planner 和 6 个 analytic primitive 组合。下面把 running example 分别交给两者（RPent 这一条是按它的机制推断的，论文没跑这个任务）。</p>
   <div class="flow"><pre>
 flowchart TD
-  subgraph A["AtomicVLA · 规划和 primitive 都在权重里"]
-    A1["<b>[think]</b><br/><span class='ex'>chain = [turn, pick, place]<br/>step 1/3 · turn</span>"] --> A2["<b>turn expert 出 chunk</b><br/><span class='ex'>旋钮转到 ON</span>"]
-    A2 --> A3["<b>[think] → pick expert</b><br/><span class='ex'>抓 moka pot</span>"]
-    A3 --> A4["<b>[think] → place expert</b><br/><span class='ex'>放到灶上</span>"]
-  end
-  subgraph B["RPent · 规划在模型外，VLA 只做接触"]
-    B1["<b>Planner（Claude Code）</b><br/><span class='ex'>读 memory + RGB-D<br/>定位旋钮和 moka pot</span>"] --> B2["<b>MOVE_TO staging</b><br/><span class='ex'>把夹爪送到旋钮旁</span>"]
-    B2 --> B3["<b>VLA_ACT</b><br/><span class='ex'>prompt 'turn on the stove'<br/>冻结 VLA 短促接触</span>"]
-    B3 --> B4["<b>检查 → 重试</b><br/><span class='ex'>旋钮没动？退回再调</span>"]
-    B4 --> B5["<b>VLA_ACT 抓 → MOVE_TO → RELEASE</b><br/><span class='ex'>查 success signal 才收尾</span>"]
-  end
+  HA["<b>AtomicVLA</b><br/>规划和 primitive 都在权重里"] --> A1["<b>[think]</b><br/><span class='ex'>chain = [turn, pick, place]<br/>step 1/3 · turn</span>"]
+  A1 --> A2["<b>turn expert 出 chunk</b><br/><span class='ex'>旋钮转到 ON</span>"]
+  A2 --> A3["<b>[think] → pick expert</b><br/><span class='ex'>抓 moka pot</span>"]
+  A3 --> A4["<b>[think] → place expert</b><br/><span class='ex'>放到灶上</span>"]
+  HB["<b>RPent</b><br/>规划在模型外，VLA 只做接触"] --> B1["<b>Planner（Claude Code）</b><br/><span class='ex'>读 memory + RGB-D<br/>定位旋钮和 moka pot</span>"]
+  B1 --> B2["<b>MOVE_TO staging</b><br/><span class='ex'>把夹爪送到旋钮旁</span>"]
+  B2 --> B3["<b>VLA_ACT</b><br/><span class='ex'>prompt 'turn on the stove'<br/>冻结 VLA 短促接触</span>"]
+  B3 --> B4["<b>检查 → 重试</b><br/><span class='ex'>旋钮没动？退回再调</span>"]
+  B4 --> B5["<b>VLA_ACT 抓 → MOVE_TO → RELEASE</b><br/><span class='ex'>查 success signal 才收尾</span>"]
   </pre></div>
   <div class="table-wrap">
     <table class="grid">
