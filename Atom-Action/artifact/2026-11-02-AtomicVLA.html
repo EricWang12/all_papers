@@ -122,9 +122,20 @@ ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
 ol.read li + li { margin-top: .3rem; }
 ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
 
-/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
-.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
 .flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
 .flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
 .flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
 .flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
@@ -351,8 +362,8 @@ flowchart TD
       </table></div>
       <div class="flow"><pre>
 flowchart LR
-  o["<b>O_t + ℓ</b><br/><span class='ex'>当前帧 + 'Turn on the stove…'</span>"] --> m["<b>预测模式 token M</b><br/><span class='ex'>t = 0 → [think]</span>"]
-  m --> th["<b>thinking 输出文本</b><br/><span class='ex'>chain = [turn on the stove,<br/>pick up the moka pot,<br/>place moka pot on stove]</span>"]
+  o["<b>O_t + ℓ</b><br/><span class='ex'>当前帧 + 指令</span>"] --> m["<b>预测模式 token M</b><br/><span class='ex'>t = 0 → [think]</span>"]
+  m --> th["<b>thinking 输出文本</b><br/><span class='ex'>[turn on the stove,<br/>pick up the moka pot,<br/>place moka pot on stove]</span>"]
   th --> s["<b>σ = atomic skill</b><br/><span class='ex'>step 1/3 · turn</span>"]:::win
       </pre></div>
       <figure class="paper-fig">
@@ -475,7 +486,7 @@ flowchart LR
       </ul>
       <div class="flow"><pre>
 flowchart LR
-  a["<b>原 library</b><br/><span class='ex'>4 个 expert（真机）<br/>grasp/stack/close/press</span>"] --> b["<b>+1 expert，router +1 路</b><br/><span class='ex'>新 expert 随机初始化<br/>router 复制旧权重</span>"]:::win
+  a["<b>原 library</b><br/><span class='ex'>真机 4 个 expert<br/>grasp / stack /<br/>close / press</span>"] --> b["<b>+1 expert, router +1 路</b><br/><span class='ex'>新 expert 随机初始化<br/>router 复制旧权重</span>"]:::win
   b --> c["<b>只训新 expert + 新路</b><br/><span class='ex'>7k 步，lr 5e-6</span>"]
   c --> d["<b>旧技能不动</b><br/><span class='ex'>旧 4 任务 86.3→82<br/>π0.5 全微调 77.5→61</span>"]
       </pre></div>
@@ -702,13 +713,35 @@ flowchart TD
       box.dataset.src = t.value;
     }
     try {
-      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
     } catch (err) {
       box.innerHTML = "<pre></pre>";
       box.firstChild.textContent = box.dataset.src;
       console.error("flowchart failed to parse", err);
     }
     box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
   }
   // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
   async function drawShown() {
@@ -744,6 +777,7 @@ flowchart TD
 
   if (!window.mermaid) return;  // offline: the <pre> sources stay readable
   addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
   document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
   new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
