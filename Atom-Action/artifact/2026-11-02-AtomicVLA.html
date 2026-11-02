@@ -236,9 +236,9 @@ flowchart LR
     <table class="grid related">
       <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
       <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
-      <tr><td><b>单 decoder VLA</b><br><span class="muted">π0、π0.5、OpenVLA、Octo、SpatialVLA、CoT-VLA</span></td><td>通用操作：语言 + 图像 → 动作</td><td>把 VLM 微调成 VLA，一个 action decoder 吃全部数据</td><td>没有技能变量：长任务不分步、技能互扰、加技能要全量微调 → 本文 think 出 atomic skill，按 skill 选 expert</td></tr>
+      <tr><td><b>单 decoder VLA，直接出动作</b><br><span class="muted">π0、π0.5、OpenVLA、Octo、SpatialVLA、CoT-VLA</span></td><td>通用操作：看图读指令直接出动作</td><td>VLM 微调成 VLA，一个 action decoder 吃全部数据，没有"做到哪一步"的中间变量</td><td>缺两样：没有 think（第几步、哪个技能），也没有 skill expert → 本文两样都加。π0.5 其实会先吐 subtask 文本，论文仍把它归在这组</td></tr>
       <tr><td><b>两段式：VLM planner + 低层 policy</b><br><span class="muted">SayCan、Plan-and-Act、CoPa、Hi Robot、Gemini Robotics</span></td><td>long-horizon 任务拆成 subgoal</td><td>高层 VLM 出子指令，独立的 VLA 逐条执行</td><td>两个模型不共享 latent，指令过时、错位累积 → 本文 planner 和 policy 是同一个 VLM，[think] / [act] 自己切换</td></tr>
-      <tr><td><b>统一推理 + 动作的 VLA</b><br><span class="muted">Fast-in-Slow、Robix、OneTwoVLA、HybridVLA、InstructVLA、LoHoVLA</span></td><td>同一模型里既推理又出动作</td><td>一个 VLM 交替生成文本推理和动作（Think-Act）</td><td>仍是单 action decoder → 本文把推理结果（atomic skill）接到 SG-MoE 的 router 上去选 expert</td></tr>
+      <tr><td><b>统一 Think-Act 的 VLA（本文所属的一路）</b><br><span class="muted">Fast-in-Slow、Robix、OneTwoVLA、HybridVLA、InstructVLA、LoHoVLA</span></td><td>两段式的脱节：把高层推理和动作放进同一个模型</td><td>同一个 VLM 交替输出文本推理（subtask / CoT）和动作</td><td>已有 think，只缺一样：推理结果只当条件，动作仍由一个 decoder 出 → 本文把 think 出的 atomic skill 接到 router 上选 expert，新技能按 expert 加</td></tr>
       <tr><td><b>技能发现 / 持续学习</b><br><span class="muted">DexSkills、QueST、Lotus、M2Distill、Think-small-act-big</span></td><td>从数据里自动分技能；学新技能不忘旧</td><td>无监督 skill segmentation、latent action 表示、不靠 replay</td><td>技能藏在 latent 里，不对应独立参数 → 本文一 skill 一 expert，新技能只训新 expert + router 一路</td></tr>
       <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
       <tr><td><b>Mixture-of-Experts</b><br><span class="muted">DeepSeekMoE / Mixtral（LLM）、DriveMoE / MoSE（驾驶）、MoDE / Mentor / ForceVLA（机器人）</span></td><td>扩容量、处理长尾 / 异构数据</td><td>按 token 或去噪 timestep 把计算 route 到 expert，load balancing</td><td>expert 是可互换的槽位，没有语义 → 本文用 atomic skill 做 routing 信号，每个 expert = 一个可复用的 primitive</td></tr>
