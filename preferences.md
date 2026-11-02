@@ -93,3 +93,4 @@ Each project is one folder in the library. The scope line decides where a paper 
   without saying what they are, and I could not follow it. Figures with notation now get a
   symbol table, and readings put plain words first.
 - 2026-11-02: new project folder `Atom-Action` (atomic actions and skills as the unit of a robot policy), created at the user's request while filing AtomicVLA.
+- 2026-11-02, AtomicVLA: this account owns only https://claude.ai/artifact/WwBLzpin698pYEu9brsyot under the library title, so the run published there; it had not been updated since 10-21, so the five Sim-robot-learning pages were published together with the new `Atom-Action` page. The push from the lab machine failed (Claude's shell has no GitHub credentials); commits stay local until pushed by hand.
