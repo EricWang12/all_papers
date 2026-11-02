@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>AtomicVLA</title>
+<meta name="description" content="让 VLA 自己 think 出当前的 atomic skill（turn / pick / place），再用它 route 到专属 expert（SG-MoE）；加新技能只加一个 expert。LIBERO-LONG 85.2 → 95.2，学新技能后旧任务只掉 1.3（π0.5 掉 15.0）。">
+<meta name="paper:title" content="AtomicVLA: Unlocking the Potential of Atomic Skill Learning in Robots">
+<meta name="paper:source" content="https://arxiv.org/abs/2603.07648">
+<meta name="paper:venue" content="CVPR 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2603.07648v2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Atom-Action</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Atom-Action · 归档于 2026-11-02</p>
+  <h1>AtomicVLA</h1>
+  <p class="full-title">AtomicVLA: Unlocking the Potential of Atomic Skill Learning in Robots</p>
+  <p class="meta">Likui Zhang, Tao Tang, Zhihao Zhan, Xiuwei Chen, Zisheng Chen, Jianhua Han, et al. · Sun Yat-sen University, Peng Cheng Laboratory, Yinwang Intelligent Technology · CVPR 2026 · arXiv 2603.07648v2（2026-09-06）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2603.07648">arXiv</a><a href="https://arxiv.org/pdf/2603.07648v2">PDF</a>
+    <a href="https://zhanglk9.github.io/atomicvla-web/">Project page</a><a href="https://github.com/zhanglk9/AtomicVLA">Code</a>
+  </p>
+  <p class="filed">归档到 <b>Atom-Action</b>：这个新 project 的第一篇——把任务拆成 atomic skill、一个 skill 一个 expert；它也和 Robotic-harness 里的 skill library / VLA_ACT primitive 相邻。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>单 action head 的 VLA（π0 / π0.5）把所有技能混在一个 decoder 里：long-horizon 没有显式分步，技能之间互相干扰，学一个新技能要全模型微调、旧技能遗忘。</dd></div>
+    <div><dt>Idea</dt><dd>模型自己决定 <b>[think]</b> 还是 <b>[act]</b>：think 输出 task chain + 当前第几步 + 本步的 atomic skill（turn / pick / place）；这个 skill 词变成一个固定 embedding，去 route 一个专属 expert（<b>SG-MoE</b>），shared expert 保住 π0 的泛化；加新技能只加一个 expert 和 router 的一路。</dd></div>
+    <div><dt>Result</dt><dd>LIBERO-LONG 95.2 vs π0 85.2（+10）；CALVIN avg len 4.09 vs 3.87（π0）、4.27 vs 4.02（π0.5）；真机 long-horizon 平均 +20.0 / +18.3；学新技能 open 之后旧任务只掉 1.3 分，π0.5 掉 15.0。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>一个 action head 扛所有技能：不会分步、技能互扰、学新的忘旧的</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>LIBERO-LONG 任务 "Turn on the stove and put the moka pot on it"</b>（Fig. 3 上排）：输入是相机图像 <span class="ex">O_t</span>、指令 <span class="ex">ℓ = "Turn on the stove and put the moka pot on it"</span>、本体状态 <span class="ex">s_t</span> → 想要：先转旋钮（<span class="ex">turn</span>）、再抓 moka pot（<span class="ex">pick</span>）、再放到灶上（<span class="ex">place</span>），三步连着成功；中途失手要能接着做；之后再教它一个新技能（如 <span class="ex">open</span>），这三步不能忘。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>图像 + 'Turn on the stove<br/>and put the moka pot on it'</span>"]
+  IN --> A1["<b>单 action head VLA</b><br/>π0 / π0.5 / OpenVLA：<br/>一个 decoder 混训所有技能"]
+  A1 --> AX["长任务无分步、技能互扰<br/><span class='ex'>LIBERO-LONG：π0 85.2%<br/>Fig. 8 第二个 moka pot 失败</span>"]:::gap
+  A1 --> AY["学新技能 open = 全模型微调<br/><span class='ex'>π0.5 旧 4 任务平均 −15.0<br/>Stack 65 → 45（Tab. 4）</span>"]:::gap
+  IN --> B1["<b>两段式</b><br/>VLM planner 出子指令，<br/>另一个低层 policy 执行"]
+  B1 --> BX["planner 与 controller 互不知情<br/><span class='ex'>指令过时、错位累积<br/>（§1、§2.1；无本例数字）</span>"]:::gap
+  IN --> C1["<b>token-level MoE</b><br/>MoE / MoDE：按 token<br/>或去噪步 route"]
+  C1 --> CX["expert 不按技能分工<br/><span class='ex'>LIBERO-LONG 88.6 / 89.5<br/>vs SG-MoE 95.2（Tab. 5）</span>"]:::gap
+  </pre></div>
+  <p class="note">推断的那条：两段式的"坏在哪"来自 §1 和 §2.1 的论述（modular decoupling → lack of mutual awareness、outdated instructions、compounding loss），论文没有在本例上跑两段式 baseline，也没有它的数字。单 head 的"技能互扰"来自 §4.3 + Fig. 6：drawer 子任务不需要闭合夹爪，混训后抓取类任务的夹爪就乱开合。</p>
+  <p class="crux"><b>根本问题：</b>VLA 里没有"现在在做哪个 atomic skill"这个变量，所以既无法按技能分工（互扰），也无法按技能增量学习（遗忘）。　<b>这篇的切入点：</b>让模型自己把 atomic skill 说出来（think），再用它去选 expert（SG-MoE）；新技能 = 新 expert。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-AtomicVLA/fig6.jpg" alt="四行真机帧序列：单技能训练成功、混训后抓取失败、持续学习前成功、持续学习后夹爪不闭合"></div>
+    <figcaption><b>Fig. 6</b>（作者原图）Mixed-Training Skill Interference and Continual-Learning Degradation：上两行是 long-horizon 里的技能干扰（单技能训练 vs 混训），下两行是 π0.5 学新技能前后；红框 / 绿框标出关键差异。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>第 1 行（绿框，t = 8 / 10）：</b>单技能训练的模型在绿盘 + 两个 block 的场景（Tab. 7 的 Objects in plate）里，t = 8 夹爪闭合夹住红块，t = 10 提起。</li>
+    <li><b>第 2 行（红框）：</b>同一场景，混训多任务（含不需要闭合夹爪的 drawer 子任务）之后，t = 8 夹爪没闭合，t = 10 空抓——§4.3 说的 cross-task interference。本例的 pick 就是这种会被 open / turn 干扰的技能。</li>
+    <li><b>第 3 行（绿框）：</b>π0.5 学新技能 open 之前，单个红块的短任务 t = 10 夹住、t = 16 提起。</li>
+    <li><b>第 4 行（红框）：</b>学完 open 之后同一任务，夹爪到位后没有及时闭合（§4.3："failed to close promptly"），t = 16 仍空着——对应 Tab. 4 里 π0.5 旧任务平均 −15.0。</li>
+  </ol>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>单 decoder VLA</b><br><span class="muted">π0、π0.5、OpenVLA、Octo、SpatialVLA、CoT-VLA</span></td><td>通用操作：语言 + 图像 → 动作</td><td>把 VLM 微调成 VLA，一个 action decoder 吃全部数据</td><td>没有技能变量：长任务不分步、技能互扰、加技能要全量微调 → 本文 think 出 atomic skill，按 skill 选 expert</td></tr>
+      <tr><td><b>两段式：VLM planner + 低层 policy</b><br><span class="muted">SayCan、Plan-and-Act、CoPa、Hi Robot、Gemini Robotics</span></td><td>long-horizon 任务拆成 subgoal</td><td>高层 VLM 出子指令，独立的 VLA 逐条执行</td><td>两个模型不共享 latent，指令过时、错位累积 → 本文 planner 和 policy 是同一个 VLM，[think] / [act] 自己切换</td></tr>
+      <tr><td><b>统一推理 + 动作的 VLA</b><br><span class="muted">Fast-in-Slow、Robix、OneTwoVLA、HybridVLA、InstructVLA、LoHoVLA</span></td><td>同一模型里既推理又出动作</td><td>一个 VLM 交替生成文本推理和动作（Think-Act）</td><td>仍是单 action decoder → 本文把推理结果（atomic skill）接到 SG-MoE 的 router 上去选 expert</td></tr>
+      <tr><td><b>技能发现 / 持续学习</b><br><span class="muted">DexSkills、QueST、Lotus、M2Distill、Think-small-act-big</span></td><td>从数据里自动分技能；学新技能不忘旧</td><td>无监督 skill segmentation、latent action 表示、不靠 replay</td><td>技能藏在 latent 里，不对应独立参数 → 本文一 skill 一 expert，新技能只训新 expert + router 一路</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Mixture-of-Experts</b><br><span class="muted">DeepSeekMoE / Mixtral（LLM）、DriveMoE / MoSE（驾驶）、MoDE / Mentor / ForceVLA（机器人）</span></td><td>扩容量、处理长尾 / 异构数据</td><td>按 token 或去噪 timestep 把计算 route 到 expert，load balancing</td><td>expert 是可互换的槽位，没有语义 → 本文用 atomic skill 做 routing 信号，每个 expert = 一个可复用的 primitive</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2 Related Work（2.1 VLA、2.2 Multimodal MoE、2.3 Continual Learning）和 §4.4 ablation 的对比，未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>让 VLA 自己说出"现在是哪个 atomic skill"，再用这句话去选一个专属 expert 出动作</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-AtomicVLA/fig1.jpg" alt="左：Previous VLA 单 Action Head vs AtomicVLA 的 SG-MoE；右：LIBERO-LONG、CALVIN、真机的柱状图"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）Overview：左边对比单 action head 的 VLA 和带 SG-MoE 的 AtomicVLA；右边是 LIBERO-LONG、CALVIN 连做 5 个任务、真机 long-horizon 的数字。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左半 (1) Previous VLA：</b>Image + Text 进 VLM，一个 Action Head 出动作；下面两个 ✗——Skill Decoupled（技能没解耦）、Skill Expandable（不可扩展）。本例里 turn / pick / place 全挤在一个 head 里。</li>
+    <li><b>左半 (2) Our AtomicVLA：</b>VLM 之后接 SG-MoE，Skill 1 … Skill N 各一个 expert，最下面带星号的 "New skill" = 加一个新 expert。本例：turn / pick / place 各一个 expert。</li>
+    <li><b>右上两张柱图：</b>LIBERO-LONG 上 π0 85.2 → 95.2、π0.5 92.4 → 96.2；CALVIN 连做 5 个任务 59.4 → 69.1、71.0 → 77.6（灰 = baseline，彩色 = 换上 SG-MoE 的 AtomicVLA / AtomicVLA*）。</li>
+    <li><b>右下横条 Real-world：</b>真机 3 个 long-horizon 任务的平均，π0 36.7 → 56.7（AtomicVLA）、π0.5 45.0 → 63.3（AtomicVLA*）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>图像 + s_t + 指令<br/>'Turn on the stove…'</span>"] --> T["<b>[think] 规划</b><br/><span class='ex'>[turn, pick, place]<br/>step 1/3 · turn</span>"]
+  T --> R["<b>SG-MoE 选 expert</b><br/><span class='ex'>turn → turn expert</span>"]:::win
+  R --> O["<b>[act] 动作块</b><br/><span class='ex'>ΔT ΔR Grip × chunk<br/>旋钮转到 ON</span>"]
+  O -.-> T
+  </pre></div>
+  <p class="flow-hint">虚线：执行完一个 chunk 回到模式预测；只在子技能切换时再 think（step 2/3 · pick，step 3/3 · place），其余时刻直接 act。</p>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage：3 个在推理时循环，1 个加新技能，1 个造训练标签</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-AtomicVLA/fig2.jpg" alt="四个面板：(a) 流水线 (b) SG-MoE (c) 技能扩展 (d) 数据生成"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）(a) AtomicVLA Pipeline：VLM 自适应输出 atomic skill abstraction 和 latent action，SG-MoE 的 Action Decoder 据此出动作；(b) Skill-Guided Mixture of Experts；(c) Continual Learning with Skill Expansion；(d) Task Planning Embodied Data Generation。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>(a) 左下：</b>指令 "Turn on the stove and put the moka pot on it."（蓝色 token）和三帧图像（黄色 token）进 VLM。</li>
+    <li><b>(a) 上方 "Atomic Skills Abstract"：</b>VLM 的文本输出，就是本例的 think："Task chains is [turn on the stove, pick up the moka pot, place moka pot on stove], This is step 1/3 of task, and the atomic skill is turn."</li>
+    <li><b>(a) 右侧：</b>这句话里的 atomic skill 变成小柱状图（router 权重），和 VLM 出的绿色 "Latent actions" 一起进 Action Decoder → 机器人执行（图里机械臂正在转旋钮）。</li>
+    <li><b>(b) Skill-Guided Mixture of Experts：</b>底部 "Atomic Skills: Turn" 进 Skill Router，出一组权重（柱状图）；选中的 Expert 2（黄色实线，本例 = turn expert）和 Share expert 的输出在 ⊕ 相加，再 RMSNorm &amp; Add。Expert 1 / Expert N 的虚线 = 没被选中的路径。</li>
+    <li><b>(c) Continual Learning with Skill Expansion：</b>Original Skills + Original Experts → Expand → Expanded Skills（紫框 = 新技能的片段）+ Expanded Experts（多出的紫柱 = 新 expert）。</li>
+    <li><b>(d) Task Planning Embodied Data Generation：</b>逐帧相对动作 [ΔT, ΔR, ΔGrip] → Principal-axis Analysis → Segmentation + Coarse labels（右侧时间轴用剪刀把 open / pick / place 切开）→ 连同 Task Prompt 给 InternVideo2.5 → 输出 Task Chains / Primary Actions / Timestamps。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S5["<b>5 · Label data（训练前，离线）</b><br/><span class='ex'>demo 轨迹 → turn / pick / place 分段<br/>+ task chain 文本标签</span>"] --> S1["<b>1 · Think</b><br/><span class='ex'>chain = [turn, pick, place]<br/>step 1/3 · σ = turn</span>"]
+  S1 --> S2["<b>2 · Route（SG-MoE）</b><br/><span class='ex'>turn → Z_σ → top-1 = turn expert</span>"]:::win
+  S2 --> S3["<b>3 · Act</b><br/><span class='ex'>(1−w)·shared + w·turn expert<br/>→ ΔT ΔR Grip → 执行</span>"]
+  S3 -.-> S1
+  S4["<b>4 · Expand（学新技能）</b><br/><span class='ex'>+1 expert、router +1 路<br/>只训这两处</span>"]:::win --> S2
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。贯穿 2–4 的 skill library（shared expert + K 个 skill expert + router）见 <a href="#stage-all">Library</a>。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-AtomicVLA/fig3.jpg" alt="两条 LIBERO-LONG 任务的逐帧过程，下排是 Thinking 文本块和彩色的 action chunk，左侧是 expert 激活热图"></div>
+    <figcaption><b>Fig. 3</b>（作者原图）Inference Example：LIBERO-LONG 的两个任务。每个任务上排是任务进程，下排是 AtomicVLA 的输出；灰块 = Thinking，彩色块 = Acting，颜色 = 被激活的 skill expert；最左是初始状态和 expert 激活图。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图 · 这就是 running example 的完整 trace</p>
+  <ol class="read">
+    <li><b>上排 "Prompt: Turn on the stove and put the moka pot on it"：</b>第 1 帧后灰块 Thinking → "This is step 1/3 of task, atomic skill is <b>turn</b>"（橙）。</li>
+    <li><b>接着两格橙色块：</b>每格是一个 action chunk，里面一列 ΔT ΔR Grip（平移、旋转、夹爪）——Stage 3 的输出，turn expert 在动。</li>
+    <li><b>旋钮转完再 Thinking：</b>"step 2/3 … <b>pick</b>"（绿）→ 绿色 chunk 抓 moka pot；再 Thinking "step 3/3 … <b>place</b>"（黄）→ 黄色 chunk 放到灶上。</li>
+    <li><b>最左 "Experts × step" 热图：</b>纵轴 5 个 expert，横轴 step 0–9，着色格 = 被激活的 expert——turn、pick、place 各占一行，一次只亮一行 = top-1 routing。</li>
+    <li><b>下排 "Put yellow mug in microwave and close it"：</b>同样 pick → place → close 三步，close 用蓝色的另一个 expert；两个任务的 pick / place 颜色相同 = 同一个 expert 跨任务复用。</li>
+  </ol>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Think：规划 + 说出 atomic skill</span>
+      <span class="stage-io">图像 O_t + 指令 ℓ → 文本 [task chain C_0-k, 进度 C_t, atomic skill σ]</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>单 head VLA 没有"做到哪一步、在用哪个技能"的变量；两段式有，但在另一个模型里、和执行脱节。</li>
+        <li><b>How：</b>每个时刻先预测一个模式 token：[think] 或 [act]（Algorithm 1 第 3 行）。</li>
+        <li>模式 = [think]：生成文本 task chain C_0-k（整个任务的 atomic 子任务列表）、当前进度 C_t（第几步）、atomic skill abstraction σ（本步的技能词）。</li>
+        <li>只在关键时刻 think：任务开始、子技能切换（§3.2）；其余时刻直接 [act]，用最近一次 think 的 σ。</li>
+        <li>输出格式和训练标签一致（Fig. 7 的 Output Format）："The task chain is &lt;…&gt;, This is step x/N, &lt;current atomic task&gt;, and the atomic abstraction is &lt;verb&gt;"。</li>
+        <li>技能词表是手定的：LIBERO 5 个（Pick / Place / Open / Close / Turn），CALVIN 8 个（Rotate / Push / Move / Open&amp;Close / Lift / Place / Turn / Stack），真机 5 个（Grasp / Stack / Close / Press / Open）（A.3.2、A.3.3）。</li>
+        <li>一次 think 104 ms（Tab. 10）。</li>
+      </ul>
+      <p class="eyebrow">符号表（Algorithm 1）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>符号</th><th>是什么</th><th>例子里的值</th></tr>
+        <tr><td>O_t^{1:n}</td><td>t 时刻 n 路相机的图像</td><td>灶台 + moka pot 的当前帧</td></tr>
+        <tr><td>ℓ</td><td>语言指令</td><td>"Turn on the stove and put the moka pot on it"</td></tr>
+        <tr><td>M</td><td>模式 token，[think] 或 [act]</td><td>t = 0 时 [think]</td></tr>
+        <tr><td>C_0-k</td><td>task chain：整个任务的 atomic 子任务列表</td><td>[turn on the stove, pick up the moka pot, place moka pot on stove]</td></tr>
+        <tr><td>C_t</td><td>当前进度，第几步</td><td>step 1/3</td></tr>
+        <tr><td>σ</td><td>atomic skill abstraction，本步的技能词</td><td>turn</td></tr>
+        <tr><td>s_t</td><td>本体状态（关节、夹爪）</td><td>当前关节角 + 夹爪开</td></tr>
+        <tr><td>A_t</td><td>action chunk，连续多步动作</td><td>一列 ΔT ΔR Grip</td></tr>
+      </table></div>
+      <div class="flow"><pre>
+flowchart LR
+  o["<b>O_t + ℓ</b><br/><span class='ex'>当前帧 + 'Turn on the stove…'</span>"] --> m["<b>预测模式 token M</b><br/><span class='ex'>t = 0 → [think]</span>"]
+  m --> th["<b>thinking 输出文本</b><br/><span class='ex'>chain = [turn on the stove,<br/>pick up the moka pot,<br/>place moka pot on stove]</span>"]
+  th --> s["<b>σ = atomic skill</b><br/><span class='ex'>step 1/3 · turn</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-AtomicVLA/fig2-a.jpg" alt="Fig. 2(a)：指令和图像进 VLM，输出 Atomic Skills Abstract 文本和 latent actions"></div>
+        <figcaption><b>Fig. 2(a)</b>（作者原图，裁出）AtomicVLA Pipeline：蓝色 token 是文本，黄色是图像，绿色是 latent action；上方框里就是本例的 think 输出。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>t = 0：看到灶台关着、moka pot 在旁边，预测 [think]，输出 "Task chains is [turn on the stove, pick up the moka pot, place moka pot on stove], This is step 1/3 of task, and the atomic skill is turn"（Fig. 2a 原文）。旋钮转完后的下一次 think 输出 step 2/3 · pick；moka pot 抓起后再 think 输出 step 3/3 · place（Fig. 3 上排三个灰块）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Route：atomic skill → 专属 expert（SG-MoE）</span>
+      <span class="stage-io">技能词 σ → 选中的 expert k 和权重 w_k</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>让每个 expert 只学一种 atomic skill，技能不互扰；routing 信号是语义（技能），不是 token 或去噪步。</li>
+        <li><b>How：</b>每个技能词固定对应一个标量 σ ∈ [0, 100]，借鉴 diffusion 的 noise scheduling（§3.3）；具体数值论文没给。</li>
+        <li>Z_σ = E(norm(log σ))（Eq. 1）：取 log、归一化、过 embedding 函数 E 变成 d 维向量——固定映射，技能之间在 embedding 空间里分得开。</li>
+        <li>w_k = Router(Z_σ)，k = 1…K（Eq. 2）：对 K 个 skill expert 的分布；稀疏激活，只取最高分的那个（top-1）。</li>
+        <li>library = 1 个 shared expert（保留 π0 预训练的动作生成能力）+ K 个 skill expert + router（Fig. 2b）。</li>
+        <li>expert 结构：Gemma 架构的 feed-forward（SwiGLU MLP），width 2048、mlp 4096、depth 18、8 heads，随机初始化（A.3.1）。</li>
+        <li>Ablation（Tab. 5，LIBERO-LONG）：π0 85.2 → +MoE 88.6 → +MoDE 89.5 → +SG-MoE 95.2；MoE / MoDE 按 token / 去噪步 route，每个 expert 仍是技能混合体。</li>
+      </ul>
+      <p class="eyebrow">符号表（Eq. 1–3，Fig. 2b）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>符号</th><th>是什么</th><th>例子里的值</th></tr>
+        <tr><td>σ</td><td>技能对应的噪声等级标量，0–100</td><td>turn 的固定值（未给）</td></tr>
+        <tr><td>E(·)</td><td>把归一化标量变成高维向量的 embedding 函数</td><td>—</td></tr>
+        <tr><td>Z_σ</td><td>技能 embedding，d 维</td><td>Z_turn</td></tr>
+        <tr><td>K</td><td>skill expert 的个数</td><td>LIBERO 5，CALVIN 8</td></tr>
+        <tr><td>w_k</td><td>router 给 expert k 的分数</td><td>turn expert 最高</td></tr>
+        <tr><td>F_share / F_k</td><td>shared expert / 第 k 个 expert 的输出</td><td>F_share、F_turn</td></tr>
+        <tr><td>x_t</td><td>多模态输入 [O_t, s_t]</td><td>当前帧 + 关节状态</td></tr>
+      </table></div>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>atomic skill 词</b><br/><span class='ex'>turn</span>"] --> b["<b>标量 σ ∈ [0, 100]</b><br/><span class='ex'>turn 的固定噪声等级<br/>（数值论文未给）</span>"]
+  b --> c["<b>Z_σ = E(norm(log σ))</b><br/><span class='ex'>d 维 skill embedding</span>"]
+  c --> d["<b>Router → top-1</b><br/><span class='ex'>5 个 expert 打分<br/>→ turn expert，权重 w</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-AtomicVLA/fig2-b.jpg" alt="Fig. 2(b)：Skill Router 从 Atomic Skills: Turn 选中 Expert 2，与 Share expert 相加"></div>
+        <figcaption><b>Fig. 2(b)</b>（作者原图，裁出）Skill-Guided Mixture of Experts：Atomic Skills: Turn → Skill Router → 选中 Expert 2（黄线），与 Share 在 ⊕ 相加。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>底部 Attention block → RMSNorm &amp; Add：</b>transformer 的注意力层；这一层的输出同时送去 Share expert 和各 skill expert。</li>
+        <li><b>左下 "Atomic Skills: Turn" → Skill Router：</b>本例的 σ = turn 进 router，出一组柱状权重。</li>
+        <li><b>Expert 1 / Expert 2 / … / Expert N：</b>K 个 skill expert；黄色实线 = 被选中的 Expert 2（本例的 turn expert），绿 / 红 / 蓝虚线 = 没被选中的路径。</li>
+        <li><b>⊕ → RMSNorm &amp; Add：</b>Expert 2 的输出和 Share 的输出按 w 加权相加（Eq. 3），再残差归一化。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-AtomicVLA/tab5.jpg" alt="Table 5：π0 85.2，+MoE 88.6，+MoDE 89.5，+SG-MoE 95.2"></div>
+        <figcaption><b>Tab. 5</b>（作者原表）LIBERO-LONG 上的 routing 方式 ablation：按 token（MoE）、按去噪步（MoDE）、按技能（SG-MoE）。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>σ = turn → Z_turn → router 给 5 个 expert 打分，turn expert 最高（Fig. 3 热图 step 0–3 只亮一行）；到 pick、place 时各自换一行，同一个 pick expert 在 "Put yellow mug in microwave" 里也被用到。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Act：shared + skill expert 出动作块，执行，循环</span>
+      <span class="stage-io">x_t = [O_t, s_t] + 选中的 expert → action chunk A_t → 执行 → 回到模式预测</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>既要 shared expert 的泛化（π0 预训练），又要 skill expert 的精度。</li>
+        <li><b>How：</b>F_out = (1 − w_k)·F_share(x_t) + w_k·F_k(x_t)（Eq. 3）：shared 和选中 expert 按 router 分数加权（Fig. 2b 的 ⊕）。</li>
+        <li>Action decoder 从 VLM 的 latent action token 出一个 chunk：每行 ΔT ΔR Grip（平移、旋转、夹爪），就是 Fig. 3 的彩色块。</li>
+        <li>执行 A_t，t ← t + 1，回到模式预测（Algorithm 1 第 9–12 行）；下一次 [think] 看新观测，自己判断是否进入下一步。</li>
+        <li><b>Error recovery（§4.2，Fig. 4）：</b>抓到的 butter 掉了 → 下一次 think 发现进度没变 → 重新生成 atomic skill abstraction（还是 pick）→ 重做。CALVIN 评测不计恢复后的完成，所以 Tab. 2 可能低估（§4.2）。</li>
+        <li>推理延迟（Tab. 10）：act 92 ms（K = 5）、126 ms（K = 8）、160 ms（K = 12）；π0 71 ms。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>x_t = [O_t, s_t]</b><br/><span class='ex'>当前帧 + 本体状态</span>"] --> b["<b>shared + turn expert</b><br/><span class='ex'>(1−w)·F_share<br/>+ w·F_turn</span>"]:::win
+  b --> c["<b>action chunk A_t</b><br/><span class='ex'>ΔT ΔR Grip × 多步</span>"]
+  c --> d["<b>执行，t + 1</b><br/><span class='ex'>旋钮转到 ON<br/>→ 下次 think: step 2/3 pick</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-AtomicVLA/fig4.jpg" alt="Fig. 4：CALVIN 和 LIBERO 各一行五帧，中间出现 ✗ 后又变回 ✓"></div>
+        <figcaption><b>Fig. 4</b>（作者原图）Error Recovery：技能执行失败时，AtomicVLA 自动评估进度并重做当前技能。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>上排 Calvin：</b>第 1、2 帧 ✓，第 3 帧 ✗——粉色块没有抓住；第 4、5 帧 ✓——下一次 think 仍是同一个 atomic skill，重新抓起并完成。</li>
+        <li><b>下排 LIBERO：</b>第 1 帧 ✓，第 2、3 帧 ✗——瓶子没夹住（§4.2 文字里的例子是 butter 抓起后掉落）；第 4、5 帧 ✓——再次抓取成功。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>step 1/3 turn：turn expert 和 shared expert 加权出 chunk，旋钮转到 ON（Fig. 3 两格橙色块）；执行完回到模式预测，看到旋钮已开 → think：step 2/3 · pick。若 pick 时 moka pot 滑掉，下一次 think 仍输出 step 2/3 · pick，重抓——机制同 Fig. 4，本例的失手过程论文没有展示（推断）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Expand：学新技能 = 加一个 expert + router 一路</span>
+      <span class="stage-io">新技能（open）的演示 → K + 1 个 expert 的 library，旧 expert 不动</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>全模型微调学新技能 → 旧技能遗忘（π0.5 旧 4 任务平均 −15.0，Tab. 4）。</li>
+        <li><b>How：</b>新技能分到一个新的 σ / Z_σ；加一个新 expert 模块；router 多一路输出（§3.4）。</li>
+        <li>初始化：扩展后的 router 从原 router 复制权重，新的一路用小随机数。</li>
+        <li>只训新 expert + 对应的 router 参数，其余冻结 → 旧技能 "largely unaffected"。</li>
+        <li>真机实验（§4.3，A.3.4）：4 个短任务混训 20k 步 → 加 "open the top drawer"，微调 7k 步，lr 5e-6，每任务 20 次验证。</li>
+        <li>结果（Tab. 4）：π0.5 旧 4 任务 77.5 → 61（−15.0，Stack 65 → 45）；AtomicVLA* 86.3 → 82（−1.3）；新技能 open 70 vs π0.5 的 55；5 任务平均高 21。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>原 library</b><br/><span class='ex'>4 个 expert（真机）<br/>grasp/stack/close/press</span>"] --> b["<b>+1 expert，router +1 路</b><br/><span class='ex'>新 expert 随机初始化<br/>router 复制旧权重</span>"]:::win
+  b --> c["<b>只训新 expert + 新路</b><br/><span class='ex'>7k 步，lr 5e-6</span>"]
+  c --> d["<b>旧技能不动</b><br/><span class='ex'>旧 4 任务 86.3→82<br/>π0.5 全微调 77.5→61</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-AtomicVLA/fig2-c.jpg" alt="Fig. 2(c)：Original Skills/Experts 经 Expand 变成 Expanded Skills/Experts，多出一根紫色柱"></div>
+        <figcaption><b>Fig. 2(c)</b>（作者原图，裁出）Continual Learning with Skill Expansion：紫框是新技能的数据，紫柱是新加的 expert。</figcaption>
+      </figure>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-AtomicVLA/tab4.jpg" alt="Table 4：π0.5 (CL) 平均 61、−15.0；AtomicVLA* (CL) 平均 82、−1.3"></div>
+        <figcaption><b>Tab. 4</b>（作者原表）Continual Learning with Skill Expansion：先看最右 ΔAvg. 列（学 open 之后旧 4 任务的变化），再看 Open (new) 列。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>本例的 LIBERO library 本来就有 turn / pick / place / open / close。把论文的真机实验搬到本例上（推断）：假如一开始只有 pick / place / open / close 四个 expert，要新加 turn——加一个 turn expert 和 router 的第 5 路，只用 turn 的演示训这两处，pick / place expert 原封不动，所以 moka pot 的 pick / place 不会退化。论文真机实验里新加的是 open（Tab. 4）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Label data：从演示轨迹自动造 think 标签</span>
+      <span class="stage-io">原始演示（视频 + 末端轨迹 + 指令）→ 每段的 task chain / step x/N / atomic verb</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>Stage 1 的 think 需要文本监督；人工标 atomic action 既贵又模糊，纯 VLM 或光流分段噪声大（§3.5）。</li>
+        <li><b>How：</b>把末端轨迹按短 chunk 看 (Δx, Δy, Δz, Δroll, Δpitch, Δyaw, 夹爪)：比较平移 / 旋转幅度找主导运动模式（principal-axis analysis），夹爪开合定语义边界。</li>
+        <li>阈值（A.3.5）：平移 3 cm、旋转 0.05 rad、夹爪变化 0.1，看连续 5 帧。</li>
+        <li>规则例（§3.5）：z 持续下降 + 夹爪闭合 → pick；平移小、旋转大、夹爪闭合 → turn。</li>
+        <li>粗标签 + 时间戳的片段 → InternVideo2.5 看片段（每 3 帧采样）+ 指令 + 粗标签，输出 task chain、当前 step、atomic action；粗标签错了可以改（Fig. 7）。</li>
+        <li>LIBERO 的技能分布（Tab. 6）：Pick 2462、Place 761、Open 201、Close 152、Turn 175；训练时提高 Open / Close / Turn 的采样频率（A.3.2）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>demo 轨迹</b><br/><span class='ex'>每帧 ΔT、ΔR、夹爪</span>"] --> b["<b>principal-axis 分段</b><br/><span class='ex'>旋转主导+夹爪闭 → turn<br/>z 下降+夹爪闭 → pick</span>"]
+  b --> c["<b>InternVideo2.5</b><br/><span class='ex'>片段 + 指令 + 粗标签</span>"]
+  c --> d["<b>think 标签</b><br/><span class='ex'>chain + step 1/3 + turn</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-AtomicVLA/fig2-d.jpg" alt="Fig. 2(d)：相对动作 → Principal-axis Analysis → 分段粗标签 → InternVideo2.5 → Task Chains"></div>
+        <figcaption><b>Fig. 2(d)</b>（作者原图，裁出）Task Planning Embodied Data Generation。</figcaption>
+      </figure>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-AtomicVLA/fig7.jpg" alt="Fig. 7：给 InternVideo2.5 的 prompt，含 Role、Input、Task、约束、示例、Output Format 和一条模型回答"></div>
+        <figcaption><b>Fig. 7</b>（作者原图）The prompts and examples of the InternVideo2.5：示例就是本例的任务。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>Role / Input：</b>告诉模型它看的是"已按运动模式切好的技能片段"；输入 = 完整指令 + 粗标签 + 每 3 帧采样的图像。示例正是本例：Instruction "Turn on the stove and put the moka pot on it"，Coarse label "Turn"。</li>
+        <li><b>Task / Thought process：</b>task chain 是 atomic 子任务列表，每条一个动词，动词只能从 [Pick / Place / Turn / Open / Close / Push / Pull / Adjust] 里选，不超过 15 词，要写明物体属性和目标容器。</li>
+        <li><b>Examples：</b>三条示例输出（yellow cup → microwave；butter → basket；top drawer → block）。</li>
+        <li><b>Output Format 和最后一行模型回答：</b>"The task chain is [turn on the stone, pick up the moka pot, place the moka pot on the stone], This is step 1/3, turn on the stone, and the atomic abstraction is turn."（原文如此，stove 印成了 stone）。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>moka pot 的一条演示 → 轨迹切成三段（旋转主导 + 夹爪闭 = turn；z 下降 + 夹爪闭 = pick；之后的 = place）各带时间戳 → InternVideo2.5 给每段写 "task chain + step x/3 + verb" → 训练时 VLM 学会在段首输出这段文字（[think]），段内输出 [act]。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">Library · 贯穿 Stage 2–4</span>
+      <span class="stage-name">Atomic skill library：shared expert + K 个 skill expert + router</span>
+      <span class="stage-io">建在 π0（AtomicVLA）或 π0.5（AtomicVLA*）上</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li>组成：1 个 shared expert（π0 的动作生成能力）+ K 个 skill expert（随机初始化）+ skill router；K = 5（LIBERO、真机）、8（CALVIN）。</li>
+        <li>两个版本：AtomicVLA 建在 π0 上，AtomicVLA* 建在 π0.5 上；每张表里要和对应的 base 比。</li>
+        <li>训练（A.3.1）：8 × H200，LIBERO / CALVIN 100k 步，真机 30k 步，batch 64；AdamW，cosine lr 2.5e-5 → 5e-6，warmup 1k 步，EMA 0.999。数据按 LeRobot 格式。</li>
+        <li>真机（A.3.3）：Franka Research 3 + 两路 RealSense D435i（手腕 + 对面），Gello 遥操采数据；long-horizon 每任务 100 条、短任务 50 条，共 550 条；每任务测 20 次。</li>
+        <li>规模与延迟（Tab. 10）：π0 3.24B → K = 5 4.17B、K = 8 4.81B、K = 12 5.65B；act 71 → 92 / 126 / 160 ms，think 104 ms。A.4 说是单卡 H20，A.3.1 说推理用 RTX PRO 6000，论文前后不一致。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-AtomicVLA/tab10.jpg" alt="Table 10：参数量和推理时间随 expert 数增长"></div>
+        <figcaption><b>Tab. 10</b>（作者原表）Parameter and inference-time：每加 3 个 expert 约 +0.6B 参数、act 延迟 +30 ms 左右。</figcaption>
+      </figure>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>[think] / [act] 自适应切换（§3.2，Algorithm 1）</td><td>Stage 1：t = 0 think，旋钮转完再 think；中间全是 act</td></tr>
+        <tr><td>task chain + 进度 + atomic skill 的文本规划</td><td>Stage 1：[turn, pick, place]、step 1/3、turn</td></tr>
+        <tr><td>技能 → 固定 embedding Z_σ（Eq. 1）</td><td>Stage 2：turn → σ → Z_turn</td></tr>
+        <tr><td>top-1 skill router（Eq. 2）</td><td>Stage 2：turn expert 最高分；Fig. 3 热图一次一行</td></tr>
+        <tr><td>shared + skill expert 加权（Eq. 3）</td><td>Stage 3：(1−w)·F_share + w·F_turn → ΔT ΔR Grip</td></tr>
+        <tr><td>技能跨任务复用</td><td>Level 2 Fig. 3：pick / place 在 moka pot 和 yellow mug 任务里同色</td></tr>
+        <tr><td>Error recovery（§4.2，Fig. 4）</td><td>Stage 3：失手后下一次 think 仍是 pick，重做</td></tr>
+        <tr><td>Skill expansion：新 expert + router 一路（§3.4）</td><td>Stage 4：加 turn（推断）/ 论文加 open，旧任务 −1.3</td></tr>
+        <tr><td>principal-axis + InternVideo2.5 标注（§3.5）</td><td>Stage 5：moka pot 演示切成 turn / pick / place 三段 + 文本</td></tr>
+        <tr><td>主结果</td><td>Results：LIBERO-LONG 85.2 → 95.2，真机 +20.0 / +18.3，CL −1.3 vs −15.0</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览</h2>
+  <ul class="tight results">
+    <li><b>LIBERO 平均 96.6 / 97.8</b>（AtomicVLA / AtomicVLA*）vs π0 94.2、π0.5 96.9；LIBERO-LONG 95.2 vs π0 85.2（+10），96.2 vs π0.5 92.4（Tab. 1，每任务测 50 次）。</li>
+    <li><b>CALVIN ABC→D avg len 4.09 / 4.27</b> vs π0 3.87、π0.5 4.02；连做 5 个任务 69.1 vs 59.4、77.6 vs 71.0（Tab. 2）。后三段相对 π0.5 提升 5.8 / 6.2 / 6.6。Push-right 类任务只有 22–34%（Tab. 9），作者归因于评测时块放在右侧的分布偏移。</li>
+    <li><b>真机 long-horizon 平均 56.7 / 63.3</b> vs π0 36.7、π0.5 45（+20.0 / +18.3，Tab. 3）；Object into microwave 10 → 45、35 → 55。</li>
+    <li><b>Continual learning −1.3 vs −15.0</b>：学 open 后旧 4 任务的平均变化；open 本身 70 vs 55（Tab. 4）。</li>
+    <li><b>Ablation 95.2 vs 88.6 / 89.5</b>：SG-MoE vs token-MoE / MoDE（LIBERO-LONG，Tab. 5）。</li>
+    <li><b>复杂场景 43.3 vs 33.3</b>（Tab. 8）：抓颜色和桌面接近的 corn 时能多次修正，+15。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-AtomicVLA/tab1.jpg" alt="Table 1：LIBERO 四个 suite 和平均，AtomicVLA 96.6，AtomicVLA* 97.8"></div>
+    <figcaption><b>Tab. 1</b>（作者原表）LIBERO：先看 Long 列——AtomicVLA 95.2 vs π0 85.2，AtomicVLA* 96.2 vs π0.5 92.4。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-AtomicVLA/tab2.jpg" alt="Table 2：CALVIN ABC→D 连做 1–5 个任务的成功率和平均长度"></div>
+    <figcaption><b>Tab. 2</b>（作者原表）CALVIN ABC→D：先看 Avg. Len 列，再看 3 / 4 / 5 列（越长的链差距越大）。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-AtomicVLA/tab3.jpg" alt="Table 3：真机三个 long-horizon 任务，AtomicVLA* 平均 63.3"></div>
+    <figcaption><b>Tab. 3</b>（作者原表）真机 long-horizon：InP = Objects in plate，IntoD = Object into drawer，IntoM = Object into microwave；先看 ΔAvg.。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-AtomicVLA/fig8.jpg" alt="Fig. 8：LIBERO 的 put both moka pots on the stove 和 CALVIN 五连任务，π0 在后半段 ✗，AtomicVLA 全 ✓"></div>
+    <figcaption><b>Fig. 8</b>（作者原图）LIBERO 和 CALVIN 的对比：上组 "put both moka pots on the stove"，π0 第二个 moka pot 失败（最后两帧 ✗），AtomicVLA 全 ✓；下组 CALVIN 五连任务，π0 从第 4 帧起 ✗。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-AtomicVLA/fig5.jpg" alt="Fig. 5：真机两个任务，π0.5 在关微波炉门和最后放块时 ✗，AtomicVLA* 全 ✓"></div>
+    <figcaption><b>Fig. 5</b>（作者原图）真机："place the plate into the microwave and close the door" 里 π0.5 关门失败（后两帧 ✗）；"open the top drawer and place the block inside" 里 π0.5 最后一步 ✗；AtomicVLA* 两条全 ✓。</figcaption>
+  </figure>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>技能词表是手定的（LIBERO 5 个、CALVIN 8 个），每个技能只是一个标量 σ；新技能必须由人定义并提供演示（A.2：仍靠 IL，需要大量人类示范，作者把 RL 列为后续）。</li>
+    <li>think 的质量依赖 VLM 的规划能力（A.2）；planner 说错技能，router 就选错 expert，论文没有报告 think 的错误率。</li>
+    <li>top-1 routing：一步只能用一个 skill expert；复合动作要先拆成 atomic。</li>
+    <li>分布偏移时 expert 并不更鲁棒：CALVIN 的 push-right 只有 22–34%（Tab. 9）。</li>
+    <li>真机只有 Franka 单臂、每任务 20 次评测；continual learning 只试了"加 1 个技能"，没有长序列的持续学习。</li>
+    <li>开销：每加 expert 参数增加（K = 12 时 5.65B），act 延迟从 71 ms 到 92–160 ms（Tab. 10）。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Atom-Action</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li>RPent（Harness VLA）把冻结 VLA 包成可重试的 VLA_ACT primitive、由 Claude Code / Codex planner 组合；AtomicVLA 是同一思路的"模型内版"：planner = [think]，primitive = skill expert，重试 = 下一次 think。值得对比：harness 的 planner 在 LIBERO-Pro 上重试 vs AtomicVLA 的自恢复。</li>
+    <li>§3.5 的标注流水线（principal-axis 分段 + InternVideo2.5 写 task chain / step / verb）可以直接拿来给 RoboTwin / LIBERO 演示打 atomic 标签，作为 harness skill library 的 primitive 词表。</li>
+    <li>"新技能 = 新 expert + router 一路，只训这两处"对应 harness 里"往 skill library 加一个 tool"；两边都没回答技能词表从哪来——可以试让 planner 从失败 trace 里提议新的 atomic skill。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Atom-Action/2026-11-02-AtomicVLA.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
