@@ -1,0 +1,725 @@
+<!doctype html>
+<!-- Paper page template. Copy to <Project>/artifact/<name>.html, replace every placeholder
+     in double braces, and drop optional blocks you do not use. Keep the section order: it is
+     the reader's order (preferences.md). Figures live in artifact/<name>/ next to this file.
+     This page loads Mermaid itself: pages other than the library home are served without the
+     artifact skeleton, so nothing else draws the charts. In chart labels write class='ex'
+     with single quotes. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>FACT</title>
+<meta name="description" content="用触觉手套采 2,000 h 带指尖力的人手示范（EgoForce）。FACT 先用视频 DiT 预测未来视频、点轨迹和粗动作，再按触觉把动作和未来指尖力一起去噪。10 个真机灵巧任务的二元成功率平均 41.4%，T-Rex 8.6%。">
+<meta name="paper:title" content="FACT: A Multimodal Force–Action–Track Foundation Model for Human-to-Robot Dexterity">
+<meta name="paper:source" content="https://fact-1-0.github.io/">
+<meta name="paper:venue" content="Preprint (project page), Oct 2026">
+<meta name="paper:pdf" content="https://fact-1-0.github.io/FACT.pdf">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.grid tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+table.grid td.sym { white-space: nowrap; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Sim-robot-learning</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#io">Inputs / Outputs</a><a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Sim-robot-learning · 归档于 2026-11-02</p>
+  <h1>FACT</h1>
+  <p class="full-title">FACT: A Multimodal Force–Action–Track Foundation Model for Human-to-Robot Dexterity</p>
+  <p class="meta">Zhi Cao, Yining Hong, Jiaolong Yang, Yejin Choi, Li Fei-Fei, Jiajun Wu et al. · UMich · Stanford · Microsoft Research · 项目页预印本，PDF 生成于 2026-10-13</p>
+  <p class="links">
+    <a href="https://fact-1-0.github.io/FACT.pdf">PDF</a><a href="https://fact-1-0.github.io/">Project page</a>
+  </p>
+  <p class="note">没有 arXiv 版本，PDF 链接也没有版本号（文件生成于 2026-10-13）。项目页上的 Code 和 Data 标为 Coming Soon（2026-11-02 查看）。</p>
+  <p class="filed">归档到 <b>Sim-robot-learning</b>：从带触觉的人手示范，为灵巧双手操作做 imitation learning。它也服务 Robotic-harness：可以作为 ORA 下的 skill executor 候选。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>灵巧操作既要看清手往哪去，也要控制按多重。带力的机器人数据很贵，人手数据又没有力；已有策略要么不读力，要么只把力当压缩后的输入。</dd></div>
+    <div><dt>Idea</dt><dd>用触觉手套采 2,000 h 带标定指尖力的人手示范（EgoForce）。慢钟：视频 DiT 一起预测未来视频、点轨迹和粗动作；快钟：按触觉把剩余动作和未来指尖力一起去噪。</dd></div>
+    <div><dt>Result</dt><dd>10 个真机任务，每个用 10 条机器人示范和 90 条人手示范微调。二元任务平均成功率 41.4%（T-Rex 8.6%，π0.5 1.4%）；拨移液枪 5/10 次接上拨盘，误差 6.4 µL。预训练去掉人手力监督后，开试管盖从 80% 降到 0%。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>拨移液枪：手往哪去看得见，按多重看不见</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Task 10 · Adjust Pipette Volume</b>：桌上有一支设在 <span class="ex">420 µL</span> 的移液枪。指令是 <span class="ex">“Hold the pipette body with your left hand and turn the volume dial with your right thumb and index finger until the display reads 400 µL.”</span> 输入是三路画面、机器人状态和 10 个指尖的 6 轴力（Fig. 10）。→ 想要：左手稳住枪身，右手拇指和食指小步转拨盘，停在 <span class="ex">400 µL</span>。</p>
+    <p>评分：10 次 trial 里拨盘被转动（engaged）的次数，以及这些 trial 最终读数离 400 µL 的平均误差。微调数据：<span class="ex">10 条机器人遥操作 + 90 条人手示范</span>（§V-A）。</p>
+  </div>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-FACT/fig20.jpg" alt="Task 10 一次 rollout 的五帧头部画面：左手握住移液枪枪身，右手拇指和食指移到拨盘上转动"></div>
+    <figcaption><b>Fig. 20</b>（作者原图）Task 10 的一次 rollout，头部相机均匀取五帧。</figcaption>
+  </figure>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>拨移液枪 420→400 µL</b><br/><span class='ex'>3 路画面 + 10 指尖力</span>"] --> A1["<b>π0.5</b><br/>不读触觉<br/>每只手压成 10-D PCA"]
+  A1 --> AX["几乎碰不上拨盘<br/><span class='ex'>1/10 接上 · 17.0 µL</span>"]:::gap
+  IN --> B1["<b>T-Rex</b><br/>力只作 VQ 压缩输入<br/>不预测未来力"]
+  B1 --> BX["接上少，拨不准<br/><span class='ex'>2/10 · 14.0 µL</span>"]:::gap
+  IN --> C1["<b>Robot-only 预训练</b><br/>同架构，只有<br/>100 h 遥操作"]
+  C1 --> CX["一次也没接上<br/><span class='ex'>0/10 · 无读数</span>"]:::gap
+  IN --> D1["<b>人手预训练，无力监督</b><br/>见过人怎么动<br/>没见过按多重"]
+  D1 --> DX["接上了也拨不准<br/><span class='ex'>2/10 · 20.5 µL</span>"]:::gap
+  </pre></div>
+  <p class="note">数字来自 Table I（π0.5、T-Rex）和 Table II（两种预训练配方）。“坏在哪”是推断，论文只报告接上次数和误差。推断依据：π0.5 没有触觉输入，动作头固定 32 维，每只手只剩 10-D PCA（App. D(a)）；T-Rex 的力只是 VQ 压缩后的输入（§II）；App. E 分析 FACT 自己的失败：这个任务难在“敢不敢接触”，不在接触后的调节。</p>
+  <p class="crux"><b>根本问题：</b>转拨盘要视觉决定手往哪去，也要力决定按多重；带力的机器人数据贵，人手数据没有力，已有策略不读力或只把力当压缩输入。　<b>这篇的切入点：</b>用触觉手套采大规模带标定力的人手数据；模型先用视频和点轨迹规划粗动作，再把未来指尖力当作和动作一起去噪的目标。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>通用 VLA</b><br><span class="muted">π0.5（baseline）</span></td><td>开放世界泛化的 VLA</td><td>官方 OpenPI 和公开 base checkpoint，同样数据全参数微调；输入三路画面、指令、状态</td><td>不读触觉，32 维动作头把每只手压成 10-D PCA → FACT 读 10 个指尖的力，直接输出 62 维动作</td></tr>
+      <tr><td><b>Slow-fast 触觉精修</b><br><span class="muted">T-Rex（baseline）、Reactive Diffusion Policy；HYDRA、RT-H 做动作分层</span></td><td>接触丰富的灵巧操作</td><td>低频视觉生成动作，异步用 VQ 压缩的力历史精修</td><td>力只作输入，不预测 → FACT 把连续的未来力和动作一起去噪，两者互相塑造</td></tr>
+      <tr><td><b>人手数据，没有力</b><br><span class="muted">Ego4D、EPIC-KITCHENS、UMI、DexCap、EgoMimic、EgoDex、MimicPlay</span></td><td>用人类示范扩大数据规模</td><td>第一视角视频、便携采集、人机共训</td><td>只记录手怎么动，没有接触力 → EgoForce 2,000 h 带标定指尖力</td></tr>
+      <tr><td><b>触觉 / 力感知策略</b><br><span class="muted">3D-ViTac、ViTacFormer、Tactile-VLA、ForceMimic、force-aware IL</span></td><td>用触觉和力引导操作</td><td>视触觉皮肤、触觉表征、触觉 VLA、力示范采集、辅助的未来力预测</td><td>力是观测或辅助目标 → FACT 里未来力是和动作共同去噪的目标，力通路用人手数据大规模预训练</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>预测视频 / 点轨迹当共享表征</b><br><span class="muted">TrAct、Track2Act、ATM、Flow as interface、GR-1、UniPi</span></td><td>跨具身迁移，用预测的视觉运动指导动作</td><td>先预测未来视频或点轨迹，再生成动作</td><td>只有视觉运动，没有力 → FACT 的 planner 沿用 TrAct 式的视频、轨迹、动作联合预测，后面接力-动作 refiner</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §II Related Work，以及 §V-A 和 App. D 对两个 baseline（π0.5、T-Rex）的描述；没有另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>慢钟用视频和点轨迹规划“手往哪去”，快钟按触觉一起修动作、预测未来力</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-FACT/fig1.jpg" alt="三栏总览：左栏 EgoForce 数据集（第一视角相机、触觉手套，2k 小时、40k episodes），中栏 FACT（上半 Track-Guided Coarse Planner，下半 Force-Action Joint Refiner），右栏 8 个微调任务的照片"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）大规模带力的人手经验加上机器人示范做预训练；粗到细的架构先用视觉轨迹和视频预测塑造粗动作，再用力-动作联合精修细节。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左栏 The EgoForce Dataset：</b>人戴第一视角相机和触觉手套采集（红块是指尖受力）；规模 ~2k hours、~40k episodes、~1k tasks、120 scenes、~1k demonstrators。本任务微调用的 90 条人手示范不取自 EgoForce，是在评测任务上另采的（App. C(e)）。</li>
+    <li><b>中栏上 Track-Guided Coarse Planner：</b>Task Instruction、Anchor Frames、Robot States、Past Tracks 进入 Causal WAN DiT，三个 head 分别出 Future Video、Coarse Action、Future Track。例子里：输入 Fig. 10 那一刻的观测，输出接下来 0.8 s 的粗动作。</li>
+    <li><b>中栏下 Force-Action Joint Refiner：</b>Coarse Action、Tactile History、Tactile Current 进入 Joint Transformer，Force 和 Action 互相修正（灰色双箭头），输出 Future Force 和 Refined Action。例子里：右拇指和右食指的读数进来，修出转拨盘的动作。</li>
+    <li><b>右栏 Fine-tuning Tasks：</b>10 个评测任务里的 8 个；右列第二个 Adjust Pipette Volume 就是我们的例子。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>Fig. 10 那一刻</span>"] --> P["<b>Coarse Planner</b><br/><span class='ex'>每 0.8 s 一次</span>"]
+  P --> R["<b>Joint Refiner</b><br/><span class='ex'>每 0.2 s 一次</span>"]
+  R --> O["<b>Output</b><br/><span class='ex'>16×62 动作 @20 Hz</span>"]
+  </pre></div>
+
+  <h3 id="io">FACT 吃什么、吐什么</h3>
+  <p>部署时的输入和输出，全部来自论文（§IV、App. A–C）。“例子里”一列是拨移液枪那一刻。</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>量</th><th>形状 · 单位 · 处理</th><th>频率</th><th>例子里</th></tr>
+      <tr class="group"><th colspan="4">输入</th></tr>
+      <tr><td><b>任务指令</b></td><td>一行缩写的文本（论文举例 “Play harp.”），umT5-XXL 编码（冻结），经 cross-attention 进入</td><td>每 episode 一次</td><td>本任务的缩写原文没给</td></tr>
+      <tr><td><b>3 路 RGB 画面</b></td><td>头部 RealSense D435 + 左右腕 ZED Mini，采集 1280×720 @30 fps；每路缩到 160×320，2×2 拼图后进 Wan VAE，每个 latent 帧 50 tokens；anchor 帧另经 CLIP（冻结）</td><td>视频 10 Hz</td><td>Fig. 10 的 head、left wrist、right wrist</td></tr>
+      <tr><td><b>机器人状态</b></td><td>实测的手臂位姿和手关节，按 1st/99th 百分位归一化到 [−1, 1]；每个 block 一个 state token；维度没有单独列出</td><td>每 block</td><td>左手握枪、右手指尖在拨盘上的姿态</td></tr>
+      <tr><td><b>过去的点轨迹</b></td><td>每 block 250 点（头部视角每只手 50 点；每个腕部视角手上 50 点 + 5×5 背景网格），每点 [x, y, 可见性, Δx, Δy]，归一化到 [0, 1]，过去 16 帧</td><td>20 Hz</td><td>训练时由 SAM2 + CoTracker 离线生成；<span class="gap">部署时从哪来，论文没写</span></td></tr>
+      <tr><td><b>触觉</b></td><td>10 个指尖 × 6 轴 wrench（Fx, Fy, Fz, Mx, My, Mz）= 每步 60 维，按通道归一化；refiner 每次看最近 16 个样本（3.2 s）和当前值</td><td>5 Hz（手上板载约 30 Hz）</td><td>右拇指 ≈4.1 N、右食指 3.47 N，左手五个指尖为空</td></tr>
+      <tr class="group"><th colspan="4">输出</th></tr>
+      <tr><td><b>动作块</b></td><td>16 × 62。每臂 31 维 = 末端位置 3 + 6-D 旋转（都相对本 chunk 起点位姿，即 delta-base）+ 22 个绝对手关节</td><td>20 Hz，16 步 = 0.8 s</td><td>左手稳住枪身，右手小步转拨盘</td></tr>
+      <tr><td><b>未来指尖力</b></td><td>4 个时刻 × 10 指尖 × 6 轴；<b>只记录用于分析，不作控制参考</b>（App. B(f)）</td><td>chunk 内 4 个 5 Hz 时刻</td><td>论文没给本任务的预测曲线</td></tr>
+      <tr><td><b>未来点轨迹</b></td><td>每个未来 track token 解码出 16 步的 2-D 速度</td><td>20 Hz</td><td>副产品，不直接控制</td></tr>
+      <tr><td><b>未来视频</b></td><td>交接时 closed-form 解码；每个 0.8 s block 有 2 个 latent 帧</td><td>10 Hz</td><td>副产品，不直接控制</td></tr>
+    </table>
+  </div>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-FACT/fig10.jpg" alt="拨移液枪时某一刻的全部输入：左大图头部视角，右上左腕和右腕视角，右下触觉面板（R 行拇指 4.06 N、食指 3.47 N 亮起，L 行全空）"></div>
+    <figcaption><b>Fig. 10</b>（作者原图）Task 10 自主 rollout 中转拨盘的一刻，FACT 收到的全部输入模态。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>head view（左大图）：</b>头部 D435 画面；左手握着枪身，右手拇指和食指搭在拨盘上。</li>
+    <li><b>left / right wrist view（右上两幅）：</b>两台 ZED Mini 的近景，看得到手指和枪身的细节。</li>
+    <li><b>tactile（右下）：</b>10 个指尖的 wrench，上排 R、下排 L，每指一格；点表示切向力，颜色表示法向力。右拇指（≈4.1 N）和右食指（3.47 N）两格亮起，左手五格为空。</li>
+    <li><b>图注原话：</b>这些再加上机器人状态，就是 policy 收到的全部输入。§IV 另外列了指令和过去的点轨迹。</li>
+  </ol>
+  <ul class="tight">
+    <li><b>两个时钟：</b>planner 每个 chunk（0.8 s）跑一次：6 个 Euler 步把噪声从 1 降到 0.4，再在 0.4 处做一次前向读出。refiner 在 chunk 开头和 offset 4、8、12（每 0.2 s）各跑 4 个 Euler 步，复用缓存的 KV memory。不用 classifier-free guidance。</li>
+    <li><b>大小：</b>planner 5.05B（Wan2.2-TI2V-5B，30 层，d=3072，24 heads，最长 2,518 tokens）；refiner 65M（6 层，d=768，12 heads）。</li>
+    <li><b>机器人：</b>两台 I2RT YAM Ultra 6-DoF 臂，末端位姿经 IK 转成关节目标；每臂一只 Sharpa Wave 1 手（22 关节，五个指尖各测 6 轴力/力矩，板载推理约 30 Hz）。预训练的机器人数据另有 Dexmate Vega-1（7-DoF 臂，同款手），因为动作是末端位姿，同一个 62 维空间覆盖两种臂。</li>
+    <li><b>论文没报：</b><span class="gap">推理延迟、推理用的 GPU 和显存、部署时过去点轨迹的来源。</span></li>
+  </ul>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>4 个 stage：数据 → 粗规划 → 力-动作精修 → 执行</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-FACT/fig3.jpg" alt="FACT 架构：上半 Track-Guided Coarse Planner（指令经 umT5、图像经 CLIP 和 WAN VAE，机器人状态和过去轨迹为干净输入，未来视频、动作、轨迹为带噪输入，进入 Causal WAN DiT，三个 head 输出），下半 Force-Action Joint Refiner（粗动作、触觉历史、当前触觉、带噪未来力，经双向自注意力和对冻结 KV cache 的交叉注意力，输出预测的未来力和修正后的动作块）"></div>
+    <figcaption><b>Fig. 3</b>（作者原图）planner 用 block-causal 视频 DiT 一起去噪未来视频、点轨迹和粗动作块；在 τ=0.4 交接，读出视频和轨迹并冻结 hidden states。refiner 经缓存的 cross-attention 读取它们，用观测到的触觉作干净 context，把剩余动作（0.4→0）和未来指尖力（1→0）一起去噪。</figcaption>
+  </figure>
+  <p class="eyebrow">图里的符号</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>白话</th><th>在拨移液枪里</th></tr>
+      <tr><td class="sym">τ（tau）</td><td>噪声水平：0 = 干净、已知的输入；1 = 纯噪声、待生成的目标</td><td>画面、状态、过去轨迹、触觉都是 0；未来视频、动作、轨迹、力从噪声开始</td></tr>
+      <tr><td class="sym">τ = 0 / τ ≠ 0</td><td>图里两个粉色虚线框：上框是干净 context，下框是要生成的带噪目标</td><td>上框是 Fig. 10 那一刻的观测，下框是接下来 0.8 s</td></tr>
+      <tr><td class="sym">τ<sub>a</sub>、τ<sub>f</sub></td><td>动作、未来力各自的噪声水平</td><td>planner 把动作从 1 降到 0.4；refiner 把动作 0.4→0、力 1→0</td></tr>
+      <tr><td class="sym">Euler 步</td><td>flow matching 的一步去噪：按模型预测的方向把带噪的量往干净挪一步</td><td>planner 6 步；refiner 每次刷新 4 步</td></tr>
+      <tr><td class="sym">Text K,V / Image K,V</td><td>文本和图像特征只当 cross-attention 的 key/value，不进自注意力序列</td><td>图里的例子指令是 “Pipetting”（Task 1）</td></tr>
+      <tr><td class="sym">umT5 / CLIP / WAN VAE</td><td>冻结的文本编码器 / 图像编码器 / 视频 latent 编码器</td><td>指令 / anchor 帧 / 三路画面</td></tr>
+      <tr><td class="sym">Per-Token AdaLN</td><td>每个 token 按自己的噪声水平做 LayerNorm 调制，让干净和带噪 token 在一次前向里共存</td><td>观测 token 按 0，未来 token 按各自的噪声</td></tr>
+      <tr><td class="sym">Masked Self-Attention</td><td>block 级因果注意力：只看本 block 和之前 3 个 block（每 block 0.8 s）</td><td>最多回看 3.2 s 的历史</td></tr>
+      <tr><td class="sym">Frozen Coarse Memory / KV Cache</td><td>planner 在交接时刻观测和动作 token 的 hidden states；投影一次后冻结，refiner 每一步都去读</td><td>这 0.8 s 里“拨盘要怎么转”的视觉计划不再改</td></tr>
+      <tr><td class="sym">❄ / 🔥</td><td>冻结 / 正在训练、正在更新</td><td>memory 冻结；refiner 的力和动作在更新</td></tr>
+      <tr><td class="sym">× N</td><td>重复的 block 数</td><td>planner 30，refiner 6</td></tr>
+      <tr><td class="sym">“Stage 1 Output”</td><td>图里指 planner 的输出，即本页的 Stage 2</td><td>粗动作块</td></tr>
+    </table>
+  </div>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>上半左侧：</b>指令经 umT5、观测经 CLIP 变成 cross-attention 的 K,V；观测还经 WAN VAE 变成视频 token，和机器人状态、过去轨迹一起作干净 context（τ = 0）。</li>
+    <li><b>上半左下：</b>未来视频、未来动作、未来轨迹是“干净值 + 噪声”（τ ≠ 0），和 context 拼成一条 token 序列。</li>
+    <li><b>上半中间 Causal WAN DiT：</b>每层依次是 Per-Token AdaLN → Masked Self-Attention → Cross-Attention（读文本和图像 K,V）→ FFN，共 N 层。</li>
+    <li><b>上半右侧三个 head：</b>Video Head 出未来视频，Action Head 出粗动作块（蓝色方块），Track Head 出未来轨迹。</li>
+    <li><b>中间灰条：</b>观测和动作的 hidden states 存进 Frozen Coarse Memory（KV Cache，❄），向下交给 refiner。</li>
+    <li><b>下半 refiner：</b>粗动作块、触觉历史、当前触觉（都是干净 context）、带噪的未来力（绿色方块）进入 N 个 block；Bidirectional Self-Attention 里力和动作互相修正（Co-Refine，🔥），Cross-Attention 去读上面的 memory。</li>
+    <li><b>下半右侧：</b>输出预测的未来力（绿）和修正后的动作块（蓝），动作块拿去执行。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  S1["<b>1 · EgoForce</b><br/><span class='ex'>人手 + 指尖力</span>"] --> S2["<b>2 · Coarse Planner</b><br/><span class='ex'>粗动作，噪声 0.4</span>"]
+  S2 --> S3["<b>3 · Joint Refiner</b><br/><span class='ex'>修动作 + 未来力</span>"]
+  S3 --> S4["<b>4 · Execute</b><br/><span class='ex'>20 Hz · IK</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。贯穿全程的<a href="#stage-all">训练配方</a>（联合训练、预训练 → 每任务微调）单独成块。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">EgoForce · 带力的人手数据</span>
+      <span class="stage-io">戴触觉手套的人手示范 → 62 维动作 + 60 维指尖 wrench + 点轨迹，和机器人示范同一个空间</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>人手数据便宜，但大多没有力；带力的机器人数据贵，规模上不去（§I、§III）。</li>
+        <li><b>采集：</b>头戴双目 RGB（2 × 1920×1200，30 fps，200 Hz IMU）+ 每腕一台 1920×1080 单目 RGB + TouchTronix 触觉手套：每个指尖 12 个 taxel，掌心 60 个，每指一个弯曲传感器，约 200 Hz（App. C(a)）。</li>
+        <li><b>自动力标定：</b>气囊在触觉面上均匀加压 0→50 psi，参考压力计同步记录；每个 taxel 的力 = 参考压力 × 面积（§III-b）。</li>
+        <li><b>手的动作标签：</b>不是动捕，是从头部相机估计（ViTPose 关键点 + HaMeR 手部网格，用双目深度定尺度），手套的弯曲传感器和 IMU 补遮挡；手指角 retarget 到 Sharpa Wave 的 22 个关节，腕位姿写成相对 chunk 起点（App. C(b)）。</li>
+        <li><b>力标签：</b>每指尖 12 个 taxel 的力合成 6 轴 wrench：力的和是法向力，力加权中心是压力中心，由它得两个力矩；切向力和扭转力矩压力阵列测不到，<b>置 0</b>（App. C(b)）。</li>
+        <li><b>点轨迹：</b>SAM2 分割第一帧的手，CoTracker 每 block 跟踪 250 点，离线生成（App. A(a)）。</li>
+        <li><b>存储：</b>LeRobot-v2 @30 fps，按最近时间戳重采样：动作和轨迹 20 Hz、视频 10 Hz、力 5 Hz（App. A(b)）。</li>
+        <li><b>规模和分布：</b>~2,000 h、~40k episodes、~1,000 tasks、~120 scenes、~1,000 demonstrators。可变形物体 21.0%、装配 17.3%、收纳 14.8%；动词 hold、pull 之后是 fold、regrasp、thread、smooth，pick 和 place 只排第 8 和第 10（§III-d，Fig. 2）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>采集</b><br/><span class='ex'>3 路相机 + 触觉手套</span>"] --> b["<b>标定 + 估计</b><br/><span class='ex'>taxel 力 · HaMeR 手姿</span>"]
+  b --> c["<b>Retarget</b><br/><span class='ex'>22 关节 + 6 轴 wrench</span>"]
+  c --> d["<b>LeRobot-v2</b><br/><span class='ex'>动作 20 Hz · 力 5 Hz</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-FACT/fig8.jpg" alt="EgoForce 采集系统：左为硬件（双目头部相机、压阻触觉手套、腕部相机）和操作者，中为头部和腕部画面及触觉图（每手 5 指 × 12 taxels，0–8 N 色标），右为 12 个采集任务示例和对应的触觉图"></div>
+        <figcaption><b>Fig. 8</b>（作者原图）EgoForce 的采集系统和数据。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左 Data Collection：</b>头戴双目 RGB 相机、两只压阻触觉手套、两台腕部单目 RGB；下面是操作者的正面和侧面。</li>
+        <li><b>中 Vision-Tactile Sensing Modalities：</b>头部画面上画的是估计的手姿和手的图像轨迹（不是动捕真值）；下面两路腕部画面；最下是触觉图，每手 5 指 × 12 taxels，色标 0–8 N。</li>
+        <li><b>右 Sample Tasks：</b>12 个采集环境的例子（Untie Shoelaces、Fold Clothes、Hammer Nails…），每个下面是左右手的触觉图，T/I/M/R/L = 拇指/食指/中指/无名指/小指。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>拨移液枪微调用的 90 条人手示范，用更轻的一套采：Wuji 触觉手套、每腕一台 RealSense D435、每腕一个 VIVE Tracker 3.0（Fig. 9 右下）。手指角 retarget 到 22 个 Sharpa 关节，腕位姿写成 delta-base，触觉写成指尖 wrench。这样人手示范和机器人示范在同一个动作和力空间里（App. C(e)）。论文只写了这套采集给出两路腕部画面。另外 10 条机器人示范用 Manus 手套 + VIVE Tracker 遥操作采集（App. C(d)）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Track-Guided Coarse Planner · 慢钟</span>
+      <span class="stage-io">指令 + 三路画面 + 状态 + 过去轨迹 → 未来视频、未来轨迹、粗动作块（还剩 40% 噪声）+ 冻结的 KV memory</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>人手和机器人手不同，但“场景接下来怎么动”（视频和点轨迹）是共通的；把它当共享表征，帮助跨具身迁移和粗动作生成（§IV）。</li>
+        <li><b>Backbone：</b>Wan2.2-TI2V-5B 视频 DiT，全量微调，5.05B 参数（App. A，Table IV）。</li>
+        <li><b>三组输入：</b>指令（umT5-XXL）和 anchor 帧（CLIP）走 cross-attention；状态、过去轨迹、条件视频 latent 是干净 context；未来视频、动作、未来轨迹一起去噪（§IV-A(a)）。</li>
+        <li><b>Token 布局：</b>每个 0.8 s block 含 2 个 latent 视频帧，617 tokens = 100 视频 + 16 动作 + 1 状态 + 250 过去轨迹 + 250 未来轨迹；序列开头另有 50 个干净观测 token（§IV-C）。</li>
+        <li><b>Per-token flow matching：</b>每个 token 带自己的噪声水平；训练时未来 token 的噪声按 block 从 Beta(1.5, 1) 采样，模型学预测“从干净值指向噪声”的速度（Eq. 1）。</li>
+        <li><b>注意力拓扑：</b>四 block 的因果窗口；状态 token 只在本 block；轨迹 token 只看轨迹，保留一条独立的几何通路（§IV-A(c)）。</li>
+        <li><b>损失（Eq. 2）：</b>视频动态 + 动作 + 20 × 轨迹（flow 项 + 5 × 位置项 + 2 × 平滑项）；轨迹损失按可见性 mask，路径越长权重越大。</li>
+        <li><b>交接：</b>6 个 Euler 步把噪声从 1 降到 0.4，再在 0.4 处做一次前向，读出视频和轨迹，存下 hidden states；动作停在 0.4，交给 refiner（App. A(c)）。</li>
+        <li><b>Coarse memory：</b>本 block 和至多 4 个前序 block 的观测和动作 token（单个 block 116 tokens），经 Linear(3072→768) 和 LayerNorm 投影一次，refiner 所有步复用（App. B(d)）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>干净 context</b><br/><span class='ex'>3 路画面 · 状态 · 轨迹</span>"] --> b["<b>6 个 Euler 步</b><br/><span class='ex'>噪声 1 → 0.4</span>"]
+  b --> c["<b>读出 + 缓存</b><br/><span class='ex'>未来视频/轨迹 · KV</span>"]
+  c --> d["<b>粗动作块</b><br/><span class='ex'>16×62，噪声 0.4</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-FACT/fig3-plan.jpg" alt="Fig. 3 上半：Track-Guided Coarse Planner 的输入、Causal WAN DiT 和三个输出 head"></div>
+        <figcaption><b>Fig. 3 上半</b>（作者原图）Track-Guided Coarse Planner。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>先看两个粉色虚线框：</b>上框（τ = 0）是已知的，下框（τ ≠ 0）是要生成的；两框拼成一条序列，进 DiT。</li>
+        <li><b>再看右侧三个 head：</b>同一个 DiT 同时出视频、动作、轨迹，所以三者共享表征。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>输入 Fig. 10 那一刻：三路画面、状态、过去 16 帧的点轨迹，加上拨枪的短指令。输出接下来 0.8 s（16 步）的粗动作块，此时还剩 40% 噪声；同时出未来视频、未来轨迹，以及存进 KV cache 的“这 0.8 s 怎么拨”的视觉计划。论文没展示本任务的预测视频。消融：去掉轨迹预测，接上 5→4 次，误差 6.4→12.8 µL（Table I）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Force–Action Joint Refiner · 快钟</span>
+      <span class="stage-io">粗动作块 + 触觉历史 16 样本 + 当前触觉 + 噪声 → 修正后的动作块 16×62 + 未来指尖力 4×10×6</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>粗规划知道手往哪去，不知道按多重；拨盘要拇指和食指压到刚好能转动的力度（§IV-B）。</li>
+        <li><b>关键选择：</b>未来力是<b>和动作一起去噪的预测目标，不是观测</b>；观测到的力只作干净 context。双向 self-attention 让预测的力影响动作，动作也影响预测的力（§IV-B(a)）。</li>
+        <li><b>结构：</b>6 个 block，d=768，12 heads，65M 参数；每个实例 76 tokens = 16 动作 + 10 当前力 + 10 力历史 + 40 未来力（4 个时刻 × 10 指尖）（App. B(c)）。</li>
+        <li><b>触觉输入：</b>每手五个指尖的 6 轴 wrench，共 60 维，按通道归一化；每个 5 Hz 刷新时刻收最近 16 个样本（3.2 s）作历史，当前力是窗口最后一个（App. B(a)）。</li>
+        <li><b>力历史压缩：</b>两手共享的 1D 卷积编码器，每指尖压成一个 256 维 code，codebook 64 条（App. B(b)）。</li>
+        <li><b>不对称去噪：</b>4 个联合 Euler 步，动作噪声 0.4→0（接着 planner），力噪声 1→0（从纯噪声开始）；只改剩余的动作后缀和没观测到的力，已执行的前缀和已测的力固定（§IV-B(c)）。</li>
+        <li><b>损失（Eq. 4）：</b>动作后缀的 flow 误差 + 0.5 × 未观测力的 flow 误差 + VQ 损失。训练时每个样本在 4 个 block × 4 个 offset 上各实例化一次（16 个）；10% 概率把触觉 token 全置 0，防止 refiner 只靠触觉（App. B(e)）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>干净 context</b><br/><span class='ex'>力历史 16 样本 + 当前力</span>"] --> b["<b>4 个联合 Euler 步</b><br/><span class='ex'>动作 0.4→0 · 力 1→0</span>"]
+  m["<b>Coarse memory</b><br/><span class='ex'>KV cache，不重算</span>"] --> b
+  b --> c["<b>Refined chunk</b><br/><span class='ex'>只改剩余后缀</span>"]
+  b --> d["<b>Future force</b><br/><span class='ex'>4×10×6，只记录</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-FACT/fig3-ref.jpg" alt="Fig. 3 下半：Force-Action Joint Refiner，左侧四路输入，中间 Per-Token AdaLN、双向自注意力（Force 与 Action Co-Refine）、交叉注意力和 FFN，右侧输出预测的未来力和修正后的动作块"></div>
+        <figcaption><b>Fig. 3 下半</b>（作者原图）Force–Action Joint Refiner。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>左侧四路：</b>粗动作块（蓝）、触觉历史和当前触觉（τ = 0，干净）、带噪的未来力（绿）。</li>
+        <li><b>中间 Co-Refine：</b>绿色的力 token 和蓝色的动作 token 在同一个双向注意力里互相看；Cross-Attention 的箭头从上方的 KV memory 来。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-FACT/fig10-s1.jpg" alt="Fig. 10 触觉面板放大：R 行拇指 4.06 N、食指 3.47 N 两格为紫红色并有切向力点，其余指尖和 L 行全部为空"></div>
+        <figcaption><b>Fig. 10 触觉面板放大</b>（作者原图）拨盘那一刻的 10 个指尖 wrench；每格下方的 Fx、Fy、Fz 小刻度是三个力分量。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>右拇指约 4.1 N、右食指 3.47 N 的读数，连同最近 3.2 s 的力历史一起进来。refiner 预测接下来 4 个时刻 10 个指尖的力，同时修剩余的动作，比如拇指再压多少、转多少。论文没给本任务的预测力曲线。消融：去掉未来力预测，接上 5→2 次，误差 6.4→11.0 µL（Table I）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Execute · 两个时钟</span>
+      <span class="stage-io">修正后的动作块 → 20 Hz 的臂关节目标（IK）和 22 个手关节目标；每 0.2 s 用新测的力重修剩余后缀</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>执行：</b>动作块以 20 Hz 执行；每臂的 delta-base 末端位姿在 YAM 模型上解 IK 得关节目标，由臂内置关节控制器跟踪；每只手发 22 个绝对关节目标（App. C(c)）。</li>
+        <li><b>时钟：</b>planner 每个 chunk 跑一次；之后在 offset 4、8、12 的 5 Hz 触觉刷新时只重跑 refiner，用缓存的 memory，钳住已执行的前缀和新测的力，代价只是 planner 的一小部分（App. B(f)）。</li>
+        <li><b>预测的力不控制：</b>预测的未来力轨迹只记录用于分析，不作控制参考（App. B(f)）。</li>
+        <li><b>硬件：</b>两台 I2RT YAM Ultra 6-DoF 臂，YAM Box 控制器；每臂一只 Sharpa Wave 1（22 关节）；头部 RealSense D435、每腕 ZED Mini，均 1280×720 @30 fps（App. C(c)）。</li>
+        <li><b>论文没报：</b><span class="gap">一个 chunk 实际要多少毫秒、在什么 GPU 上跑。</span></li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  t0["<b>t = 0</b><br/><span class='ex'>Planner + Refiner o=0</span>"] -->|执行 4 步| t1["<b>t = 0.2 s</b><br/><span class='ex'>Refiner o=4</span>"]
+  t1 -->|执行 4 步| t2["<b>t = 0.4 s</b><br/><span class='ex'>Refiner o=8</span>"]
+  t2 -->|执行 4 步| t3["<b>t = 0.6 s</b><br/><span class='ex'>Refiner o=12</span>"]
+  t3 -->|执行 4 步| t4["<b>t = 0.8 s</b><br/><span class='ex'>下一个 chunk</span>"]
+      </pre></div>
+      <p class="note">o = offset，本 chunk 已执行的步数。</p>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-FACT/fig9.jpg" alt="真机平台：两台 YAM Ultra 臂、YAM Box 控制器、Sharpa Wave 1 手、立杆顶部的 RealSense D435 头部相机、腕部 ZED Mini；左下 Manus 手套加 VIVE Tracker 用于遥操作，右下 Wuji 手套加腕部 RealSense D435 和 VIVE Tracker 用于采人手微调数据"></div>
+        <figcaption><b>Fig. 9</b>（作者原图）真机平台和两套采集接口。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>上：</b>双臂工作站。紫框 Arms · YAM Ultra，青框 Controller · YAM Box，橙框 Hands · Sharpa Wave 1，绿框立杆顶部 Head Camera · RealSense D435，蓝框 Wrist Camera · ZED Mini。</li>
+        <li><b>左下 Manus Gloves + VIVE Tracker 3.0：</b>遥操作采机器人示范（每任务 10 条）。</li>
+        <li><b>右下 Wuji Gloves + 腕部 RealSense D435 + VIVE Tracker：</b>采微调用的人手示范（每任务 90 条）。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>左手保持握住枪身，右手拇指和食指按小步把拨盘从 420 转向 400 µL；每 0.2 s 用最新的指尖力重修还没执行的动作。结果：10 次里 5 次接上，接上的 5 次里 4 次最终读数在 400 µL 的 4 µL 以内（§V-B）。App. E 的失败分析：一半 trial 根本没接上拨盘，所以失败在“敢不敢接触”，不在接触后的调节。同一节举了另一个任务：系鞋带时第一次捏如果落在鞋带旁边，画面上看不出来；去掉力预测的变体会继续空手做交叉和打圈，一次也没系成（0%）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿全程</span>
+      <span class="stage-name">Training recipe · 联合训练，预训练 → 每任务微调</span>
+      <span class="stage-io">EgoForce 2,000 h + 机器人遥操作 100 h → 联合预训练 → 每任务 10 条机器人 + 90 条人手微调</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>联合目标（Eq. 5）：</b>总损失 = planner 损失 + 权重 × refiner 损失；planner 和 refiner 端到端一起训，不分阶段。</li>
+        <li><b>预训练数据：</b>2,000 h EgoForce + 100 h T-Rex 机器人遥操作（Dexmate Vega-1 双臂 + Sharpa Wave 手，ZED X Mini 头部 + 两台 ZED X One S 腕部，640×360），按小时比例混合（§IV-D，App. C(f)）。</li>
+        <li><b>从第一步就有力：</b>标定的手套力从训练一开始就监督力通路，不是视觉预训练之后再嫁接（§IV-D）。</li>
+        <li><b>谁训、谁冻：</b>DiT 从 Wan2.2-TI2V-5B 全量微调；track codec、refiner、tactile VQ、模态 embedding 从头训；VAE、umT5-XXL、CLIP 冻结（App. A）。</li>
+        <li><b>配置（Table IV）：</b>240 张 Alibaba T-Head PPU（Zhenwu 810E，96 GB）；AdamW，峰值 lr 1e-5，cosine，bf16，DeepSpeed ZeRO-2，每卡 batch 16，训练用 K = 4 个 teacher-forced block（3.2 s）。</li>
+        <li><b>微调：</b>每个任务单独微调一个模型，100 条轨迹（10 机器人 + 90 人手），8 张 GPU（§V-A(b)）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>预训练数据</b><br/><span class='ex'>EgoForce 2,000 h</span><br/><span class='ex'>+ 遥操作 100 h</span>"] --> b["<b>联合预训练</b><br/><span class='ex'>planner + refiner 一起</span>"]
+  b --> c["<b>每任务微调</b><br/><span class='ex'>10 机器人 + 90 人手</span>"]
+  c --> d["<b>真机评测</b><br/><span class='ex'>10 次 · 5/10 接上</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>拨移液枪：预训练去掉人手力监督后，接上 5→2 次，误差 6.4→20.5 µL；只用机器人数据预训练，一次也没接上（Table II）。微调只用 10 条机器人示范：接上 4 次，误差 11.2 µL；加上 90 条人手示范：5 次，6.4 µL（Table III）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>EgoForce：带标定力的大规模人手数据</td><td>Stage 1 / 训练配方：去掉人手力监督，接上 5→2、误差 6.4→20.5 µL</td></tr>
+        <tr><td>人手和机器人共用 62 维动作 + 指尖 wrench 空间</td><td>Stage 1：本任务 90 条 Wuji 手套示范被 retarget 成同样的动作和力</td></tr>
+        <tr><td>Track-Guided Coarse Planner（视频 + 轨迹 + 动作联合预测）</td><td>Stage 2：Fig. 10 那一刻 → 0.8 s 粗动作块；去掉轨迹预测，接上 4、误差 12.8 µL</td></tr>
+        <tr><td>Per-token flow matching，在噪声 0.4 处交接</td><td>Stage 2 → 3：粗动作带着 40% 噪声交给 refiner</td></tr>
+        <tr><td>Frozen coarse memory（KV cache）</td><td>Stage 3：同一个“怎么拨”的视觉计划在 4 次刷新里复用</td></tr>
+        <tr><td>Force–Action Joint Refiner：未来力是去噪目标</td><td>Stage 3：右拇指 ≈4.1 N、右食指 3.47 N 进来；去掉力预测，接上 2、误差 11.0 µL</td></tr>
+        <tr><td>两个时钟（chunk 0.8 s，触觉刷新 5 Hz）</td><td>Stage 4：0、0.2、0.4、0.6 s 各修一次剩余动作</td></tr>
+        <tr><td>联合训练、tactile dropout</td><td>训练配方：planner 和 refiner 一起训，10% 概率去掉触觉</td></tr>
+        <tr><td>少量机器人 + 大量人手微调</td><td>训练配方：10 + 90 条 → 5/10；只用 10 条机器人 → 4/10、11.2 µL</td></tr>
+        <tr><td>失败模式（App. E）</td><td>Stage 4：一半 trial 没接上拨盘；系鞋带上去掉力预测 0%</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览</h2>
+  <ul class="tight results">
+    <li><b>41.4% · 8.6% · 1.4%</b> 7 个二元任务的平均成功率：FACT、T-Rex、π0.5（Table I）。差距最大的是开试管盖：80% 对 T-Rex 20%，即摘要里的“up to 60 points”。</li>
+    <li><b>6.7 · 5.4</b> 弹竖琴、敲木琴 10 个音里干净的个数；T-Rex 2.1 和 3.2，π0.5 0.5 和 0（Table I）。</li>
+    <li><b>5/10 · 6.4 µL</b> 拨移液枪：接上次数和平均误差；T-Rex 2 次、14.0 µL，π0.5 1 次、17.0 µL（Table I）。</li>
+    <li><b>41.4 → 14.3</b> 去掉未来力预测后的二元平均：开试管盖 80→40%，竖琴 6.7→0，移液枪接上 5→2。去掉轨迹预测后是 35.7：移液 40→20%，洗牌 30→20%，木琴 5.4→3.9（Table I，§V-C(a)）。</li>
+    <li><b>80 → 0%</b> 预训练去掉人手力监督后开试管盖的成功率；移液 40→20%，移液枪接上 5→2、误差 6.4→20.5 µL，木琴 5.4→2.2；多物体抓取不变（40%）。只用机器人数据预训练：移液和翻盖 0%，竖琴 1.2，拨盘一次没接上（Table II）。</li>
+    <li><b>10–14%</b> 每个数据规模下，有触觉监督的验证损失都更低（100 h 0.047→0.042，2k h 0.036→0.031）；从 1k h 到 2k h，有触觉损失降 11%，没有降 8%（Fig. 7）。</li>
+    <li><b>10:0 → 10:90</b> 微调加上 90 条人手示范：系鞋带 10→20%，洗牌 10→30%，移液枪接上 4→5、误差 11.2→6.4 µL（Table III）。把机器人比例提到 30:70、50:50 只小幅变好：翻盖 50→60→60%，多物体抓取 40→40→50%，移液枪接上 5→5→6（误差 6.4、5.2、6.1 µL）（Fig. 6）。作者据此说人手示范几乎和机器人示范一样有用。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-FACT/tab1.jpg" alt="Table I：十个任务上 π0.5、T-Rex、FACT 去掉力预测、去掉轨迹预测和完整 FACT 的结果；二元任务平均 1.4、8.6、14.3、35.7、41.4；竖琴 0.5、2.1、0、6.5、6.7；木琴 0、3.2、1.9、3.9、5.4；移液枪接上 1、2、2、4、5，误差 17.0、14.0、11.0、12.8、6.4 µL"></div>
+    <figcaption><b>Table I</b>（作者原表）十个任务的真机结果；w/o force pred、w/o track pred 是训练时去掉未来力预测、去掉点轨迹预测。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张表</p>
+  <ol class="read">
+    <li><b>先看 Mean 行：</b>1.4 → 8.6 → 14.3 → 35.7 → 41.4，从左到右越来越好。</li>
+    <li><b>再看最后两行（移液枪）：</b>上面一行是 10 次里接上几次，缩进的一行是接上那几次的平均误差，越小越好。</li>
+    <li><b>比较 w/o force pred 和 full：</b>差距集中在接触任务（开试管盖、竖琴、移液枪）。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-FACT/tab2.jpg" alt="Table II：三种预训练配方，人手带力加机器人（完整）、人手不带力加机器人、只用机器人；移液枪接上 5、2、0，误差 6.4、20.5、无"></div>
+    <figcaption><b>Table II</b>（作者原表）预训练配方消融，架构不变。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张表</p>
+  <ol class="read">
+    <li><b>三列：</b>完整配方、去掉人手力监督（触觉输入也 mask）、只用 T-Rex 的机器人数据。</li>
+    <li><b>先看开试管盖和移液枪：</b>去掉人手力监督掉得最多；唯一没掉的是多物体抓取（40 和 40）。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-FACT/fig7.jpg" alt="Fig. 7：验证损失随人手数据小时数下降；有触觉（蓝）从 0.042 降到 0.031，无触觉（橙）从 0.047 降到 0.036"></div>
+    <figcaption><b>Fig. 7</b>（作者原图）人手数据规模（100、500、1k、1.5k、2k h）对验证损失（MSE）的影响，有无触觉监督两条线。</figcaption>
+  </figure>
+  <ol class="read">
+    <li><b>两条线：</b>蓝 = 有触觉（FACT），橙 = 无触觉；蓝线每个点都更低，而且到 2k h 差距没有缩小。</li>
+    <li><b>横轴是线性的：</b>作者说损失随数据量对数线性下降。这是验证损失，不是真机成功率。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-FACT/tab3.jpg" alt="Table III：只用 10 条机器人示范与 10 条机器人加 90 条人手示范；系鞋带 10 对 20，洗牌 10 对 30，移液枪接上 4 对 5，误差 11.2 对 6.4 µL"></div>
+    <figcaption><b>Table III</b>（作者原表）微调里人手数据的贡献：10:0 对 10:90。</figcaption>
+  </figure>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>每个任务单独微调一个模型（100 条，8 张 GPU）；没有多任务或零样本的结果（§V-A(b)）。</li>
+    <li>每个任务只跑 10 次，没有置信区间；不少差异是 10–20 个百分点，也就是 1–2 次 rollout（我们的观察）。</li>
+    <li>只在一个真机平台（YAM + Sharpa Wave）上评测；换手或换臂能不能迁移，没有测（我们的观察）。</li>
+    <li>人手的力标签不完整：切向力和扭转力矩测不到，置 0；手姿来自头部相机估计，不是动捕（App. C(b)）。</li>
+    <li>预测的未来力只记录、不作控制参考，力对动作的作用全在网络内部（App. B(f)）。</li>
+    <li>推理延迟和算力没报；5B 的视频 DiT 每 0.8 s 要跑 7 次前向（6 步 + 1 次读出）（我们的观察）。</li>
+    <li>拨移液枪一半 trial 没接上拨盘，瓶颈在“敢不敢接触”（App. E）。</li>
+    <li>代码和数据目前是 Coming Soon，权重、推理接口还看不到（项目页，2026-11-02）。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Robot learning in simulation</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>Robotic-harness · 具身差距：</b>ORA 现在的 embodiment 都是平行夹爪臂（LIBERO 上的 Franka Panda、RoboTwin 上的 ALOHA-AgileX、ARX X5），没有 22 关节灵巧手，也没有指尖 wrench。所以不加一个灵巧手 embodiment、不采微调数据，任何 FACT checkpoint 都跑不了 ORA 现有的任务（我们的解读，不是论文的）。</li>
+    <li><b>Robotic-harness · 放在哪：</b>FACT 是一个 20 Hz 的 chunk 闭环，外加 5 Hz 的力刷新。在 ORA 里这个闭环只能放在 environment 边界后面：LLM 每个子指令调用一次、经 Supervisor 准入的 skill，LLM 选做哪个子任务，FACT 去执行。FACT 微调用的本来就是一行短指令（“Play harp.”），粒度正好对上（我们的解读）。</li>
+    <li><b>Robotic-harness · 力算不算特权信息：</b>ORA 的 LIBERO backend 已经把截断后的末端 wrench 当作公开传感读数写进 motion evidence。指尖 wrench 和它同属真机上有的传感器，不同于仿真器的 contact list，后者 ORA 当作特权信息（我们的解读）。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Sim-robot-learning/2026-11-02-FACT.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
