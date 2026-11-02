@@ -21,7 +21,9 @@ papers explained in general rather than about one paper.
   a similar problem, or solve it with a similar approach. For each one, make three things
   clear, one short line each: what it solves, how it solves it, and how it differs from
   the paper. By default trust the paper's own related-work section; search in depth only
-  when I ask for it.
+  when I ask for it. Two rows must never end with the same difference: when families share an
+  architecture, say what each one lacks (one lacks think and experts, the next lacks only
+  experts) and mark the family the paper itself belongs to.
 - **Order.** Problem, then Big picture right after it, then Stages, then Details. The
   running example is introduced inside the problem, not as its own block in between.
 - **Concise, TL;DR style, but complete.** Bullets and short phrases, no paragraphs.
@@ -94,3 +96,4 @@ Each project is one folder in the library. The scope line decides where a paper 
   symbol table, and readings put plain words first.
 - 2026-11-02: new project folder `Atom-Action` (atomic actions and skills as the unit of a robot policy), created at the user's request while filing AtomicVLA.
 - 2026-11-02, AtomicVLA: this account owns only https://claude.ai/artifact/WwBLzpin698pYEu9brsyot under the library title, so the run published there; it had not been updated since 10-21, so the five Sim-robot-learning pages were published together with the new `Atom-Action` page. The push from the lab machine failed (Claude's shell has no GitHub credentials); commits stay local until pushed by hand.
+- 2026-11-02, after AtomicVLA: rows 1 and 3 of the related-work table read the same (both ended in "单 decoder → 选 expert"). Each row's 区别 must differ from its neighbours'; name the family the paper belongs to.
