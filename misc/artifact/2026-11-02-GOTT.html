@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>GOTT</title>
+<meta name="description" content="灵巧手缺一个可复用的“建立接触”底层 primitive。GOTT 把执行拆成 reach → acquire → move：高层只给 object trajectory 和大致的 reach，一个跨手的闭环 contact-acquisition RL policy 负责抓稳，再按物体位姿跟踪。真机 4 任务平均 tSR 80.0%，开环 baseline 35.0%。">
+<meta name="paper:title" content="GOTT: Object-centric Dexterous Manipulation with a Reusable Cross-Embodiment Primitive">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.03861">
+<meta name="paper:venue" content="arXiv 2026 (v2, 2026-10-08)">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.03861v2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / misc</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">misc · 归档于 2026-11-02</p>
+  <h1>GOTT</h1>
+  <p class="full-title">GOTT: Object-centric Dexterous Manipulation with a Reusable Cross-Embodiment Primitive</p>
+  <p class="meta">Yulin Liu, Lai Wei, Yen-Jen Wang, Akash Sharma, Pieter Abbeel, Henrik I. Christensen, Haozhi Qi · Amazon FAR / UC San Diego / UChicago / UC Berkeley · arXiv 2610.03861, v2 2026-10-08</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.03861">arXiv</a><a href="https://arxiv.org/pdf/2610.03861v2">PDF</a>
+    <a href="https://dex-gott.github.io/">Project page</a>
+  </p>
+  <p class="filed">归档到 <b>misc</b>：按要求放进 misc。内容上最近的是 Sim-robot-learning（IsaacLab 里 RL 训跨手 primitive，sim-to-real），也和 Robotic-harness 相关：它定义的 reach spec + object trajectory 正是 harness 高层可以调用的底层接口。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>Object trajectory 只说"物体怎么动"，不说"手在哪、怎么抓稳"。现有灵巧手方法要么把 grasp 开环执行（没反馈），要么把 contact 和任务/手型绑在一起学（不可复用）。</dd></div>
+    <div><dt>Idea</dt><dd>把执行拆成 <b>reach → acquire → move</b>：高层只需给一个大致的 reach specification（VLM affordance + future-aware IK、或人手 demo、或参考 grasp），中间一个跨手共享的闭环 <b>contact-acquisition primitive</b>（RL，局部 hand-object 观测，canonical 26-joint/21-link 表示）负责抓稳，然后 pose-conditioned tracker 按 FoundationPose 的物体位姿跟踪轨迹。</dd></div>
+    <div><dt>Result</dt><dd>仿真 lifting 9,588 个物体：unified policy 78.7%，CrossDex 51.7%，BODex 38.7%（Table 1）；零样本到没见过的 Allegro 变体 72.1%（Table 2）。真机 4 个任务 tSR 80.0%，开环 BODex/DRO 都是 35.0%（Table 3）；DexYCB 499 条人手 demo 零样本执行 69.7%，kinematic replay 12.6%。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>知道钻头该怎么转，不等于知道手该怎么握住它</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Drill Use（真机，Franka Research 3 + Sharpa Wave 22-DoF 左手）</b>：输入是 <span class="ex">drill 的 mesh（iPhone AR Code 扫的）</span> + <span class="ex">期望的 object trajectory：把 drill 绕指定轴转 45° 到工作姿态</span> + <span class="ex">任务描述 "Drill Use"</span>。桌上 drill 的位置随机 ±0.10 m、朝向 ±30°。想要：手握住 <b>pistol grip</b>（不是 chuck），抓稳后带着 drill 走完这条轨迹（Table 3 / Table 5 的 Drill Use）。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>drill mesh + 转 45° 的轨迹</span>"]:::example
+  IN --> A1["<b>Open-loop grasp synthesis</b><br/>BODex / DRO 算一个 grasp，开环闭手"]
+  A1 --> AX["接近时把物体碰歪、或 cage 式抓握没有对指力<br/><span class='ex'>Drill Use tSR 7/10、6/10；4 任务平均 35.0%</span>"]:::gap
+  IN --> B1["<b>Cross-embodiment RL grasping</b><br/>CrossDex：人手 retarget 的 eigengrasp 动作空间"]
+  B1 --> BX["共享动作空间丢掉了每根手指的几何<br/><span class='ex'>仿真 lifting 51.7% vs GOTT 78.7%</span>"]:::gap
+  IN --> C1["<b>Joint object-centric policy</b><br/>SimToolReal：contact + tracking 一起学，绑定 arm"]
+  C1 --> CX["桌面高度一变 reach 就失效，换 arm 要重训<br/><span class='ex'>z 低于 0.4 m 时 0.002 vs 0.914；换 arm 约 7 天</span>"]:::gap
+  IN --> D1["<b>Kinematic retargeting replay</b><br/>人手轨迹 retarget 到机器手直接回放"]
+  D1 --> DX["没有反馈，物理仿真里握不住<br/><span class='ex'>DexYCB 499 条：12.6% vs 69.7%</span>"]:::gap
+  </pre></div>
+  <p class="note">BODex/DRO 的"坏在哪"来自 §4.3 和 App. D 列的三种失败模式（Fig. 13）：抓到不支持任务的区域、接近时把物体推开、cage 式抓握。Drill Use 的 7/10、6/10 是 Table 3 的 tSR；CrossDex 的数字是 Table 1 unified 行；SimToolReal 数字来自 §4.4 / Fig. 8；replay 数字来自 §4.5.2。lane 4 的输入是人手视频里的 object trajectory，不是规划出来的。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-GOTT/fig13.jpg" alt="真机上 BODex 和 DRO 的失败案例"></div>
+    <figcaption><b>Fig. 13</b>（作者原图）真机 baseline 失败：(a)(b) BODex，(c)(d) DRO。</figcaption>
+  </figure>
+  <ol class="read">
+    <li><b>(a) drill、(b) mustard（BODex）：</b>手接近时就把物体推倒或推走，开环的 grasp 还是按原位置闭合，落空。</li>
+    <li><b>(c) brush（DRO）：</b>手指围成一个笼子，拇指和其他手指没有相对的夹持力，一扫地刷子就从手里滑出。这就是 Trash Cleanup 上 DRO tSR 0/10 的原因（§4.3）。</li>
+    <li><b>(d) eraser（DRO）：</b>抓的区域不对，后面的擦板轨迹做不了。</li>
+  </ol>
+  <p class="crux"><b>根本问题：</b>object trajectory 把"物体怎么动"和机器人解耦了，但"手在哪、怎么建立稳定接触"没有一个跟任务、轨迹、手型都无关的可复用模块。　<b>这篇的切入点：</b>把 contact acquisition 单独抠出来做成一个闭环 primitive，高层只需要给一个"差不多的"初始化，primitive 负责把它变成稳定接触。</p>
+
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Open-loop grasp synthesis</b><br><span class="muted">BODex, DRO, SpringGrasp, Get a Grip, UniDexGrasp, RobustDexGrasp</span></td><td>给物体和手，算出一个稳定的 grasp 目标</td><td>bilevel 优化、跨手 grasp 预测网络、tabletop RL grasping policy</td><td>输出是开环执行的目标，不管任务适用性，对接近误差敏感 → 用闭环 primitive 把"大致初始化"变成稳定接触</td></tr>
+      <tr><td><b>Trajectory-based dexterous manipulation</b><br><span class="muted">ManipTrans, REGRIND, SPIDER, Human2Sim2Robot, ObjDex, DexTrack, AdaDexTrack, SimToolReal, Dex4D</span></td><td>让灵巧手跟着一条参考（手/物体）轨迹走</td><td>单轨迹 transfer（residual RL、物理优化）或多轨迹条件 policy，contact 和 tracking 一起学</td><td>contact acquisition 绑在具体轨迹/手型里 → 拆出来做成跨轨迹、跨手复用的 primitive，tracking 换成 IK + 位姿跟踪</td></tr>
+      <tr><td><b>High-level task interfaces</b><br><span class="muted">SPOT, VLM-Scaffold, LUCID, ManipGen, Track2Act</span></td><td>从人类视频 / foundation model 得到操作意图</td><td>object-pose trajectory diffusion、object flow + palm pose、task-specific residual RL</td><td>要么是平行夹爪，要么灵巧手部分要 task-specific RL → 意图 = object trajectory + reach spec，执行端一个可复用 primitive</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Cross-embodiment hand representations</b><br><span class="muted">CrossDex, OHRA, UniMorphGrasp, GET-Zero</span></td><td>一个 policy 控制多种手</td><td>人手 retarget 的 eigengrasp 动作空间、canonical 手表示、morphology conditioning</td><td>只做 grasp 本身；retarget 动作空间丢几何（51.7%） → per-link canonical obs/action + 三手联合训练（78.7%，未见变体零样本 72.1%）</td></tr>
+      <tr><td><b>Functional grasping</b><br><span class="muted">FunGrasp, AffordDexGrasp, GraspXL / ConGraspXL</span></td><td>选一个符合任务的 grasp（握把手而不是钻头）</td><td>affordance、语言或人手参考来约束 grasp 生成</td><td>只保证 grasp 合理，不保证后续轨迹可达 → VLM 选区域 + 沿整条轨迹解 IK 的 future-aware 选择（Table 5）</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2 Related Work，加上 §4.1–4.5 里和 BODex / DRO / CrossDex / SimToolReal / SPIDER 的直接对比。未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>一个跨手的 contact-acquisition primitive，把"大致的 reach"变成"稳定接触"，再去跟踪 object trajectory</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-GOTT/fig1.jpg" alt="GOTT teaser：三种输入，统一 policy，灵巧执行"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）GOTT 把 object trajectory（可附带参考 grasp 或 hand-object trajectory）变成灵巧执行；同一个 contact-acquisition policy 跨任务、跨手型。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左上三个蓝框：</b>三种高层输入。Object Trajectory 只有物体位姿序列（例子里就是 drill 转 45°）；Object Trajectory with Ref Grasp 多一个参考 grasp（白色手）；Hand-Object Trajectory 是人手 + 物体一起的轨迹（来自视频）。</li>
+    <li><b>中间 GOTT Unified Policy π<sub>θ</sub>(a<sub>t</sub>|o<sub>t</sub>)：</b>三种输入都汇到同一个 policy，它不看任务、不看轨迹，只看局部 hand-object 观测，输出 wrist 和手指的增量动作。</li>
+    <li><b>右上 Dexterous Execution：</b>三帧是 reach（接近 eraser）→ acquire（握住）→ move（擦板）。</li>
+    <li><b>第二行 Works Across Diverse Downstream Tasks：</b>Table 3 的四个真机任务，Drill Use 在最右，手握在 pistol grip 上。</li>
+    <li><b>第三行 Generalizes Across Objects and Embodiments：</b>同一个 checkpoint 跑在 Franka-Sharpa、Franka-XHand、Tianji-XHand 上，抓 Table 11 里的 10 个物体。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>drill mesh + 转 45° 轨迹<br/>任务 #quot;Drill Use#quot;</span>"]:::example --> R["<b>Reach</b><br/><span class='ex'>VLM 选 grip，IK 选 g*<br/>走到附近</span>"]
+  R --> A["<b>Acquire</b><br/><span class='ex'>闭环 primitive 握稳 grip</span>"]:::win
+  A --> M["<b>Move</b><br/><span class='ex'>跟踪 45°，tSR 9/10</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>4 个 stage：规划 reach spec → reach → acquire → move</h2>
+  <p class="eyebrow">符号表 · 论文 §3 和图里的记号</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>它是什么</th><th>例子里的值</th></tr>
+      <tr><td>τ<sub>o</sub> = {T<sub>O,t</sub>}</td><td>期望的 object trajectory：每个时刻物体的 6D 位姿</td><td>drill 从桌面姿态绕指定轴转 45° 的位姿序列</td></tr>
+      <tr><td>ρ = (ξ<sub>app</sub>, g<sub>init</sub>)</td><td>reach specification：一条接近轨迹 + 一个大致的初始手型（不是最终 grasp）</td><td>cuRobo 规划的无碰撞路径 + 停在 pistol grip 旁边的手</td></tr>
+      <tr><td>ℛ</td><td>task-relevant contact region：物体表面上允许手落点的区域</td><td>VLM 选的 pistol grip 周围 3 cm（Fig. 12c 黄色）</td></tr>
+      <tr><td>𝒢 = {g<sub>i</sub>}, N</td><td>N 个候选初始手型，由 BODex 的初始化阶段在 ℛ 内采样</td><td>N = 10</td></tr>
+      <tr><td>g<sup>⋆</sup></td><td>在沿 τ<sub>o</sub> 解 IK 都可行的候选里，累计关节运动最小的那个</td><td>Fig. 3 右边的 Sampled Trajectory 2</td></tr>
+      <tr><td>ε<sub>approach</sub></td><td>手的 link 到物体表面的最小距离阈值，小于它就从 reach 切到 acquire</td><td>论文未给具体数值</td></tr>
+      <tr><td>ĉ<sub>t</sub>, τ<sub>c</sub>, k</td><td>contact predictor 输出的 5 根手指接触概率、阈值、连续步数</td><td>τ<sub>c</sub> = 0.5，拇指 + 至少一根手指连续 k = 5 步超过阈值就切到 move</td></tr>
+      <tr><td>a<sub>t</sub> = π<sub>θ</sub>(o<sub>t</sub>)</td><td>primitive 的动作：6D wrist 增量 + canonical 26 维关节增量，10 Hz</td><td>每步 wrist 最多平移 ±0.008 m、转 ±0.052 rad</td></tr>
+    </table>
+  </div>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-GOTT/fig4.jpg" alt="三种 reach specification 的来源"></div>
+    <figcaption><b>Fig. 4</b>（作者原图）reach specification 的三种来源；无论来源，后面的 contact-acquisition primitive 和 tracker 不变。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>Source 1（红底）Object trajectory only：</b>例子走的路。Object trajectory + Initial scene（红点 = VLM affordance reasoning 标的 holding region）→ Generated initial（ℛ 内采样的黄色候选手型）→ Future-aware Motion planning → 右边 Reach Initialization：手停在刷柄旁边。</li>
+    <li><b>Source 2（绿底）Hand-Object trajectory：</b>人手视频 → Human object traj.（物体位姿 + 人手）→ Retargeted traj.（retarget 到机器手）→ Reach Execution：直接按 retarget 的接近段走，终点就是 g<sub>init</sub>。§4.5.2 的 DexYCB 实验用的是它。</li>
+    <li><b>Source 3（紫底）Object trajectory with reference grasp：</b>Object trajectory + 一个人手参考 grasp（熨斗）→ Retargeted grasp（直接当 g<sub>init</sub>，跳过候选生成）→ Motion planning 只规划接近段。</li>
+    <li><b>右列三张 Reach Initialization：</b>三种来源的终点都只是"手在物体附近"，红箭头是接下来 primitive 要做的事。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  S1["<b>1 · Plan reach spec</b><br/><span class='ex'>grip 区域，g*<br/>cuRobo 路径</span>"] --> S2["<b>2 · Reach</b><br/><span class='ex'>沿 ξ_app 走到 grip 旁</span>"]
+  S2 --> S3["<b>3 · Acquire</b><br/><span class='ex'>primitive 闭环握稳<br/>predictor 判定</span>"]:::win
+  S3 --> S4["<b>4 · Move</b><br/><span class='ex'>EE 跟踪 drill 转 45°</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。Stage 3 用的 primitive 怎么训出来、怎么做到跨手，见 <a href="#stage-all">Primitive 的训练和 canonical 表示</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Plan reach spec（future-aware planning）</span>
+      <span class="stage-io">mesh + τ<sub>o</sub> + 任务描述 → ρ = (ξ<sub>app</sub>, g<sub>init</sub>)</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>几何上稳的 grasp 不一定能用（握 chuck 钻不了孔）；一开始够得着的手型，沿轨迹转到一半可能关节到极限或撞上（Fig. 3）。</li>
+        <li><b>How · VLM affordance：</b>把物体按观测位姿渲染 4 个侧视图（带像素网格），prompt VLM 标出功能部件、选 holding region 而不是 working end、给 2–4 个点覆盖它的长度；各视图的点反投影到 mesh 上投票，取 3 cm 邻域作为 ℛ（App. B，prompt 原文在论文里）。</li>
+        <li><b>How · 候选：</b>用 BODex 的轻量初始化阶段在 ℛ 内采 N = 10 个 g<sub>i</sub>，碰桌子的和病态的丢掉。它们只是"大致初始化"。</li>
+        <li><b>How · trajectory-aware 选择：</b>每个 g<sub>i</sub> 用 cuRobo 规划无碰撞接近 ξ<sub>app</sub>；再假设 hand-object 相对变换固定、让物体沿 τ<sub>o</sub> 走，沿途解 IK；接近不可行、IK 超限或不收敛的候选丢掉；剩下的选累计关节运动 Σ‖q<sub>t</sub> − q<sub>t−1</sub>‖ 最小的 g<sup>⋆</sup>。</li>
+        <li><b>耗时：</b>VLM 推理 14.9 s，IK filtering 3.95 s，cuRobo 9.6 s，一次性初始化约 29.6 s（Table 14）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>4 视图渲染</b><br/><span class='ex'>drill 在桌上的 4 张 640x480</span>"] --> b["<b>VLM 标功能部件</b><br/><span class='ex'>chuck / trigger / pistol grip / battery，grasp = pistol grip</span>"]
+  b --> c["<b>反投影 + 投票 → ℛ</b><br/><span class='ex'>grip 周围 3 cm 的黄色区域</span>"]
+  c --> d["<b>BODex 初始化采样</b><br/><span class='ex'>N = 10 个候选手型</span>"]
+  d --> e["<b>cuRobo 接近 + 沿 τ_o 解 IK</b><br/><span class='ex'>转到一半 IK 跳变的候选丢掉</span>"]
+  e --> f["<b>g* = 累计关节运动最小</b><br/><span class='ex'>ρ = (ξ_app, g*)</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-GOTT/fig12.jpg" alt="Drill Use 的 VLM 区域选择"></div>
+        <figcaption><b>Fig. 12</b>（作者原图）Drill Use 的 task-aware region selection。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>(a) 四张渲染图：</b>给 VLM 的输入，drill 按观测位姿立在桌上，带像素坐标网格。</li>
+        <li><b>(b) VLM 的标注：</b>每张图上的彩色圈是识别出的功能部件（chuck、trigger、pistol grip、battery 等），带 grasp 标记的那个是 pistol grip，还有沿它长度分布的几个 extent 点。</li>
+        <li><b>(c) 黄色区域：</b>反投影后的 contact region ℛ，只有这一块表面允许采候选手型。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-GOTT/fig3.jpg" alt="future-aware planning"></div>
+        <figcaption><b>Fig. 3</b>（作者原图）Future-aware planning：对每个候选把手沿整条 object trajectory 滚一遍、解 IK。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>左列 Target Object Trajectory / Initial Configuration：</b>物体要从桌上转到目标姿态（蓝色），灰色是机器人起始状态。</li>
+        <li><b>中间 Sampled Trajectory 1（红）：</b>第一步 IK 有解，但跟着物体转的过程中 IK 解跳变（红色手臂段），被判不可行。</li>
+        <li><b>右边 Sampled Trajectory 2：</b>全程 IK 都有效，是例子里会被选中的 g<sup>⋆</sup>。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>claude-opus-4-7 在 4 张 drill 渲染图上选 pistol grip；ℛ 内采 10 个候选；沿"转 45°"轨迹解 IK 后留下可行的几个；g<sup>⋆</sup> 是转动全程关节动得最少的那个。Table 5（20 个 Drill Use 场景）：随机选候选 gSR 100% 但 tSR 20%，因为只有 35% 握在对的部位；只加 IK 筛选 tjSR 升到 90% 但 func. 仍 30%；加上 VLM 区域后 func. 85%、tSR 65%。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Reach</span>
+      <span class="stage-io">ρ → 手停在物体附近，触发 acquire</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>把"长距离、无碰撞、arm 相关"的运动和"局部、接触密集"的控制分开；reach 只负责前者。</li>
+        <li><b>How：</b>机器人沿 ξ<sub>app</sub> 走向 g<sub>init</sub>；感知端 SAM2 在第一帧分割目标，FoundationPose 用 mesh 做 6D 位姿跟踪（45 Hz，policy 10 Hz 取最新估计）；当手的 link 到物体表面最小距离小于 ε<sub>approach</sub>，控制权交给 primitive。</li>
+        <li><b>来源无关：</b>Source 2 的 ξ<sub>app</sub> 是 retarget 的人手接近段，终点不必是精确 grasp，同样在这一步结束时交给 primitive（§3.4）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>感知</b><br/><span class='ex'>SAM2 分割 drill<br/>FoundationPose 45 Hz</span>"] --> b["<b>沿 ξ_app 走</b><br/><span class='ex'>cuRobo 的无碰撞路径</span>"]
+  b --> c["<b>距离小于 ε_approach</b><br/><span class='ex'>手到 grip 表面足够近</span>"]
+  c --> d["<b>切换</b><br/><span class='ex'>wrist + 手指交给 primitive</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Franka 带着 Sharpa 手沿规划路径到 drill 的 pistol grip 旁，手型是 g<sup>⋆</sup>：手指张开、拇指对着握把另一侧。如果接近时 drill 被碰动了，位姿估计会更新，下一步 primitive 看到的是新的局部几何。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Acquire（contact-acquisition primitive）</span>
+      <span class="stage-io">大致初始化 + 局部观测 → 稳定接触，predictor 判定后切换</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>这是整篇论文的核心模块：把上游任何来源的"差不多"初始化变成稳定抓握，补偿位姿误差、几何不匹配和接触不确定性。</li>
+        <li><b>观测（Table 8）：</b>不直接给物体位姿。三块：① 21 个 canonical link 各自到物体点云（512 点）最近点的位移向量（63 维，物体信息只从这里进来）；② 26 维 canonical 关节位置 + 上一步关节目标，最近 K = 5 帧；③ 21 个 link 的 3D 位置，5 帧；再加 joint mask（26）和 link mask（21）标明哪些槽位有效。</li>
+        <li><b>动作：</b>6 维 end-effector 增量（±0.008 m、±0.052 rad/步）+ 26 维 canonical 关节增量，mask 掉无效槽位后映射回本机关节顺序；10 Hz。网络是 MLP [512, 512, 256, 128]，每步 0.752 ms。</li>
+        <li><b>什么时候算抓稳：</b>单独训的 contact predictor（2 层 MLP 256，只看最近 5 步的本体感觉）输出 5 根手指的接触概率；拇指 + 至少一根其他手指连续 5 步超过 τ<sub>c</sub> = 0.5 就切到 move。只用本体感觉是为了对物体位姿噪声免疫（Fig. 15：object pos 噪声到 5 cm 精度不变）。</li>
+        <li><b>跨手：</b>同一个 checkpoint 在 XHand（12-DoF）、Sharpa Wave（22-DoF）、Allegro（16-DoF）上都能跑，靠的是 canonical 表示，见 <a href="#stage-all">stage-all</a>。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  o["<b>局部观测 o_t</b><br/><span class='ex'>link→drill 向量<br/>+ 5 帧本体感觉</span>"] --> p["<b>π_θ（MLP）</b><br/><span class='ex'>跨手共享，不知道任务</span>"]:::win
+  p --> a["<b>a_t</b><br/><span class='ex'>wrist 6D 增量<br/>+ 26 维关节增量</span>"]
+  a --> c["<b>contact predictor</b><br/><span class='ex'>拇指 + 1 指连续 5 步<br/>≥ 0.5 → move</span>"]
+  c -. 未抓稳则继续 .-> o
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>手从 g<sup>⋆</sup> 开始，每步看自己 21 个 link 到 drill 表面的向量，微调 wrist 和手指，直到拇指和至少一根手指压住 pistol grip 两侧、predictor 连续 5 步判定抓稳。Table 3：Drill Use gSR 9/10；Table 11 drill-red 在 Franka-Sharpa 5/5、Franka-XHand 5/5、Tianji-XHand 4/5，没见过的 drill-green 4/5、5/5、5/5。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Move（pose-conditioned end-effector tracking）</span>
+      <span class="stage-io">稳定接触 + τ<sub>o</sub> → 物体沿轨迹运动</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>抓稳之后就不需要 RL 了：把 hand-object 相对变换当作固定，跟踪就是一个 IK / 位姿控制问题，也因此和 arm 无关。</li>
+        <li><b>How：</b>先短暂抬起；每步由期望物体位姿 T<sub>O,t</sub> 和估计的 hand-object 变换算出 end-effector 目标，用 FoundationPose 观测到的物体位姿误差修正，再交给低层位置控制器。</li>
+        <li><b>代价：</b>假设握住后物体不在手里动，所以做不了 in-hand 操作（§5）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  t["<b>期望位姿 T_O,t</b><br/><span class='ex'>drill 转到 45° 的中间帧</span>"] --> h["<b>固定 hand-object 变换</b><br/><span class='ex'>抓稳时记下的相对位姿</span>"]
+  h --> e["<b>EE 目标 + 误差修正</b><br/><span class='ex'>FoundationPose 看到<br/>drill 偏了就补</span>"]
+  e --> c["<b>位置控制器</b><br/><span class='ex'>Franka 7-DoF 执行</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-GOTT/fig7.jpg" alt="四个真机任务的执行过程"></div>
+        <figcaption><b>Fig. 7</b>（作者原图）四个真机任务各三帧。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>Trash Cleanup / Whiteboard Erasing：</b>抓刷子或板擦后沿桌面平移扫，轨迹主要是平移。</li>
+        <li><b>Mustard Pouring：</b>抓瓶后旋转到倾倒姿态，主要是旋转。</li>
+        <li><b>Drill Use（右下）：</b>例子。第一帧手停在 grip 旁（reach 结束），第二帧握住（acquire），第三帧 drill 已转到工作姿态（move）。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>握住 grip 后 Franka 带着 drill 绕指定轴转 45°，全程 FoundationPose 跟踪 drill 位姿、修正 EE 目标。Table 3：Drill Use tSR 9/10；BODex 7/10、DRO 6/10。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿 Stage 3</span>
+      <span class="stage-name">Primitive 的训练和 canonical 表示（为什么一个 policy 能跨手）</span>
+      <span class="stage-io">16 个 YCB 物体 × 三只手 → 一个 checkpoint，零样本到真机和没见过的手</span>
+    </summary>
+    <div class="stage-body">
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-GOTT/fig2.jpg" alt="RL 环境和跨手设置"></div>
+        <figcaption><b>Fig. 2</b>（作者原图）(A) RL 环境；(B) 跨手的统一观测/动作空间。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>(A) RL Environment：</b>四只手（XHand、Sharpa、Allegro 和另一只）围着一个 drill，每个 episode 从一个随机的 Initial Configuration 开始（BODex 为每个物体-姿态对生成 4,000 个），policy 只拿 Local Hand-Object 观测，目标是抓稳并抬起。</li>
+        <li><b>(B) Unified Observation Space：</b>每只手映射到 21 个 keypoint（1 掌 + 5 指 × 4）的网格；紫色 = 本机有的 link，灰色 = 没有的槽位，用最近的已有 link 填充，另加 mask 标记。</li>
+        <li><b>(B) Unified Policy → Decode with Joint Masking：</b>policy 输出 26 维 canonical 关节增量（拇指 6 槽，其余每指 5 槽），按每只手的 index map 和符号向量取出它有的关节，其余 mask 掉。</li>
+      </ol>
+      <ul class="tight">
+        <li><b>Canonical 槽位（Table 7）：</b>Allegro 用 16 槽、Sharpa Wave 22 槽、XHand 12 槽。不需要每只手单独的 encoder/decoder。</li>
+        <li><b>奖励（App. A.1，Table 6）：</b>r = 16·r<sub>dist</sub> + 4·r<sub>contact</sub> + 1·r<sub>lift</sub> + 10·r<sub>obj</sub>。r<sub>dist</sub> 是各 link 到物体表面距离的加权负和（拇指尖权重 8，其他指尖 4，掌 0）；r<sub>contact</sub> = 拇指接触 + "拇指且至少一指接触"；r<sub>lift</sub> 只在抓住时奖励抬高（上限 5 cm）；r<sub>obj</sub> 惩罚物体在抓取过程中平移或旋转，权重从 2 退火到 10。</li>
+        <li><b>训练：</b>IsaacLab + PPO，4,096 并行环境，episode 60 步（6 s），2,000 epoch ≈ 4.915 亿步，单张 L40S 24 小时。域随机化：物体质量 ×[0.5, 3.0]、摩擦 [0.5, 1.5]、执行器刚度 ×[0.5, 2.0]，握住后施加 2 N 随机推力。</li>
+        <li><b>Contact predictor：</b>policy 收敛后冻结，用它的 rollout 单独训（接触力 ≥ 0.05 N 为正样本）；单 episode 切换准确率 0.953–0.960，延迟中位数不超过 1 步。</li>
+        <li><b>哪些设计真的重要（Table 4）：</b>去掉 r<sub>contact</sub> 成功率 0.0%、去掉 r<sub>lift</sub> 1.5%；去掉 link 位置观测 61.0%；本体感觉历史只留 1 帧 63.0%（掉 15.7 点）；换成 OHRA 式点云表示 25.7%。r<sub>dist</sub> 在训练手上只差 2.7 点（76.0 vs 78.7），但去掉它在没见过的 Allegro 变体上从 72.1% 掉到 55.1%，Fig. 6 显示它抑制了手指反折。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  d["<b>数据</b><br/><span class='ex'>16 YCB × 稳定姿态 × 4,000 BODex 初始化</span>"] --> e["<b>RL 环境</b><br/><span class='ex'>XHand / Sharpa / Allegro 随机抽，域随机化</span>"]
+  e --> r["<b>奖励</b><br/><span class='ex'>16 r_dist + 4 r_contact + r_lift + 10 r_obj</span>"]
+  r --> p["<b>PPO 2,000 epoch</b><br/><span class='ex'>4,096 env，L40S 24 h</span>"]
+  p --> f["<b>冻结 policy</b><br/><span class='ex'>一个 checkpoint，真机直接用</span>"]:::win
+  f --> c["<b>再训 contact predictor</b><br/><span class='ex'>只看本体感觉，0.085 ms/步</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-GOTT/fig6.jpg" alt="训练手和未见手上的抓取"></div>
+        <figcaption><b>Fig. 6</b>（作者原图）上排完整 GOTT，下排去掉 r<sub>dist</sub>；左三列是训练手，右三列是去掉手指 link 得到的未见 Allegro 变体。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>上排 ours full：</b>六只手都形成拇指对指的包握，包括没训过的 Allegro4433 / 4333 / 4324（数字 = 每根手指剩下的 link 数）。</li>
+        <li><b>下排 ours w/o r<sub>dist</sub>：</b>Sharpa 手指反折（绿色指尖），Allegro 变体的关节扭曲，虽然在训练手上成功率差不多，但形态一变就露馅。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>例子里的 Sharpa 手用的 checkpoint 就是这个三手联合训的 unified policy；drill（drill-red）在训练集里，drill-green 不在，两者真机都能抓（Table 11）。如果把同一个例子换到 XHand 上跑，不用重训，只换 index map 和 mask。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>Reach-acquire-move 分解（§3.1）</td><td>Stage 2 → 3 → 4：走到 grip 旁、握稳、转 45°</td></tr>
+        <tr><td>VLM affordance reasoning（§3.3，App. B）</td><td>Stage 1：4 张渲染图 → pistol grip 而不是 chuck（Fig. 12）</td></tr>
+        <tr><td>Future-aware IK selection（§3.3，Fig. 3）</td><td>Stage 1：沿转 45° 轨迹解 IK，丢掉中途跳变的候选</td></tr>
+        <tr><td>其他 reach 来源（§3.4，Fig. 4）</td><td>Level 2 的 Fig. 4 读图；Results 里 DexYCB 人手 demo 零样本执行</td></tr>
+        <tr><td>Contact-acquisition primitive（§3.2）</td><td>Stage 3：局部观测闭环握稳 grip</td></tr>
+        <tr><td>Contact predictor（§3.2，App. A.7）</td><td>Stage 3：拇指 + 1 指连续 5 步 ≥ 0.5 切到 move</td></tr>
+        <tr><td>Canonical 跨手表示（App. A.2）</td><td>stage-all：同一 checkpoint 在 Sharpa / XHand 上抓 drill</td></tr>
+        <tr><td>奖励设计和 r<sub>dist</sub> 正则（App. A.1，Table 4）</td><td>stage-all：去掉 r<sub>dist</sub> 未见手型 72.1% → 55.1%</td></tr>
+        <tr><td>Pose-conditioned tracking（§3.5）</td><td>Stage 4：固定 hand-object 变换 + FoundationPose 误差修正</td></tr>
+        <tr><td>主结果：闭环 primitive 提升端到端成功率（Table 3）</td><td>Drill Use tSR 9/10 vs 7/10 / 6/10；4 任务平均 80.0% vs 35.0%</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览</h2>
+  <ul class="tight results">
+    <li><b>78.7%</b> 仿真 lifting（9,588 个 DexGraspNet 物体、54,149 个实例，只用 16 个 YCB 物体训练），三手 unified policy；CrossDex unified 51.7%，BODex 38.7%，DRO 40.5%（Table 1）。联合训练比各手单独训（75.4%）还高。</li>
+    <li><b>72.1%</b> 零样本到三个去掉手指 link 的 Allegro 变体，和逐变体训的 oracle 72.2% 持平；只在原 Allegro 上训的 policy 只有 17.2%（Table 2）。跨手能力来自多形态联合训练，不只是 canonical 表示。</li>
+    <li><b>90% / 90% / 96%</b> 真机抓取（10 个物体 × 5 次），Franka-Sharpa / Franka-XHand / Tianji-XHand，同一个 checkpoint（§4.1.2，Table 11）。</li>
+    <li><b>80.0% tSR</b> 真机 4 任务平均（10 次/任务），gSR 87.5%；BODex 和 DRO 都是 tSR 35.0%、gSR 57.5%，其余模块（感知、VLM、IK 选择、跟踪）完全相同（Table 3）。</li>
+    <li><b>0.914 vs 0.002</b> SimToolReal 的 eraser 任务，桌面低于其假设高度 0.4 m 以上时；在它的训练高度附近 SimToolReal 0.983、GOTT 0.792（Fig. 8，600 个 episode）。</li>
+    <li><b>69.7%</b> DexYCB 499 条人手 demo 零样本执行（MuJoCo；IsaacLab 71.5%，ManiSkill 72.9%），kinematic replay 12.6%；SPIDER 76.0% 但要逐 demo 做物理优化（§4.5.2）。</li>
+    <li><b>65% tSR</b> Drill Use 20 场景的 affordance + future-aware 选择（claude-opus-4-7），随机 20%、仅 IK 30%；VLM 之间 50–65%（Table 5）。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-GOTT/tab3.jpg" alt="真机任务结果"></div>
+    <figcaption><b>Table 3</b>（作者原图）真机 4 任务 gSR / tSR，Franka-Sharpa，每任务 10 次。先看最右两列的平均，再看 Trash Cleanup 列 DRO 的 0/10。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-GOTT/tab1.jpg" alt="仿真 lifting 结果"></div>
+    <figcaption><b>Table 1</b>（作者原图）仿真 lifting 成功率（%）。先看 Avg. 列：Ours Unified 78.7 vs CrossDex Unified 51.7。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-GOTT/fig8.jpg" alt="桌面高度变化下的成功率"></div>
+    <figcaption><b>Fig. 8</b>（作者原图）SimToolReal 的 eraser 任务，横轴桌面高度偏移 z。灰带是 baseline 假设的高度，它只在那附近有效。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-GOTT/fig10.jpg" alt="DexYCB 人手 demo 的执行"></div>
+    <figcaption><b>Fig. 10</b>（作者原图）DexYCB demo：(a) 人手标注，(b) 开环 kinematic replay 在物理里丢失接触，(c) GOTT 抓稳并完成物体轨迹。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-GOTT/tab4.jpg" alt="消融"></div>
+    <figcaption><b>Table 4</b>（作者原图）消融。先看 w/o r<sub>contact</sub> 的 0.0 和 OHRA-style obs. 的 25.7。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-GOTT/tab5.jpg" alt="Drill Use 的选择策略消融"></div>
+    <figcaption><b>Table 5</b>（作者原图）Drill Use 20 场景：affordance 和 future-aware 两个开关。看 func. 列从 35 到 85，tSR 从 20 到 65。</figcaption>
+  </figure>
+  <p class="note">baseline 数字低于原论文的原因（App. E）：GOTT 的协议把物体从一开始就放在有重力的桌面上、要求抬起 5 cm 并稳住，BODex 原协议是悬空施力；同一批 BODex grasp 在两种协议下成功率相近（Fig. 14），所以差距不是协议造成的。</p>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>高层规划和 contact acquisition 是串行的：reach spec 选得差，primitive 没法回头改（§5）。</li>
+    <li>跟踪完全靠视觉位姿估计，手把物体挡严实时 FoundationPose 会失效；作者提触觉或 visuotactile 估计是下一步（§5）。</li>
+    <li>抓住后 hand-object 变换当作固定，所以做不了拧盖这种 in-hand 操作（§5）。</li>
+    <li>一次性初始化约 30 s，其中 VLM 推理 14.9 s（Table 14）；VLM 选区域的 func. 在不同模型间 65–85%（Table 5）。</li>
+    <li>ε<sub>approach</sub> 的数值、真机上的 reach 失败率论文没有单独报告；代码写的是 Coming Soon。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For misc（最近的项目：Robotic-harness 和 Sim-robot-learning）</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>Robotic-harness：</b>reach-acquire-move 正是 harness 想要的底层接口：高层（LLM/VLM 或 code-as-policy）只需输出 object trajectory + 一个大致的 reach，不用输出精确 grasp。App. B 的 VLM keypoint prompt（4 视图、holding region vs working end、JSON 输出）可以直接做成 harness 里的一个 tool，Table 5 给了它的可靠度。</li>
+    <li><b>Agent-centric real-to-sim：</b>Source 2/3 用 FoundationPose 从人手视频抽 object trajectory 再交给 primitive，和 real2sim-anything 的 video → sim 流程接得上；primitive 在 IsaacLab 训、零样本进 ManiSkill / MuJoCo（69.7–72.9%），说明这类局部接触 policy 对仿真器不敏感，进 Genesis 也有希望。</li>
+    <li><b>Sim-robot-learning：</b>一份可复用的跨手训练配方：canonical 26-joint / 21-link 表示 + mask、只给 link-to-object 向量不给物体位姿、r<sub>dist</sub> 当形态正则、policy 收敛后单独训本体感觉 contact predictor。单张 L40S 24 小时。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>misc/2026-11-02-GOTT.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
