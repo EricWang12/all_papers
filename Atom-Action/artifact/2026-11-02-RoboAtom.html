@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>RoboAtom</title>
+<meta name="description" content="每个 task 人标几条 reference，PhysExtend 用夹爪/底盘物理信号把 atomic-action 边界传到同 task 全部重复，得到 1.45M 条统一标注；训出的 annotator 和 skill-conditioned π0.5 都胜过 task 级 baseline。">
+<meta name="paper:title" content="RoboAtom: Large-scale Atomic-Action Supervision for Robot Learning">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.40207">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.40207v1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Atom-Action</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Atom-Action · 归档于 2026-11-02</p>
+  <h1>RoboAtom</h1>
+  <p class="full-title">RoboAtom: Large-scale Atomic-Action Supervision for Robot Learning</p>
+  <p class="meta">Xueyuan Wei, Xuanxu Wang, Xudong Li, Yuping He, Wanshui Gan, Jiaqi Peng et al. · Shanghai AI Lab, Zhejiang U, Fudan, Tsinghua, SJTU · arXiv 2026-10-29</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.40207">arXiv</a><a href="https://arxiv.org/pdf/2610.40207v1">PDF</a>
+    <a href="https://internrobotics.github.io/RoboAtom/">Project page</a><a href="https://github.com/InternRobotics/RoboAtom">Code</a><a href="https://huggingface.co/datasets/InternRobotics/RoboAtom">Data</a>
+  </p>
+  <p class="filed">归档到 <b>Atom-Action</b>：它做的正是"把演示切成 atomic action（skill 类别 + 描述 + 帧边界）"，再用这些标签训 skill-conditioned policy；控制实验跑在 LIBERO / RoboTwin 上，和 Robotic-harness 的 benchmark 重合。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>机器人数据集只有 task 级指令，没有时间对齐的 atomic-action 标注；少数有的，词表和粒度互不兼容，没法合在一起训；人工逐条标 ≈100 USD / 视频小时，通用 video LLM 顺序对但边界错。</dd></div>
+    <div><dt>Idea</dt><dd>统一 29 类 skill 协议 → 每个 task 只人标几条 reference → <b>PhysExtend</b> 用夹爪开合、底盘速度等物理信号把边界传播到同 task 的所有重复执行 → 1.45M 条轨迹的 <b>RoboAtom-Data</b>；再用它训 annotator（<b>RoboAtom-Anno</b>）和 atomic-action-conditioned 双系统 policy。</dd></div>
+    <div><dt>Result</dt><dd>RoboAtom-Anno-9B 在 RoboAtom-Bench 上 Skill F1@0.7 <b>30.1</b> vs GPT-5.6-sol 21.4，成本 0.006 vs 4.330 USD / 视频小时（Tab. 3）；双系统 π0.5 LIBERO-Long <b>98.20</b> vs 95.00，LIBERO-Plus 88.18 vs 84.05，RoboTwin 66.17 vs 64.37（Tab. 4）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>想要每段视频的 "Push / Pick / Place + 帧边界"：现有数据没有，人标太贵，通用 VLM 标不准</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>面包视频</b>（Fig. 1 中间）：一段 <span class="ex">550 帧</span>的真机视频 + task 指令，机械臂先推盘子、再拿面包、再把面包放到盘子上 → 想要 3 段时间对齐的 atomic action：<span class="ex">Push 0–191 "Pushes the plate on the table"</span>、<span class="ex">Pick 192–302 "Picks up the bread on the table"</span>、<span class="ex">Place 303–550 "Places the bread on the plate"</span>。再想要：同一 task 的其他几十条重复执行也都标上，最后用这些标签训一个 policy。</p>
+  </div>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-RoboAtom/fig1-s1.jpg" alt="Fig. 1 中间面板：三帧画面，Push / Pick / Place 三段色条和帧区间，三句 action description"></div>
+    <figcaption><b>Fig. 1 中间面板</b>（作者原图，裁出）本页的 running example：三帧对应 Push、Pick、Place，下面是帧区间 0–191 / 192–302 / 303–550 和每段的 action description。每个 segment 就是这三个字段：skill 类别、描述、起止帧。</figcaption>
+  </figure>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>550 帧视频 + task 指令</span>"]
+  IN --> A1["<b>现有数据集的标签</b><br/>OXE / DROID 只有 task 指令；<br/>RH20T / Galaxea 自带 subtask"]
+  A1 --> AX["没有，或对不上<br/><span class='ex'>RH20T 把多次 pick-place 合成一段；<br/>Galaxea 是 PickAndPlace 复合标签</span>"]:::gap
+  IN --> B1["<b>人逐条标</b><br/>看视频、拖边界"]
+  B1 --> BX["太贵<br/><span class='ex'>≈100 USD / 视频小时，<br/>全量数据有 16,882 h</span>"]:::gap
+  IN --> C1["<b>通用 video LLM</b><br/>GPT-5.6-sol / Gemini 3.1 Pro<br/>直接输出 segments"]
+  C1 --> CX["顺序对、边界错<br/><span class='ex'>Skill F1@0.7 = 21.4，Edit 63.4；<br/>4.330 USD / 视频小时</span>"]:::gap
+  IN --> D1["<b>同 task 传播 · Cortex</b><br/>拟合 reference 的特征分布"]
+  D1 --> DX["速度 / 停顿一变就漂<br/><span class='ex'>Pick→Place 边界晚 56 帧；<br/>Skill F1@0.7 = 48.5</span>"]:::gap
+  </pre></div>
+  <p class="note">推断的"坏在哪"：通用 VLM 的"顺序对、边界错"来自 §4.3 的分析（Edit 63.4 但 temporal F1@0.7 只有 28.0，Tab. 3）；Cortex 的"速度/停顿一变就漂"来自 §3.3 的说法和 Fig. C.1 的单个例子（Tab. 2 给的是 100 条轨迹的平均 48.5）；"≈100 USD / 小时"是 §3.2 的报价，16,882 h 是 §3.5 的总量，两者相乘是我的推算。现有数据集那一条来自 §1、§2.1 和 A.3 的描述。</p>
+  <p class="crux"><b>根本问题：</b>atomic-action 标签要同时满足"跨数据源一个词表"和"帧级准确的时间边界"，现有标签、人工、通用 VLM 各缺一角。　<b>这篇的切入点：</b>词表统一成 29 类协议；每个 task 只人标几条 reference，边界用物理信号（夹爪开合、底盘速度）传播到同 task 的所有重复；再拿这 1.45M 条标签训 annotator 和 policy。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-RoboAtom/figC1.jpg" alt="Fig. C.1：GT、Cortex、Ours 三行 pick/place 色条，Cortex 边界晚 56 帧，Ours 早 9 帧"></div>
+    <figcaption><b>Fig. C.1</b>（作者原图，附录）同一条 pick→place 轨迹上的边界：GT 在第 55 帧；Cortex 把 pick 拖到 111 帧（+56 f）；PhysExtend（Ours）放在 46 帧（−9 f）。横轴 Frame。</figcaption>
+  </figure>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>自带 subtask 的数据集</b><br><span class="muted">AgiBot World, Galaxea Open-World, RoboInter-Data, BEHAVIOR-1K, RH20T</span></td><td>给自己的轨迹加子任务标签</td><td>各自定义词表、粒度和时间覆盖</td><td>互不兼容，没法 pool → RoboAtom 把 16 个源映射到一个 29 类词表、统一切分规则</td></tr>
+      <tr><td><b>同 task 传播</b><br><span class="muted">Cortex</span></td><td>把 reference 分段传到同任务其他执行</td><td>用 state-action + 视觉特征拟合 reference 分布</td><td>速度、停顿、重试一变就漂 → PhysExtend 用 skill 专属物理事件 + DP + 单调投影，Skill F1@0.7 71.0 vs 48.5</td></tr>
+      <tr><td><b>video→subtask 评测</b><br><span class="muted">WGO-Bench</span></td><td>评测模型从机器人视频标子任务</td><td>时间分段 + 开放词表标签匹配</td><td>开放词表、中位只有 2 段 → RoboAtom-Bench 闭合 15 类、中位 5 段、4 个子集、语义和边界分开算</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>通用视频 temporal grounding</b><br><span class="muted">VTimeLLM, TimeChat, TimeLens, TimeLens2</span></td><td>在普通视频里定位一句话对应的时间段</td><td>多模态 LLM 生成带时间的证据</td><td>没有机器人 skill 词表、不分开评语义和边界 → 本文用 29 类词表，Skill F1 和 temporal F1 分开</td></tr>
+      <tr><td><b>中间动作监督的控制</b><br><span class="muted">RT-H, ECoT, π0.5, Hi Robot, GR00T N1, RoboBrain</span></td><td>让 policy 先想中间步骤再出动作</td><td>language motion / 推理链 / 高层规划 + 低层执行</td><td>依赖已有或自造的标注，跨源不一致 → 本文先把标注做成统一数据层，双系统沿用 Hi Robot 结构</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2 Related Work，以及 §1、§3.3（和 Cortex 的对比）、§4.1（和 WGO-Bench 的对比）；未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>每个 task 人标几条，物理信号传播到其余，得到百万级 atomic-action 标签；再用它训 annotator 和 skill-conditioned policy</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-RoboAtom/fig1.jpg" alt="Fig. 1：五个面板，RoboAtom-Data 环形图、RoboAtom-Bench 雷达图、Atomic Action Annotations 例子、RoboAtom-Anno 折线、Dual-System 柱状图"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）RoboAtom 总览：数据和 benchmark（上），atomic-action 标注（中），annotator 性能（左下），控制成功率（右下）。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左上 RoboAtom-Data：</b>环形图是 16 个来源的占比（InternData-A1、RoboMIND、AgiBot、ABC、RoboCOIN、RH20T、Others），右侧 3334 Tasks / 16.88K Hours / 6.88M Segments / 1.45M Trajectories 是总量。</li>
+    <li><b>中间 Atomic Action Annotations：</b>就是本页例子，三帧对应 Push / Pick / Place，帧区间 0–191 / 192–302 / 303–550，三句 action description。</li>
+    <li><b>右上 RoboAtom-Bench：</b>雷达图红线是 RoboAtom-Bench（500 Trajectories、4,018 Segments、5.81 Hours、15 Sources、1.44 Views、5 Steps），蓝虚线是 WGO-Bench；右侧 Per trajectory：每条 1–62 段、1–10 种 skill、1–4 路相机、1.9–406.4 s；四个子集 Short / Medium / Long / Multiview。</li>
+    <li><b>左下 RoboAtom-Anno：</b>Skill F1@0.7 随训练配置上升：Base Model 3.5 → Noise Data 6.6 → Refine Data 17.1 → RoboAtom Data 23.0 → Projector Tuning 24.2 → Mid-training 26.9 → RLVR 30.1；小表是对比：GPT-4o 7.2、Qwen3.8-27B 10.9、Gemini 3.1 Pro 16.1、GPT-5.6-sol 21.4、RoboAtom-Anno-9B 30.1、-27B 33.8。</li>
+    <li><b>右下 Dual-System Robot Control：</b>蓝 π0.5 baseline vs 橙 Ours (dual system)：LIBERO-Long 95.00 → 98.20，LIBERO-Plus 84.05 → 88.18，RoboTwin 64.37 → 66.17。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>16 源轨迹；<br/>本例：550 帧面包视频</span>"] --> M1["<b>人标几条 + 物理传播</b><br/><span class='ex'>同 task 人标几条，<br/>其余 PhysExtend 自动</span>"]:::win
+  M1 --> M2["<b>RoboAtom-Data</b><br/><span class='ex'>Push 0–191 / Pick 192–302<br/>/ Place 303–550 ×1.45M 条</span>"]
+  M2 --> O["<b>Output</b><br/><span class='ex'>annotator RoboAtom-Anno；<br/>skill-conditioned π0.5</span>"]:::win
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>6 个 stage：4 个造数据，2 个用数据</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-RoboAtom/fig2.jpg" alt="Fig. 2：Data Collection、Annotation and Refinement（human-in-the-loop 回路）、Dataset Construction（PhysExtend → RoboAtom-Data；Auto Filter → Expert Review → RoboAtom-Bench）"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）构建流水线：模型辅助标注 + 人工复核产生 seed；PhysExtend 和质控把它们扩成 RoboAtom-Data；专家复核产生 RoboAtom-Bench。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左 Data Collection：</b>High-quality Private Videos（内部录的）和 Large-scale Public Videos（16 个公开源），全部转成 LeRobot v2.1 → Stage 1。</li>
+    <li><b>中 Annotation and Refinement：</b>Task 一张图配一句 task 指令 "Organize items and prepare drinks"，Label 后变成 Subtask 列表 "Open wooden cabinet (Frame 0-455) / Pick up the pudding (456-852) / Placing the pudding (853-1061)"；下方 Human Review（人改）→ Review（Qwen3-VL 提修改建议）→ Expert Review（人定）构成 Human-in-the-loop 回路，两张截图是标注和复核界面（Fig. A.1、A.2）→ Stage 2。</li>
+    <li><b>右上 Dataset Construction：</b>PhysExtend → Filter / Revise → RoboAtom-Data：把 seed 传播到同 task 的其他轨迹，再质检 → Stage 3、4。</li>
+    <li><b>右下：</b>Auto Filter 从人标数据筛出 800 Episodes → Expert Review 留 500 Episodes → RoboAtom-Bench → Stage 4。</li>
+    <li><b>对应例子：</b>面包视频所在的 task，先有几条进中间回路成为 reference，其余走右上的 PhysExtend。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Unify</b><br/><span class='ex'>16 源 → LeRobot v2.1 + 29 类 skill 词表</span>"] --> S2["<b>2 · Seed 标注</b><br/><span class='ex'>每个 task 人标几条 reference</span>"]
+  S2 --> S3["<b>3 · PhysExtend</b><br/><span class='ex'>夹爪事件定 Pick | Place 边界，<br/>传到同 task 全部重复</span>"]:::win
+  S3 --> S4["<b>4 · QC + Bench</b><br/><span class='ex'>RoboAtom-Data 1.45M 条；<br/>RoboAtom-Bench 500 条</span>"]
+  S4 --> S5["<b>5 · RoboAtom-Anno</b><br/><span class='ex'>Qwen3.5-9B 三阶段训练 → Skill F1@0.7 30.1</span>"]:::win
+  S4 --> S6["<b>6 · Dual-system policy</b><br/><span class='ex'>π0.5 按 [Pick] / [Place] 指令执行 → LIBERO-Long 98.20</span>"]:::win
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。贯穿所有 stage 的 annotation protocol（3 个字段 + 切分规则）见 <a href="#stage-all">Protocol</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">Protocol</span>
+      <span class="stage-name">Annotation protocol：每个 stage 都按它来</span>
+      <span class="stage-io">任意轨迹 → 一列 segment，每段 3 个字段</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>3 个字段（§3.1）：</b>skill category（跨源共享的 29 类之一）、action description（保留物体和动作细节的一句话）、start / end frame（和轨迹对齐）。</li>
+        <li><b>切分规则（§3.1、A.1 prompt）：</b>只在主导 skill 变化时开新段；准备、移臂、过渡、空闲并入相邻段，不输出 Static；Pick = 从没拿到拿住，Place = 放手，二者分开；Move 只指底盘平移，手臂伸缩不算；双臂标主导手，Handover 只给手间直接交接；抽屉用 Pull / Push，铰链门、盖子用 Open / Close；复合行为拆成单 skill 段。</li>
+        <li><b>29 类词表（A.3）：</b>Pick, Place, Handover, Move, Open, Close, Push, Pull, Press, Rotate, Screw, Plug, Pour, Fill, Scoop, Stir, Dip, Shake, Fold, Tie, Wipe, Sweep, Wash, Brush, Cut, Peel, Strike, Scan, Throw；Unfold 归 Fold、Unscrew 归 Screw，描述里保留原动词。</li>
+        <li><b>中间标签（A.1）：</b>Idle 保留时间段但 skill 为空、不计入段数；Recover 按实际做的动作归类。</li>
+        <li><b>谁用它：</b>Stage 1 的标签映射、Stage 2 的 prompt、Stage 3 的夹爪事件项、Stage 4 的质检标准、Stage 5 的输出 JSON、Stage 6 的训练条件。</li>
+      </ul>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>面包视频按规则切成 3 段：推盘子是 Push（不是 Move，因为底盘没动）；手臂伸向面包的过程并入 Pick；夹爪松开面包那一刻之后才算 Place 结束。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Unify：16 个源统一格式和词表</span>
+      <span class="stage-io">各源原始轨迹 + 各自的 subtask 标签 → LeRobot v2.1 + 29 类词表下可复用的标签</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>不同源的 subtask 词表、粒度、时间覆盖都不一样，不能直接 pool（§2.1，Tab. 1：AgiBot World Beta 77 类、2026 版 43 类、Galaxea 58 类、RoboInter 15 类、BEHAVIOR 35 类）。</li>
+        <li><b>How：</b>全部转 LeRobot v2.1；只保留同一 task 有多条重复演示的 task（§3.1）。</li>
+        <li>有 subtask 标签的源（AgiBot World Beta / 2026、Galaxea Open-World、RH20T、RoboCerebra）：本地 Qwen3.8-27B 按 source-specific 规则把标签映射到 29 类；复合标签拆开——Galaxea 的 PickAndPlace 用夹爪开合切成 Pick + Place，RH20T 多次 pick-place 合段的用原始 temporal clip 恢复边界（A.3）。</li>
+        <li>拿不准的：Qwen3.8-27B 看图复核 → GPT-5.6-sol 复核语义和粒度 → 人最终裁定（§3.1）。</li>
+        <li>没有 subtask 标签的源（InternData-A1、RoboMIND、LIBERO、RoboTwin 2.0 等）在这一步只拿到统一格式，标签要等 Stage 2–3。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>源标签</b><br/><span class='ex'>PickAndPlace</span>"] --> b["<b>规则映射 + 拆复合</b><br/><span class='ex'>夹爪开合 → Pick | Place</span>"]
+  b --> c["<b>模型 / 人复核</b><br/><span class='ex'>Qwen → GPT-5.6-sol → 人</span>"]
+  c --> d["<b>29 类标签</b><br/><span class='ex'>Pick 192–302,<br/>Place 303–550</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>论文没说面包视频来自哪个源。若它来自没有 subtask 标签的源，这一步只得到 LeRobot 格式和 task 指令；若来自 Galaxea 这种带 "PickAndPlace" 复合标签的源，这里就用夹爪开合把它拆成 Pick 192–302 + Place 303–550。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Seed 标注：human-in-the-loop 标 reference</span>
+      <span class="stage-io">每个 task 的几条轨迹（extension 评测里每 task 5 条）→ 人工复核过的 reference 标注</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>PhysExtend 需要同 task 的 reference；人标全量太贵，所以只标几条。</li>
+        <li><b>How：</b>Gemini 3.6 Flash 看 3×4 contact sheet（12 帧拼图）+ task 指令，按 A.1 的 prompt 输出有序 segments（JSON：seg_id, start_frame, end_frame, subtask, primitive_skill）。contact sheet 比整段视频便宜而质量不降（§3.2，沿用 WGO-Bench 的发现）。</li>
+        <li>人在 Fig. A.1 的界面改 skill、描述、起止帧，调粒度和顺序。</li>
+        <li>Qwen3-VL-235B-A22B-Instruct 按 A.1 的 review prompt 查拼写、skill–描述不一致、物体颜色 / 容器错误（错误类别：boundary_error, wrong_object, wrong_action, wrong_bin, missing_action, extra_action …），输出 correct / incorrect + 修正版；人逐条接受或拒绝；两边都错的交 administrator。</li>
+        <li>成本 ≈100 USD / 源视频小时（§3.2）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Gemini 3.6 Flash 预标</b><br/><span class='ex'>3×4 拼图 →<br/>3 段草稿</span>"] --> b["<b>人改</b><br/><span class='ex'>Pick 起点定到<br/>握住面包那帧</span>"]
+  b --> c["<b>Qwen3-VL-235B 复核</b><br/><span class='ex'>核对 bread / plate</span>"]
+  c --> d["<b>人定稿</b><br/><span class='ex'>Push 0–191 / Pick 192–302<br/>/ Place 303–550</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>面包 task 的几条轨迹进这个回路。Gemini 先给出 Push / Pick / Place 三段和大致边界；按 protocol，人把 Pick 起点定在夹爪从空到握住面包的那一帧（192），Place 终点在放手后（550）；Qwen3-VL 核对描述里的 bread、plate 和画面一致。定稿后它们成为该 task 的 reference。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">PhysExtend：物理信号把边界传到同 task 的其余轨迹</span>
+      <span class="stage-io">target 轨迹（同 task、同 ordered skill 序列）+ k 条 reference → target 的内部边界</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>同一 task 的重复执行共享 skill 顺序，但速度、停顿、重试不同；Cortex 拟合特征分布会漂（Fig. C.1 晚 56 帧）。夹爪开合、底盘速度这类物理事件和 skill 切换是绑定的（Fig. 3a–c），用它们定边界更稳。</li>
+      </ul>
+      <p class="eyebrow">符号表（Eq. 1–2，Fig. 3）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>符号</th><th>是什么</th><th>例子里的值</th></tr>
+        <tr><td>T</td><td>target 轨迹的总帧数</td><td>550</td></tr>
+        <tr><td>y_{1:M}, M</td><td>已知的有序 skill 序列和段数（和 reference 相同）</td><td>[Push, Pick, Place]，M = 3</td></tr>
+        <tr><td>b_m</td><td>第 m 段的结束帧；b_0 = 0，b_M = T，要求递增（Eq. 1）</td><td>要求的是 b_1、b_2；理想值 191、302</td></tr>
+        <tr><td>C_m</td><td>第 m 段相对 reference 在"相对位置 + 累计运动进度"上的偏差惩罚</td><td>Pick 段的手臂运动曲线要和 reference 的 Pick 段对得上</td></tr>
+        <tr><td>D_m</td><td>第 m 段时长偏离 reference 的惩罚</td><td>Pick 段约 111 帧，不能长到离谱</td></tr>
+        <tr><td>Q_m</td><td>第 m 个边界处 skill 专属的夹爪事件惩罚</td><td>Pick | Place 边界要落在夹爪"从握到松"的事件附近</td></tr>
+        <tr><td>λ_d, λ_q</td><td>时长项和夹爪事件项的权重</td><td>论文没给数值</td></tr>
+      </table></div>
+      <ul class="tight">
+        <li><b>How：</b>候选边界来自 reference 的段时长、累计运动对齐和夹爪事件（C.4）。</li>
+        <li>动态规划在有序候选上联合选 b_1…b_{M−1}，使 Eq. 2 的三项之和最小，Eq. 1 保证边界递增、不重叠。</li>
+        <li>物理事件修正：Pick / Place 边界对齐到可靠的夹爪开合事件（方向从 reference 校准，适应不同机器人的夹爪编码）；Move 对齐底盘速度（Fig. 3a、3b）；双臂协调、接触停顿、旋转、方向反转是额外线索（Fig. 3c）。</li>
+        <li>多条 reference：每条独立跑，边界融合后做 monotonic projection，保证不重叠、覆盖全程（Fig. 3d：1 条 71.0 → 4 条 79.3）。</li>
+        <li>速度：单 CPU 每小时 15,952 条，2.8×10⁻⁵ USD / 视频小时，吞吐是 Cortex 的 17.1 倍（C.4）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Reference + target</b><br/><span class='ex'>5 条人标 + 1 条新面包轨迹</span>"] --> b["<b>候选边界</b><br/><span class='ex'>按段长比例 + 夹爪事件</span>"]
+  b --> c["<b>DP 最小化 Eq. 2</b><br/><span class='ex'>C + λ_d D + λ_q Q</span>"]
+  c --> d["<b>事件修正 + 多 ref 融合</b><br/><span class='ex'>Pick | Place 扣到<br/>夹爪松开那帧</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-RoboAtom/fig3.jpg" alt="Fig. 3：(a) 夹爪开度和 Pick/Place 段对齐，(b) 底盘速度和 Move 段对齐，(c) skill × 物理特征热图，(d) Skill F1@0.7 随 reference 数"></div>
+        <figcaption><b>Fig. 3</b>（作者原图）skill 相关的边界证据和传播性能。(a) 夹爪信号对 Pick / Place 边界；(b) 底盘运动对 Move 边界；(c) skill–特征关联；(d) PhysExtend vs Cortex 随 reference 数变化，阴影 ±1 std。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(a) 上 Gripper pos.：</b>夹爪开度随时间；<b>中 Δ grip/s：</b>开合速度；<b>下 GT 色条：</b>Pick / Place / Pick / Place。夹爪闭合（开度上升沿）落在 Pick 段内，张开落在 Place 段内——这就是 Q_m 用的事件。例子里 Pick | Place 边界（302）就该在夹爪松开面包的那一刻。</li>
+        <li><b>(b) Base speed / Δ speed/s：</b>底盘速度在三个 Move 段有峰，S0–S10 的操作段里为 0；Move 边界用它定。</li>
+        <li><b>(c) 热图：</b>横轴 15 个 skill，纵轴 7 类物理特征（Grip / Base / EEF / Bimanual / Contact-stall / Rotation / Reversal），颜色是相关强度 Rel.。Move 列只有 Base 深；Pick、Place、Plug、Pour 的 Grip 深；Fold、Handover 的 Contact-stall 和 Rotation 深。</li>
+        <li><b>(d) Skill F1@0.7 vs Ref. K：</b>蓝 Ours 71.0 → 74.3 → 77.4 → 79.3，红 Cortex 48.5 → 54.6 → 57.7 → 59.5；小表：GPT-4o 11.1、Qwen3.8-27B 19.1、Gemini 3.1 Pro 39.7、GPT-5.6-sol 35.0、Cortex 48.5、Ours 71.0。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-RoboAtom/tab2.jpg" alt="Tab. 2：各模型在 100 条 extension 轨迹上的 mIoU、F1@0.7、Skill F1@0.7、EA、成本"></div>
+        <figcaption><b>Tab. 2</b>（作者原表）传播性能与成本，100 个 task 各 1 条，1 条 reference。先看 PhysExtend 行：Skill F1@0.7 71.0、EA（整条轨迹所有段语义和边界都对）69%、2.8×10⁻⁵ USD / 小时；Cortex 48.5 / 37% / 4.8×10⁻⁴；GPT-5.6-sol 35.0 / 46% / 3.510。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>同 task 另一条面包轨迹，机器人慢了一拍，Push 用了更久。DP 先按 reference 的段长比例给候选，再把 Pick | Place 边界扣到夹爪松开面包那一帧。Fig. C.1 是同类 pick→place 的单例：GT 边界在第 55 帧，Cortex 放到 111（+56 f），PhysExtend 放到 46（−9 f）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">QC + Bench：质检出 RoboAtom-Data，专家复核出 RoboAtom-Bench</span>
+      <span class="stage-io">传播后的全量标注 → RoboAtom-Data（1,446,974 条 / 6,876,282 段 / 16,882.1 h）+ RoboAtom-Bench（500 条 / 4,018 GT 段）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>传播会把 reference 的错复制到整个 task；执行结构不同的轨迹根本不能传；描述里的物体 / 颜色不能照抄 reference。</li>
+        <li><b>How · 质检（§3.4）：</b>每个 dataset–embodiment 组抽 20 条人工查动作序列、边界、描述和目标轨迹的一致性、reference 的系统性错误、同 task 各 seed 的一致性。</li>
+        <li>执行步骤不同的 task（扫地有的倒垃圾有的不倒）整个排除不传播。</li>
+        <li>传感差异：RoboMIND 的 Agilex 双臂用全关节 DTW 对齐速度；移动双臂加底盘状态区分 base 运动；grasp / release 相对边界有稳定偏移的用同 task reference 校准；reference 选择综合运动相似度、夹爪事件数、时长，语义不兼容的 reference 不融合。</li>
+        <li>seed 一致时 subtask 分割准确率 87.6% / EA 80.5%，不一致时 79.5% / 57.4%，所以对不一致的 reference 再做一轮人工统一；某些仿真 benchmark 上分割准确率到 100%。</li>
+        <li>描述语义修正：同 skill 序列但物体 / 颜色 / 顺序不同（先苹果后橙子 vs 反过来），Qwen3.8-27B 对照多视角图核对，GPT-5.6-sol 按 reference、词表和字段约束改，人最终确认；不动时间分割，除非明显缺段、多段或大偏移。</li>
+        <li>发布门槛：subtask segmentation accuracy ≥ 85%、EA ≥ 75%，达不到就继续改。</li>
+        <li><b>How · Bench（§4.1，A.5）：</b>从人标数据按 source、view、段数筛出 800 候选 → 专家复核留 500 条，4,018 GT 段，带 view 标注；闭合词表 15 类（Close, Fold, Handover, Move, Open, Pick, Place, Plug, Pour, Press, Pull, Push, Screw, Sweep, Wipe）覆盖 99.2% 的段。</li>
+        <li>子集：Short 200 条 1–4 段、Medium 100 条 5–8 段、Long 100 条 9–62 段、Multiview 100 条同步多相机；中位 5 段，WGO-Bench Robot 中位 2 段。</li>
+      </ul>
+      <p class="eyebrow">符号表（Eq. 3–5，Fig. 5）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>符号</th><th>是什么</th><th>例子里的值</th></tr>
+        <tr><td>G_i / P_j</td><td>第 i 个 GT 段 / 第 j 个预测段</td><td>GT Pick 192–302 / 某模型预测的 Pick 200–310（示意）</td></tr>
+        <tr><td>tIoU(G_i, P_j)</td><td>两段的时间交并比</td><td>重叠 200–302 比并集 192–310，约 0.87（示意值，我算的）</td></tr>
+        <tr><td>π</td><td>保持顺序的一对一匹配，使总 IoU 最大，不看 skill</td><td>GT 三段对预测三段</td></tr>
+        <tr><td>N_G</td><td>所有 episode 的 GT 段总数</td><td>Bench 上是 4,018</td></tr>
+        <tr><td>mIoU</td><td>匹配上的 IoU 求和除以 N_G，没匹配的算 0</td><td>只看边界，不看 skill</td></tr>
+        <tr><td>τ</td><td>算 F1 时 IoU 的门槛</td><td>0.7（主表）</td></tr>
+        <tr><td>Temporal F1@τ</td><td>IoU ≥ τ 的有序匹配对，不看 skill，TP / FP / FN 跨 episode 累加</td><td>三段都 ≥ 0.7 则 3 个 TP</td></tr>
+        <tr><td>Skill F1@τ</td><td>IoU ≥ τ 且 skill 一致才算 TP（MS-TCN 风格匹配）</td><td>预测把 Push 写成 Move，这段就是 FP + FN</td></tr>
+        <tr><td>S_P / S_G, d_Lev</td><td>预测 / GT 的 skill 序列（相邻重复合并）和它们的编辑距离</td><td>[Push, Pick, Place] vs [Push, Pick, Place]，d_Lev = 0 → Edit = 100</td></tr>
+      </table></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-RoboAtom/fig5.jpg" alt="Fig. 5：(a–c) 三种指标的匹配示意，(d) GT 段数累计分布，(e) 预测段数 / GT 段数的热图"></div>
+        <figcaption><b>Fig. 5</b>（作者原图）(a–c) temporal mIoU / F1、Skill F1、Edit 的示意，黑块是没匹配上的预测或编辑操作；(d) GT 段数的累计分布；(e) 四个模型在各子集上"预测段数 / GT 段数"。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(a) GT / Pred / Det.：</b>temporal 指标只按顺序一对一配时间段，颜色（skill）不管；Det. 行黑块是没配上的。</li>
+        <li><b>(b)：</b>Skill F1 要求颜色也一致，所以黑块更多。</li>
+        <li><b>(c) Edit：</b>只比 skill 序列，黑块是插入 / 删除 / 替换，和时间无关。</li>
+        <li><b>(d)：</b>红 RoboAtom-Bench 的 GT 段数拖到 62，蓝虚 WGO-Bench Robot 几乎都在 10 以内。</li>
+        <li><b>(e)：</b>GPT-4o、GPT-5.6-sol、Gemini 3.1 Pro、Qwen3.8-27B 在 Short 上预测段数是 GT 的 1.48–1.70 倍（切多了），在 Long 上只有 0.51–0.65（合并了）；Long 里 21.8% 的动作短于 2 s，2 FPS 下只占几帧（§4.3）。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>面包 task 若被抽到 QC，检查 bread / plate 描述是否和画面一致、Push 是否被错标成 Move；若它被选入 Bench，就是 Short 子集里的一条 3 段轨迹：模型要输出 3 段、skill 都对、每段 IoU ≥ 0.7，才能在 Skill F1@0.7 上拿满。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">RoboAtom-Anno：用数据训一个自动 annotator</span>
+      <span class="stage-io">视频（2 FPS，≤ 448 帧）+ task 指令 → JSON 的有序 segments（skill, subtask, start_frame, end_frame）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>有了 RoboAtom-Data，可以训一个比通用 VLM 更准、更便宜的 annotator，给新数据自动标（§5.1）。</li>
+        <li><b>How · 底座：</b>Qwen3.5-9B，零样本 Skill F1@0.7 只有 3.5。</li>
+        <li><b>Robot-domain mid-training（A.4、B.2）：</b>2,841,942 样本、27 个子集、6 类任务（Robot QA 1,007,450 / Grounding 1,080,004 / Spatial reasoning 409,602 / Planning 326,747 / Locomotion 17,185 / Manipulation 954；Tab. A.4），1 epoch，3,084.1 GPU-h / 48 GPU。</li>
+        <li><b>SFT（B.1）：</b>task 采样的 RoboAtom 子集（排除 Bench 的 task），LLaMA-Factory，LoRA rank 8 在语言和视觉侧，同时更新 ViT-LoRA 和 visual merger（Tab. C.1 四种配置里最好，22.7），500 步，27.7 GPU-h / 8 GPU。</li>
+        <li><b>GRPO（B.3）：</b>ms-swift，5,000 条按离线难度分层（3,000 medium / 1,250 hard / 750 easy），每 prompt 采 8 个候选，364.5 GPU-h / 16 GPU。</li>
+      </ul>
+      <p class="eyebrow">符号表（Eq. 6–7）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>符号</th><th>是什么</th><th>例子里的值</th></tr>
+        <tr><td>R_temporal</td><td>有序时间匹配的 F1@0.5，不要求 skill 对；权重 0.70</td><td>三段边界都接近 → 高分</td></tr>
+        <tr><td>R_soft</td><td>有序匹配的 IoU 之和 ÷ max(预测段数, GT 段数)，给边界连续反馈；权重 0.10</td><td>多切一段就被分母惩罚</td></tr>
+        <tr><td>R_edit</td><td>skill 序列的编辑相似度；权重 0.18</td><td>[Push, Pick, Place] 全对 → 满分</td></tr>
+        <tr><td>R_format</td><td>JSON 可解析、字段齐全；权重 0.02；解析失败前三项清零、总奖励 −0.02</td><td>缺 end_frame 就罚</td></tr>
+        <tr><td>A_i</td><td>候选 i 的优势：(r_i − 组内均值) ÷ (组内 std + 10⁻⁴)（Eq. 8）</td><td>8 个候选里比平均好的为正</td></tr>
+      </table></div>
+      <ul class="tight">
+        <li><b>效果阶梯（Fig. 1 左下，§5.3）：</b>3.5 → 6.6（用开源的噪声 subtask 标签 SFT）→ 17.1（词表对齐 + 歧义过滤，261 task / 4,459 条）→ 23.0（换 RoboAtom 标签 + 语言 LoRA，和 GPT-5.6-sol 的 21.4 相当）→ 24.2（+ 视觉模块更新）→ 26.9（mid-training；mIoU 52.9 → 54.6）→ 30.1（GRPO；temporal F1@0.7 35.5 → 41.0，预测 / GT 段数比 1.20 → 0.99）。</li>
+        <li>同配方换 Qwen3.8-27B 底座：Skill F1@0.7 33.8，WGO-Bench Robot F1@0.7 49.2，WGO Ego 28.3。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Qwen3.5-9B</b><br/><span class='ex'>Skill F1 = 3.5</span>"] --> b["<b>Mid-training</b><br/><span class='ex'>2.84M 机器人<br/>QA / grounding</span>"]
+  b --> c["<b>SFT on RoboAtom</b><br/><span class='ex'>LoRA + ViT + merger，<br/>500 步</span>"]
+  c --> d["<b>GRPO</b><br/><span class='ex'>0.70 temporal + 0.10 soft<br/>+ 0.18 edit + 0.02 format<br/>→ 30.1</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>输入面包视频（按 2 FPS 采样）和 task 指令，RoboAtom-Anno 输出 <span class="ex">{"segments":[{"skill":"Push","subtask":"Pushes the plate on the table","start_frame":0,"end_frame":191}, {"skill":"Pick",…,192,302}, {"skill":"Place",…,303,550}]}</span>。GRPO 阶段若它是训练样本，8 个候选按三段的时间重叠（0.70）、IoU（0.10）、skill 序列（0.18）、格式（0.02）打分，比组内平均好的候选被强化。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">Dual-system policy：atomic 指令条件化 π0.5，System 2 调度</span>
+      <span class="stage-io">RoboAtom 标注的 (观测, 动作, skill 指令) 对 → atomic-action-conditioned π0.5 + System 2 调度器</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>task 级指令让 policy 自己猜进行到哪一步；atomic 指令把长任务切成短段，每段只做一件事（§5.2，结构沿用 Hi Robot）。</li>
+      </ul>
+      <p class="eyebrow">符号表（Fig. 6）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>符号</th><th>是什么</th><th>例子里的值</th></tr>
+        <tr><td>o_t</td><td>当前 RGB 观测</td><td>碗还在桌中央的当前帧</td></tr>
+        <tr><td>o_{t−20} … o_{t−1}</td><td>最近 20 帧历史观测</td><td>机械臂刚伸向碗的几帧</td></tr>
+        <tr><td>Instruction</td><td>整条 task 指令</td><td>"Pick up the black bowl from table center and place it on the plate"</td></tr>
+        <tr><td>Retrieved plan</td><td>RAG 从 task 知识库取回的 task-plan prior：候选 skill 和描述</td><td>[Pick: pick up the black bowl, Place: place it on the plate]</td></tr>
+        <tr><td>[Skill] Subtask</td><td>System 2 当前发出的 atomic 指令</td><td>[Pick] pick up the black bowl</td></tr>
+        <tr><td>a_1 … a_L</td><td>System 1 一次输出的 action chunk</td><td>接下来 L 步的关节 / 夹爪动作</td></tr>
+        <tr><td>o_{t+2} … o_{t+8}</td><td>执行后的新观测（Execution Rollout）</td><td>碗已被握住抬起 → System 2 切到 [Place]</td></tr>
+      </table></div>
+      <ul class="tight">
+        <li><b>训练（B.4）：</b>每个 (观测, 动作) 对的语言条件 = 它所在 segment 的 skill 标签 + action description，而不是整条 task 指令；OpenPI 全量微调 π0.5，global batch 256，LIBERO 8 GPU 30k 步，RoboTwin 32 GPU 60k 步；baseline 用同样预算、只换成 task 指令。</li>
+        <li>两边都关图像增广：π0.5 关增广 LIBERO-Long 95.00 > 开增广 92.40（Tab. C.5），RoboTwin 64.37 > 58.35（Tab. C.6）。</li>
+        <li><b>推理（§5.2，B.4）：</b>System 2 = Qwen3.8-27B，输入 task 指令 + o_t + 20 帧历史 + RAG 取回的 plan prior，决定保持当前 atomic 指令还是切下一条（Low Freq.）；System 1 = π0.5 按 [Skill] Subtask 出 action chunk（Mid Freq.）；Low-Level Controller 执行（High Freq.）；新观测回到 System 2。</li>
+        <li>注意：在线跑的不是 RoboAtom-Anno；System 2 从 task 知识库的 plan 里选，RoboAtom 的贡献是训练时的 segment 级语言条件。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-02-RoboAtom/fig6.jpg" alt="Fig. 6：System 2（Reasoning & Planning，接 RAG）输出 Task 和 [Skill] Subtask 给 System 1（Atomic Action Conditioned Policy），后者出 action chunk 给 Low-Level Controller，Execution Rollout 回流"></div>
+        <figcaption><b>Fig. 6</b>（作者原图）双系统执行：System 2 用 task-plan prior、视觉观测和执行历史选 atomic 指令；System 1 以该指令条件化 π0.5 出动作；后续观测决定下一次规划。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左列三类输入：</b>Current RGB Obs. o_t、History RGB Obs. o_{t−20}…o_{t−1}、Instruction "Pick up the black bowl from table center and place it on the plate"；三者都进紫色 System 2，o_t 还直接进 System 1。</li>
+        <li><b>紫 System 2 Reasoning & Planning（Low Freq.）：</b>下方 RAG 给它 Retrieved plan；它往右输出两路：Task（整条指令）和 [Skill] Subtask（当前 atomic 指令）。</li>
+        <li><b>黄 System 1 Atomic Action Conditioned Policy（Mid Freq.）：</b>就是 segment 级语言条件训出来的 π0.5，输出 Action chunk a_1…a_L。</li>
+        <li><b>右 Low-Level Controller（High Freq.）→ 机械臂：</b>执行 chunk；下方 Execution Rollout o_{t+2}…o_{t+8} 和 Robot State 回流到 System 2 / System 1。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>System 2 取 plan</b><br/><span class='ex'>[Pick bowl, Place on plate]</span>"] --> b["<b>发 atomic 指令</b><br/><span class='ex'>[Pick] pick up<br/>the black bowl</span>"]:::win
+  b --> c["<b>π0.5 出 chunk</b><br/><span class='ex'>a_1…a_L，握住碗抬起</span>"]
+  c --> d["<b>看新观测</b><br/><span class='ex'>碗已离桌 → 切 [Place]</span>"]
+  d --> b
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>到控制端，同一套 Pick / Place 标签换到 LIBERO 的 Fig. 6 任务 "Pick up the black bowl from table center and place it on the plate"：System 2 先发 "[Pick] pick up the black bowl"，看到夹爪握住碗抬起后切 "[Place] place it on the plate"；π0.5 每次只需完成一个 atomic action。LIBERO-Long 95.00 → 98.20（Tab. 4）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>统一 protocol：3 字段 + 切分规则 + 29 类词表</td><td>Protocol：面包视频切成 Push / Pick / Place，推盘子不算 Move，伸手并入 Pick</td></tr>
+        <tr><td>复用并映射各源已有的 subtask 标签</td><td>Stage 1：若来自 Galaxea，PickAndPlace 用夹爪开合拆成 Pick + Place</td></tr>
+        <tr><td>Human-in-the-loop seed：Gemini 预标 → 人改 → Qwen3-VL 复核 → 人定</td><td>Stage 2：Pick 起点定到握住面包那帧，核对 bread / plate</td></tr>
+        <tr><td>Contact sheet 降成本</td><td>Stage 2：Gemini 看 3×4 拼图而不是整段视频</td></tr>
+        <tr><td>PhysExtend：DP + C / D / Q 三项 + 夹爪事件修正</td><td>Stage 3：慢一拍的面包轨迹，Pick | Place 边界扣到夹爪松开那帧</td></tr>
+        <tr><td>多 reference 融合 + monotonic projection</td><td>Stage 3：5 条 reference 各跑一遍再融合；Fig. 3d 1 条 71.0 → 4 条 79.3</td></tr>
+        <tr><td>QC：排除执行结构不同的 task、DTW、语义修正、发布门槛</td><td>Stage 4：检查 bread / plate 描述；85% / 75% 门槛</td></tr>
+        <tr><td>RoboAtom-Bench 4 子集 + mIoU / temporal F1 / Skill F1 / Edit</td><td>Stage 4：面包轨迹在 Short 子集，三段 IoU ≥ 0.7 且 skill 对才满分</td></tr>
+        <tr><td>RoboAtom-Anno：mid-training → SFT → GRPO，四项 reward</td><td>Stage 5：输出 JSON 三段；候选按 0.70 / 0.10 / 0.18 / 0.02 打分</td></tr>
+        <tr><td>双系统：segment 级语言条件训 π0.5，System 2 + RAG 调度</td><td>Stage 6：Fig. 6 的黑碗任务，[Pick] → 碗抬起 → [Place]</td></tr>
+        <tr><td>主结果</td><td>Results：Anno-9B Skill F1@0.7 30.1；LIBERO-Long 98.20</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览</h2>
+  <ul class="tight results">
+    <li><b>Skill F1@0.7 30.1</b> RoboAtom-Anno-9B 在 RoboAtom-Bench 上，vs GPT-5.6-sol 21.4、Gemini 3.1 Pro 16.1、Qwen3.8-27B 10.9、GPT-4o 7.2；mIoU 55.1 vs 44.0，Edit 76.7 vs 63.4；成本 0.006 vs 4.330 USD / 视频小时（Tab. 3）。27B 版 33.8。</li>
+    <li><b>F1@0.7 48.3</b> 在外部 WGO-Bench Robot 上（vs 最强参照 GPT-5.6-sol 31.3，+17.0）；WGO Ego 21.1 vs 14.1；27B 版 49.2 / 28.3（§5.3）。</li>
+    <li><b>Skill F1@0.7 71.0 / EA 69%</b> PhysExtend 用 1 条 reference，vs Cortex 48.5 / 37%、GPT-5.6-sol 35.0 / 46%；成本 2.8×10⁻⁵ USD / 小时；4 条 reference 到 79.3（Tab. 2，Fig. 3d）。</li>
+    <li><b>LIBERO-Long 98.20</b> vs π0.5 95.00（+3.20）；LIBERO-Plus overall 88.18 vs 84.05（Object +6.63、Goal +6.41、Long +3.73，Spatial 反而 92.46 vs 93.01）；RoboTwin Clean 82.02 vs 80.70、Random 50.32 vs 48.04、平均 66.17 vs 64.37（Tab. 4）。</li>
+    <li><b>Short 71.1 → Long 17.3</b> RoboAtom-Anno-9B 的 Skill F1@0.7 随子集段数增多急降；Medium 43.7、Multiview 33.9（Tab. C.3）。</li>
+    <li><b>1.20 → 0.99</b> GRPO 把预测 / GT 段数比拉回 1，temporal F1@0.7 35.5 → 41.0（§5.3）。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-RoboAtom/tab3.jpg" alt="Tab. 3：各模型在 RoboAtom-Bench 和 WGO-Bench Robot 上的 mIoU、F1@0.7、Skill F1@0.7、Edit、成本"></div>
+    <figcaption><b>Tab. 3</b>（作者原表）先看 Skill F1@0.7 列和 Cost 列：RoboAtom-Anno-9B 30.1 / 0.006，GPT-5.6-sol 21.4 / 4.330；WGO-Bench Robot 没有闭合词表，所以只报 mIoU 和 F1@0.7。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-RoboAtom/tab4.jpg" alt="Tab. 4：π0.5 和 Our method 在 LIBERO-Long、LIBERO-Plus 五列、RoboTwin 三列的成功率"></div>
+    <figcaption><b>Tab. 4</b>（作者原表）先看 LIBERO Long 列 95.00 → 98.20 和 LIBERO-Plus Overall 84.05 → 88.18（10,030 个任务）；RoboTwin Avg. 是 Clean / Random 的均值，每格 5,000 次试验（B.4）。</figcaption>
+  </figure>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>论文自述（§6）：没验证 atomic 监督在大规模 policy pretraining 里的作用；没包含 egocentric 人类视频——人的动作短碎、常常不到 1 s，当前采样率难定位，可能需要更粗的 atomic 定义。</li>
+    <li>Long 子集（9–62 段）Skill F1@0.7 只有 17.3（Tab. C.3）：长时序自动标注仍远不可用，2 FPS 下短于 2 s 的动作只占几帧（§4.3）。</li>
+    <li>PhysExtend 要求 target 和 reference 的 ordered skill 序列完全相同（§3.3）；执行步骤有分叉的 task 整个被排除（§3.4），λ_d、λ_q 等参数没给数值。</li>
+    <li>控制端的 System 2 从 task 知识库的 plan prior 里选指令（B.4），不是开放任务的在线分解；LIBERO-Plus Spatial 还降了 0.55（Tab. 4）。</li>
+    <li>数据总量里仿真占 7,508 h、真机 9,375 h（§3.5）；发布门槛 85% / 75% 意味着发布版仍含错标（§3.4）。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Atom-Action</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li>RoboAtom-Data 直接含 LIBERO（1,712 条 / 3,910 段 / 8 类 skill）、RoboTwin 2.0（27,500 条 / 70,396 段）、RoboDojo（3,500 条 / 31,063 段）的 atomic 标注（Tab. A.2）——正是 robot-harness Runtime 跑的三个 benchmark，可以当 harness skill library 的 ground-truth 分段，或给 Native API / Codex policy 的子任务 prior。</li>
+    <li>双系统（§5.2）和 harness 同构：System 2 = agent 挑 atomic 指令，System 1 = 条件化 VLA；差别是它的 System 2 只在知识库 plan 里选、没有 verification / admission——Supervisor 可以接在两者之间，PhysExtend 的"夹爪事件 = Pick / Place 边界"也可当判断 atomic action 是否完成的 evidence 信号。</li>
+    <li>和 AtomicVLA 对比：AtomicVLA 在 policy 内部 think 出 skill（词表手定 5–8 个），RoboAtom 把 skill 标签做成数据层（29 类、跨 16 源）；两者可拼——用 RoboAtom-Data 训 AtomicVLA 的 think 头，词表直接用 29 类。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Atom-Action/2026-11-02-RoboAtom.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
