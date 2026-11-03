@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>WorldMirror</title>
+<meta name="description" content="Coding agent 把一段 DROID 机器人视频写成可执行的 world program：调专用生成工具重建、以标定相机为锚对齐、Isaac Sim 回放验证、失败就回退重做；原轨迹不改一帧回放成功率 100%。">
+<meta name="paper:title" content="WorldMirror: Agentic Real-to-Sim Generation of Interactive Worlds from In-the-Wild Robot Demonstrations">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.31834">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.31834v1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-03</p>
+  <h1>WorldMirror</h1>
+  <p class="full-title">WorldMirror: Agentic Real-to-Sim Generation of Interactive Worlds from In-the-Wild Robot Demonstrations</p>
+  <p class="meta">Tianling Xu, Weijie Wan, Honghao Su, Kailun Su, Junyuan Tang, Huichi Zhou, et al. · Xspark AI, Tsinghua, HKU, UCL, PKU · arXiv 2026-10-22</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.31834">arXiv</a><a href="https://arxiv.org/pdf/2610.31834v1">PDF</a>
+    <a href="https://worldmirror-page.github.io/">Project page</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric-real-to-sim</b>：一个 coding agent 把真机视频（DROID）变成可交互的 digital twin，让录下来的轨迹能在 sim 里直接回放——正是"agent 把真实世界变成仿真"这条线。截至 2026-11-03 项目页没有代码链接。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>把一段 in-the-wild 机器人视频变成可交互的 digital twin，还要让录下的轨迹不改一帧就能在 sim 里回放成功：feed-forward 重建一次定型没法纠错，通用 agent（GPT-6 Astra）布局对但外观假、碰撞不稳。</dd></div>
+    <div><dt>Idea</dt><dd>把 real-to-sim 写成一个可执行的 <b>world program</b>：router agent 按固定的 construction graph 调四个专用 agent 和一堆生成工具（Meshy、Hunyuan3D…），每步由 judge 验证，失败就带着 failure type 回退到出错的 stage 重做；所有东西都放进<b>以标定相机为锚的同一坐标系</b>，所以机器人原轨迹直接回放。</dd></div>
+    <div><dt>Result</dt><dd>DROID 上回放位移误差 <b>1.79 cm</b>（GPT-6 Astra 11.17，RoLA 24.70），回放成功率 <b>100%</b> vs 40%，LPIPS 0.427 最好；去掉 verification 回放 final 误差从 2.34 cm 退到 33.86 cm（Tab. 4、5）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>想从一段真机视频得到"原轨迹能直接回放"的 digital twin：现有方法要么没对齐相机、要么外观糊、要么碰撞不稳，而且错了没法改</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>红笔进白碗</b>（Fig. 2 左上）：一段 DROID 的 in-the-wild 视频 <span class="ex">V</span>（外置相机 RGB，桌上有 red marker 和 white bowl，指令 "Put the red marker inside the white bowl"）+ 当时录下的机械臂关节轨迹 <span class="ex">T</span>（含相机到机器人底座的外参）→ 想要：一个 Isaac Sim 里的场景，背景像真的、marker 和 bowl 是可编辑的 asset、相机和机器人底座都在同一坐标系里，<b>把 T 原封不动播一遍，marker 真的落进 bowl</b>。再想要：第一次回放失败时，系统能自己找出是哪一步错了并只重做那一步。</p>
+  </div>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-WorldMirror/fig1.jpg" alt="Fig. 1：GPT-6 Astra 与 WorldMirror 在 Spatial Structure、Visual Fidelity、Collision & Physical Consistency 三行上的对比"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）左 GPT-6 Astra，右 WorldMirror，三行是三个要求：Spatial Structure（两边都 ✓）、Visual Fidelity（Astra "Low Visual Realism" ✗）、Collision &amp; Physical Consistency（Astra "Unstable Interaction" ✗，夹爪和碗的接触位置画了虚线圈）。</figcaption>
+  </figure>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>DROID 视频 V + 轨迹 T<br/>“红笔进白碗”</span>"]
+  IN --> A1["<b>RoLA</b><br/>单张图 → 可交互场景"]
+  A1 --> AX["没标定相机、无统一坐标系<br/><span class='ex'>位移误差 24.70 cm<br/>方向误差 53°（Tab. 4）</span>"]:::gap
+  IN --> B1["<b>RoboSnap</b><br/>one-shot 视频 →<br/>Gaussian 背景 + 几何"]
+  B1 --> BX["背景糊、飘浮伪影<br/><span class='ex'>PSNR 10.30，LPIPS 0.641<br/>（Tab. 2，Fig. 3）</span>"]:::gap
+  IN --> C1["<b>SimFoundry</b><br/>视频重建 + 位姿对齐<br/>+ 物理标注"]
+  C1 --> CX["物体摆不到原来的位置<br/><span class='ex'>mask IoU 0.169，<br/>位置误差 19.54（Tab. 3）</span>"]:::gap
+  IN --> D1["<b>GPT-6 Astra</b><br/>通用 agent 从头<br/>写一个 3D 世界"]
+  D1 --> DX["布局对、外观假、碰撞不稳<br/><span class='ex'>LPIPS 0.606、成功率 40%<br/>方向误差 81°（Tab. 2, 4）</span>"]:::gap
+  </pre></div>
+  <p class="note">推断的"坏在哪"：论文只报告了各 baseline 的指标（Tab. 2–4）和能力表（Tab. 1），没有逐个分析失败步骤。RoLA "没标定相机、没统一坐标系"来自 Tab. 1 的 ✗（Camera Calibration、Camera-Pose-Anchored Representation、Demonstration Replay）；RoboSnap 的"背景糊"是我看 Fig. 3 第二列的描述；SimFoundry 只在 Tab. 3 出现，论文没评它的视觉和回放；GPT-6 Astra 的"外观假、碰撞不稳"是 Fig. 1 作者自己的标注。位置误差 Tab. 3 没写单位。</p>
+  <p class="crux"><b>根本问题：</b>real-to-sim 要同时满足视觉、几何、物理三类耦合的约束——摆错了要调布局，少了东西要重新分解场景，碰撞不对要重做物理表示——而 feed-forward 重建一次定型没法改，通用 agent 自己又生不出精细几何和真实外观（§1）。　<b>这篇的切入点：</b>把世界写成一个可执行的程序，让 coding agent 调专用生成工具一步步建、judge 验证、失败就回退到出错的那一步重做；相机先标定，场景、物体、机器人全都挂在这个相机坐标系下，所以原轨迹能直接回放。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>扫描 / 单图 / 短视频 → 可交互场景</b><br><span class="muted">RialTo, RoLA, PolaRiS</span></td><td>从真实场景得到能让机器人交互的仿真环境</td><td>扫描或神经重建一次出场景，feed-forward</td><td>没有相机标定和统一坐标系，录下的轨迹回放不了（RoLA 位移误差 24.70 cm）→ 本文先标定相机、再把一切挂到相机坐标系下</td></tr>
+      <tr><td><b>重建 + 对齐 + 物理精修</b><br><span class="muted">SimFoundry, RoboSnap, TwinAligner</span></td><td>让重建的场景在几何和物理上和真实对得上</td><td>位姿对齐、物理标注、系统辨识，固定流水线跑一遍</td><td>有标定和回放（RoboSnap），但流水线固定、错了不知道是哪一步 → 本文 judge 给出 failure type + rewind target，router 只重做出错的 stage</td></tr>
+      <tr><td><b>Agentic real-to-sim</b>（本文所属）<br><span class="muted">Agentic Real2Sim</span></td><td>用 VLM agent 重建录下的机器人交互</td><td>agent 重建 + 场景标定 + 模拟器引导精修</td><td>Tab. 1 里唯一缺的是 camera-pose-anchored 表示 → 本文把场景、物体、机器人放进同一个相机锚定的可编辑 world state，并分层：router 调专用 agent，每层局部验证</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>通用 agent 写 3D 世界</b><br><span class="muted">GPT-6 Astra, Articraft, Procedura</span></td><td>用程序生成复杂 3D 内容和 articulated asset</td><td>通用多模态 agent 直接写场景代码 / 过程式建模</td><td>不从真实视频重建外观，碰撞几何不稳（Astra 回放成功率 40%）→ 本文让 agent 调 Gaussian 场景和 Meshy / Articraft 等专用工具，Articraft 本身被当作一个 skill</td></tr>
+      <tr><td><b>带 critic 的 agentic 场景生成</b><br><span class="muted">SAGE, LiteReality</span></td><td>为 embodied AI 批量生成 simulation-ready 场景</td><td>场景 / 物体生成器 + critic 迭代；或从 RGB-D 扫描检索资产</td><td>不绑定某段真机演示：没有相机标定、不回放轨迹 → 本文的 critic（judge）最终以"原轨迹回放成功"为准</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2 Related Work 和 Tab. 1 能力对比，加上 §4.1 的 baseline 列表；§2 的"Simulation for Robot Learning"一段（RLBench、robosuite、ManiSkill、SIMPLER、MimicGen、RoboTwin）是仿真平台，不是同一问题，未列入；未另行检索。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-WorldMirror/tab1.jpg" alt="Tab. 1：RoLA、RoboSnap、SimFoundry、SAGE、Astra、Agentic Real2Sim、WorldMirror 在 8 项能力上的 ✓/✗"></div>
+    <figcaption><b>Tab. 1</b>（作者原表）三组能力：Scene Reconstruction、Robot–World Alignment、Agentic Construction。只有 WorldMirror 一列全 ✓；Camera-Pose-Anchored World Representation 这一行所有 baseline 都是 ✗。</figcaption>
+  </figure>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>把 real-to-sim 当成"迭代修改一个可执行的 world program"：agent 调工具建，judge 验，失败就回退改</h2>
+  <ul class="tight">
+    <li><b>世界是一个程序 + 一组状态文件</b>（Fig. 2 左 Agent Workspace）：<span class="ex">static_scene_state/</span>（Gaussian 场景、collision、相机）、<span class="ex">interactive_object_state/</span>（物体 asset、属性、机器人外参）、<span class="ex">skills/</span>、<span class="ex">check_success/result.json</span>。agent 改的是这些文件和一段 assembly 代码。</li>
+    <li><b>Router agent 不自由发挥</b>：按一张固定的 construction graph 走（scene preparation → camera calibration → support fitting → object construction → layout → robot alignment → trajectory replay，§3.3），只决定"前进 / 调哪个 skill / 回退到哪 / 停下 / 接受"。</li>
+    <li><b>Agent-as-Tool</b>：四个专用 agent（Reconstruction、Calibration、Layout、Replay）被当成 router 可调用的工具，每个带自己的 judge。</li>
+    <li><b>一个相机坐标系锚住一切</b>（§3.5）：先标定相机得到 world frame <span class="ex">W</span>，场景、物体、机器人底座都用它表示，所以录下的关节轨迹不用重规划、不用 retarget，直接播。</li>
+  </ul>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>DROID 视频 V + 轨迹 T<br/>“红笔放进白碗”</span>"] --> M["<b>Agent 迭代改 world program</b><br/><span class='ex'>重建→标定→摆放→回放<br/>judge 验，失败回退重做</span>"]:::win
+  M --> O["<b>Output</b><br/><span class='ex'>scene.usdz，原轨迹回放<br/>marker 进 bowl</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage + 贯穿全程的 world state memory 和 verification loop</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-WorldMirror/fig2.jpg" alt="Fig. 2：WorldMirror framework，左 Agent Workspace 文件树，上 Router Agent Loop，中 Agent-As-Tool 四个 agent，下 Construction Skills Library 和 Verification-Guided Refinement"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）WorldMirror framework。coding agent 维护一个可编辑的世界，调场景 / 物体生成工具，用 assembly 代码对齐相机、asset 和机器人；渲染结果和执行反馈指导有针对性的修改。</figcaption>
+  </figure>
+  <p class="eyebrow">符号表（§3 和 Fig. 2 用到的）</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>是什么</th><th>例子里的值</th></tr>
+      <tr><td><span class="ex">V</span></td><td>输入的 RGB 视频</td><td>DROID 外置相机拍的"红笔进白碗"片段</td></tr>
+      <tr><td><span class="ex">T</span></td><td>和视频同步录下的机器人轨迹（关节序列 + 相机到底座外参）</td><td>Franka 臂抓 marker 放进 bowl 的关节序列</td></tr>
+      <tr><td><span class="ex">Ŝ = A(V, T)</span></td><td>agentic 构建过程 A 产出的 digital twin（式 1）</td><td>最终的 scene.usdz</td></tr>
+      <tr><td><span class="ex">M_t = (S_t, O_t, R_t, F_t)</span></td><td>第 t 步"已提交"的 world state（式 2）：静态场景、可交互物体、空间关系、验证反馈</td><td>t 步时 Gaussian 场景 + marker/bowl asset + 它们相对相机和机器人的位姿 + 上一次 judge 的结果</td></tr>
+      <tr><td><span class="ex">S_t</span></td><td>静态场景：Gaussian 背景、标定好的相机、support 碰撞几何</td><td><span class="ex">gaussian_scene</span>、<span class="ex">collision</span>、<span class="ex">camera.json</span></td></tr>
+      <tr><td><span class="ex">O_t</span></td><td>可交互物体：几何、米制尺度、位姿、物理属性、（若有）关节结构</td><td><span class="ex">objects/</span> 里的 red marker、bowl 和 <span class="ex">attributes.json</span></td></tr>
+      <tr><td><span class="ex">R_t</span></td><td>场景、物体、机器人之间的空间关系</td><td>marker 在桌上、bowl 在桌上、机器人底座相对相机的位置</td></tr>
+      <tr><td><span class="ex">F_t</span></td><td>验证状态和失败反馈（failure type、rewind target、受影响的组件）</td><td>"replay 失败：marker 没进 bowl → 回退到 layout"</td></tr>
+      <tr><td><span class="ex">W</span> / <span class="ex">C</span></td><td>统一世界坐标系 / 标定后的相机坐标系</td><td>W 由这段视频的相机锚定</td></tr>
+      <tr><td><span class="ex">T_C^W</span>（图里的 <span class="ex">T_camw</span>）</td><td>相机坐标系到世界坐标系的刚体变换（旋转 R + 平移 t）</td><td><span class="ex">robot/T_camw.npy</span>，assembly 代码里 <span class="ex">scene.set_camera(T_camw)</span></td></tr>
+      <tr><td><span class="ex">X^W = T_C^W X^C</span></td><td>把相机坐标系下的一个点变到世界坐标系</td><td>机器人底座也是这样从录下的外参变到 W 里</td></tr>
+    </table>
+  </div>
+  <p class="eyebrow">怎么读 Fig. 2</p>
+  <ol class="read">
+    <li><b>左栏 Agent Workspace：</b>world program 就是这棵文件树。<span class="ex">static_scene_state/</span> 是 S_t，<span class="ex">interactive_object_state/</span> 是 O_t（含 <span class="ex">robot/T_camw.npy</span>），<span class="ex">skills/</span> 里是 Camera-calib-judge、Collider-fit、Scene-clean 这类 skill，<span class="ex">check_success/result.json</span> 是 F_t。</li>
+    <li><b>上栏 Router Agent Loop：</b>输入是 In-the-wild video 四帧 + 指令 "Put the red marker inside the white bowl"。router 三步：[VLM] 看出 table、red marker、bowl；[Plan] 拆成 reconstruct → align → simulate；[Route] 调 skill、验结果、精修。右侧 Coordinate 的循环箭头就是它反复调度。</li>
+    <li><b>中栏 Agent-As-Tool，从左到右四个 agent：</b>Reconstruction Agent 上半 Object Generation 出 red marker 和 bowl 两个 Editable object assets，下半 Scene Generation 出 Static scene；Calibration Agent 先 Correspondence Initialization（图上绿圈是匹配区域）再 Pose Optimization（一圈蓝色相机锥）；Layout agent 做 6-DoF Pose Optimization 得到 Assembled 场景，下面那 5 行 <span class="ex">T_camw_assembly.py</span> 就是 world program 的核心：<span class="ex">scene.add(red_marker, pose_red_marker)</span>、<span class="ex">scene.add(bowl, pose_bowl)</span>、<span class="ex">scene.set_camera(T_camw)</span>、<span class="ex">scene.save("scene.usdz")</span>；Replay agent 把 Real observation 和 Simulation scene 并排比，判 REPLAY SUCCESS。</li>
+    <li><b>下栏左 Construction Skills Library：</b>Meshy、Hunyuan3D、Nano Banana、Rodin、Image2ThreeJS、Marble——专用生成工具，被 agent 当 skill 调（§3.3 还提到 Articraft 做 articulated 物体）。</li>
+    <li><b>下栏右 Verification-Guided Refinement：</b>Reconstruction Judge、Layout Judge、Replay Judge。橙色虚线 "if fails" 从 judge 指回各 agent，"Iteratively refine" 指回 Replay——这就是 stage-all 的回退循环。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Understand &amp; Plan</b>（Router）<br/><span class='ex'>table, red marker, bowl<br/>reconstruct → align → simulate</span>"]
+  S2["<b>2 · Reconstruct</b>（Reconstruction Agent）<br/><span class='ex'>Gaussian 背景 + collision<br/>marker、bowl 两个 asset</span>"]
+  S3["<b>3 · Calibrate</b>（Calibration Agent）<br/><span class='ex'>DINOv2 匹配 → 渲染对图优化<br/>→ 相机位姿 T_camw，世界系 W</span>"]
+  S4["<b>4 · Layout &amp; robot align</b>（Layout Agent）<br/><span class='ex'>6-DoF 摆 marker、bowl<br/>底座外参变到 W；assembly.py</span>"]
+  S5["<b>5 · Replay</b>（Replay Agent）<br/><span class='ex'>Isaac Sim 原轨迹回放<br/>→ REPLAY SUCCESS</span>"]
+  M["<b>World state memory + Judges</b><br/><span class='ex'>M_t = (S_t, O_t, R_t, F_t)<br/>failure type + rewind target</span>"]:::win
+  S1 --> S2 --> S3 --> S4 --> S5
+  S5 -. "if fails" .-> M
+  M -. "rewind" .-> S2
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click M href "#stage-all"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；绿框是贯穿所有 stage 的 <a href="#stage-all">world state memory + verification loop</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Understand &amp; Plan（Router Agent）</span>
+      <span class="stage-io">视频 V + 轨迹 T → 场景分解 + 在 construction graph 上的下一步</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>不同的错要不同的修法（摆错 → 调布局；缺物体 → 重新分解；碰撞不对 → 改物理表示），所以需要一个会看状态、会选下一步的调度者，而不是固定顺序的脚本（§1）。</li>
+        <li><b>How：</b>VLM 看视频，列出场景里的东西（table, red marker, bowl）；把目标拆成 reconstruct → align → simulate（Fig. 2 上栏）。</li>
+        <li><b>How：</b>router 监督一张<b>固定的 construction graph</b> 的遍历：scene preparation → camera calibration → support fitting → object construction → layout → robot alignment → trajectory replay（§3.3）。它只在合法动作里选：前进到下一 stage、调一个 construction skill、回退到前面某个 stage、停下检查、接受当前世界。</li>
+        <li><b>How：</b>judge 返回带 failure class 和 rewind target 的 typed failure 时，router 走对应的合法转移，execution controller 再校验一遍。"调度是自适应的，但构建依赖关系是固定的"。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  V["<b>[VLM] 看视频</b><br/><span class='ex'>table, red marker, bowl</span>"] --> P["<b>[Plan] 拆任务</b><br/><span class='ex'>reconstruct → align<br/>→ simulate</span>"]
+  P --> R["<b>[Route] 选合法动作</b><br/><span class='ex'>前进 / 调 skill / 回退<br/>/ 停 / 接受</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>router 看到桌子、一支 red marker、一个 white bowl；计划先重建静态场景和两个物体，再标定相机、摆放、对齐机器人，最后在 Isaac Sim 里回放 T。第一次调的是 Reconstruction Agent。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Reconstruct（Reconstruction Agent）</span>
+      <span class="stage-io">视频帧 + 场景分解 → 静态场景 S（Gaussian + collision）+ 可编辑物体 asset O</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>通用 agent 自己生不出真实外观和精细几何（Fig. 1 Astra "Low Visual Realism"），所以外观和几何交给专用生成模型，agent 只负责调（§1）。</li>
+        <li><b>How · 静态场景：</b>视觉背景用 Gaussian 表示，物理支撑（桌面）用对应的 collision 几何（§3.2 Static scene state）。Fig. 2 workspace 里对应 <span class="ex">gaussian_scene</span>、<span class="ex">collision</span>、<span class="ex">clean_background</span>，skill 有 Scene-clean 和 Collider-fit。</li>
+        <li><b>How · 物体：</b>任务相关的物体做成可编辑的仿真实体，带几何、米制尺度、位姿、物理属性，必要时带关节结构（§3.2 Interactive object state）。刚体用 Meshy，articulated 用 Articraft（§3.3 b）；skill 库里还有 Hunyuan3D、Nano Banana、Rodin、Image2ThreeJS、Marble（Fig. 2 下栏）。</li>
+        <li><b>How：</b>产出是"候选更新"，要过 Reconstruction Judge 才提交进 world state（§3.2）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  F["<b>视频帧</b><br/><span class='ex'>桌子 + marker + bowl</span>"] --> S["<b>Scene Generation</b><br/><span class='ex'>Gaussian 背景<br/>+ 桌面 collision</span>"]
+  F --> O["<b>Object Generation</b><br/><span class='ex'>Meshy → red marker、bowl<br/>（articulated 用 Articraft）</span>"]
+  S --> J["<b>Reconstruction Judge</b><br/><span class='ex'>通过 → 提交 S_t / O_t</span>"]
+  O --> J
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 2 Reconstruction Agent 面板：上半 Object Generation 出两个 Editable object assets——red marker 和 bowl；下半 Scene Generation 出带白桌的 Static scene。写进 <span class="ex">objects/</span>、<span class="ex">attributes.json</span>、<span class="ex">gaussian_scene</span>、<span class="ex">collision</span>。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Calibrate（Calibration Agent）</span>
+      <span class="stage-io">重建的场景 + 真实视频帧 → 相机位姿 T_C^W，以它锚定的世界系 W</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>Tab. 1 里 RoLA、SAGE、Astra 没有 Camera Calibration，所有 baseline 都没有 Camera-Pose-Anchored 表示；相机不对，后面物体和机器人就没有共同的参照，轨迹回放必漂。</li>
+        <li><b>How · 初始化：</b>用 DINOv2 做图像对应（correspondence）匹配，得到相机位姿初值（§3.3 a；Fig. 2 "Correspondence Initialization"）。</li>
+        <li><b>How · 精修：</b>render-to-image 目标：把重建场景渲染出来和真实帧比，损失含光度项和结构项（LSD 线段匹配），优化相机位姿（Fig. 2 "Pose Optimization"）。skill：<span class="ex">Camera-calib-judge</span>。</li>
+        <li><b>How · 锚定：</b>标定后建立统一世界系 W，相机到世界的变换是 T_C^W（旋转 R、平移 t，SE(3)）；相机系里的点 X^C 用 X^W = T_C^W X^C 变到 W（§3.5）。后面每个组件都通过"组件到世界"的变换放进 W。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  A["<b>DINOv2 对应匹配</b><br/><span class='ex'>真实帧 ↔ 渲染图<br/>→ 位姿初值</span>"] --> B["<b>渲染-对图优化</b><br/><span class='ex'>光度 + LSD 线段匹配</span>"]
+  B --> C["<b>世界系 W</b><br/><span class='ex'>T_camw.npy，camera.json</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 2 Calibration Agent 面板：绿圈框出 bowl 附近的匹配区域做初始化；下面一圈蓝色相机锥是优化过程中的候选位姿。结果是 <span class="ex">T_camw</span>，之后 marker、bowl、机器人底座都用它说话。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Layout &amp; robot align（Layout Agent）</span>
+      <span class="stage-io">S、O、T_C^W、录下的相机→底座外参 → 摆好的场景 + 机器人底座位姿 + assembly 代码</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>物体要回到视频里的位置（Tab. 3 的 IoU / 位置误差），机器人底座要和相机在同一个系里，否则关节轨迹播出来手不在 marker 上。</li>
+        <li><b>How · 摆物体：</b>Camera-anchored assembly（§3.3 c）：每个重建组件放进 W，再精修其尺度、位置、朝向，使渲染出的 mask 和轮廓匹配观测（Fig. 2 "6-DoF Pose Optimization" → "Assembled"）。</li>
+        <li><b>How · 对齐机器人：</b>把录下的相机到底座外参变到 W（含相机轴约定转换和米制尺度），机器人底座就落在 W 里；之后机器人、场景、支撑面、物体共用一个刚体参照（§3.5）。</li>
+        <li><b>How · 写成程序：</b>产出是 assembly 代码 <span class="ex">T_camw_assembly.py</span>（Fig. 2）：<span class="ex">scene.add(red_marker, pose_red_marker)</span> → <span class="ex">scene.add(bowl, pose_bowl)</span> → <span class="ex">scene.set_camera(T_camw)</span> → <span class="ex">scene.save("scene.usdz")</span>。过 Layout Judge 才提交。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  P["<b>6-DoF 位姿优化</b><br/><span class='ex'>marker、bowl 对上<br/>mask 和轮廓</span>"] --> R["<b>机器人底座 → W</b><br/><span class='ex'>录下的外参 × T_camw</span>"]
+  R --> A["<b>assembly.py</b><br/><span class='ex'>scene.add / set_camera / save</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 2 Layout agent 面板：左图 marker 和 bowl 各自带一个框做 6-DoF Pose Optimization，右图 Assembled 是摆好后从标定相机视角渲染的画面；下面 5 行代码把 red marker、bowl、相机装进场景并存成 <span class="ex">scene.usdz</span>。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Replay（Replay Agent）</span>
+      <span class="stage-io">scene.usdz + 原关节轨迹 T → Isaac Sim 回放结果 + Replay Judge 的判定 F</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>最终要的不是"看起来像"，而是录下的动作在 sim 里能复现同样的交互；回放本身就是最严格的几何 + 物理一致性检验（§4.4）。</li>
+        <li><b>How：</b>在 Isaac Sim 里从对齐后的底座直接执行录下的关节轨迹，<b>不改轨迹、不重规划、不 retarget</b>（§3.5、§4.4）。</li>
+        <li><b>How：</b>Replay Judge 把真实观测和仿真画面并排比（Fig. 2 "Real observation" vs "Simulation scene"），结果写进 <span class="ex">check_success/result.json</span>；评价指标是位移、终点、方向、DTW 误差，接触 F1 和成功率（§4.1）。</li>
+        <li><b>How：</b>失败 → typed failure 回给 router（去 <a href="#stage-all">stage-all</a>）；成功 → 接受这个世界。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  E["<b>Isaac Sim 执行 T</b><br/><span class='ex'>原关节序列，不改一帧</span>"] --> J["<b>Replay Judge</b><br/><span class='ex'>真实 vs 仿真画面<br/>result.json</span>"]
+  J --> OK["<b>REPLAY SUCCESS</b><br/><span class='ex'>marker 进 bowl → 接受</span>"]:::win
+  J --> NO["<b>失败</b><br/><span class='ex'>failure type + rewind target</span>"]:::gap
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 2 Replay agent 面板：上 Real observation 是真机夹爪把 marker 放进 bowl，下 Simulation scene 是 Isaac Sim 里同一时刻的画面，判 REPLAY SUCCESS。Fig. 4 给了三个别的 DROID 片段的腕部视角逐帧对比（pick up a fork、lift a pot lid、open a drawer）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿全程</span>
+      <span class="stage-name">World state memory + Verification-guided refinement</span>
+      <span class="stage-io">每个 stage 的候选更新 → judge 验证 → 提交，或 typed failure → router 回退重做</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>Tab. 5 的 Fixed Iterative 说明"多跑几轮"不够：不知道哪个组件错了就修不好（final 误差 31.77 cm，仍失败）。要的是带诊断的回退。</li>
+        <li><b>How · 共享记忆：</b>所有 agent 读写同一个 world state M_t = (S_t, O_t, R_t, F_t)（式 2）：当前重建、组件间空间关系、仿真属性、最新验证反馈（§3.2）。</li>
+        <li><b>How · 先验后提交：</b>每个专用 agent 产出候选更新，只有对应的 judge 通过才提交；否则已提交状态不变，typed failure 存进 F_t 交给 router（§3.2、§3.4）。</li>
+        <li><b>How · 诊断：</b>judge 用渲染观测、重建配置和仿真结果检查视觉、空间、物理一致性，结合当前 world state 定位最可能的失败源，返回：验证状态、failure type、rewind target、受影响的组件（§3.4 Iterative Verification）。</li>
+        <li><b>How · 回退：</b>router 按 failure class 和 rewind target 走 construction graph 上的合法转移；依赖被改组件的下游组件标为过期、在修好后重建；两级自适应——专用 agent 在自己 stage 内搜参数，router 跨 stage 回退做结构性修正；直到所有检查通过或用完 refinement 预算（§3.4 Closed-loop Refinement）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  C["<b>某 agent 的候选更新</b><br/><span class='ex'>如 layout：marker 的新位姿</span>"] --> J["<b>对应的 Judge</b><br/><span class='ex'>视觉 / 空间 / 物理一致性</span>"]
+  J -- 通过 --> K["<b>提交进 M_t</b><br/><span class='ex'>S_t / O_t / R_t 更新</span>"]:::win
+  J -- 失败 --> F["<b>typed failure → F_t</b><br/><span class='ex'>failure type、rewind target、<br/>受影响组件</span>"]:::gap
+  F --> R["<b>Router 回退</b><br/><span class='ex'>重做出错 stage，<br/>下游组件标过期后重建</span>"]
+  R --> C
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-03-WorldMirror/fig5.jpg" alt="Fig. 5：rail manipulation 任务上 w/o Verification Feedback 与 Full WorldMirror 的回放对比"></div>
+        <figcaption><b>Fig. 5</b>（作者原图，右侧面板）Failure diagnosis and refinement。顶上 Real demonstration；左列 w/o Verification Feedback：No diagnosis or refinement → Object remains stationary（Failure）；右列 Full WorldMirror：Failure diagnosis &amp; Verification-guided refinement → Object reaches target placement（Success）。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>顶行 Real demonstration：</b>木桌上几个彩色方块，真机夹爪把一个方块推到目标位置——这是 §4.5 的 rail manipulation 任务，不是本页的 marker/bowl 片段。</li>
+        <li><b>左列 w/o Verification Feedback：</b>一次重建、一次回放，中间红框 "No diagnosis or refinement"，结果 "Object remains stationary"：夹爪动了，方块没动（Tab. 5 One-pass：Trans. 0 cm、Lift 0 cm、final 误差 33.86 cm）。</li>
+        <li><b>右列 Full WorldMirror：</b>黄框 "Failure diagnosis &amp; Verification-guided refinement"——Replay Judge 判失败，router 回退重做，第 4 次回放成功（Tab. 5：Replay Iter. 4，final 误差 2.34 cm，Trans. 32.98 cm）。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>延伸例子：假设第一次回放时夹爪在 marker 上方几厘米处合拢、marker 没被抓起。Replay Judge 对比真实和仿真画面，判失败，failure type 指向物体位姿 / 尺度，rewind target 是 layout；router 回到 Stage 4 重新优化 marker 的 6-DoF 位姿和尺度，assembly.py 和 scene.usdz 标为过期后重生成，再回放。论文给的数字来自 rail 任务（Tab. 5、6），marker/bowl 片段本身没有单独的回放次数报告。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>Real-to-sim = 迭代修改一个可执行的 world program（§1、§3.1）</td><td>Level 1：Agent Workspace 的文件树 + T_camw_assembly.py 就是那个程序</td></tr>
+        <tr><td>Router 在固定 construction graph 上做自适应调度（§3.3）</td><td>Stage 1：VLM 看出 table/marker/bowl，拆成 reconstruct → align → simulate，只选合法动作</td></tr>
+        <tr><td>Agent-as-Tool：四个专用 agent（§3.3）</td><td>Stage 2–5：Reconstruction、Calibration、Layout、Replay 各一个</td></tr>
+        <tr><td>Construction Skills Library：标定、场景 / 物体生成、camera-anchored 装配（§3.3）</td><td>Stage 2 的 Meshy / Articraft，Stage 3 的 DINOv2 + LSD，Stage 4 的 assembly</td></tr>
+        <tr><td>Structured world state memory M_t = (S_t, O_t, R_t, F_t)（§3.2）</td><td>符号表 + stage-all：static_scene_state/、interactive_object_state/、result.json</td></tr>
+        <tr><td>Camera-pose-anchored 坐标系，机器人底座也变到 W（§3.5）</td><td>Stage 3 得 T_camw，Stage 4 把 marker、bowl、底座都放进 W</td></tr>
+        <tr><td>原轨迹直接回放，不 retarget（§3.5、§4.4）</td><td>Stage 5：Isaac Sim 执行 T 不改一帧</td></tr>
+        <tr><td>Verification-guided refinement：typed failure + rewind（§3.4）</td><td>stage-all：第一次回放失败 → 回到 layout 重做 → 第 4 次成功（Tab. 5）</td></tr>
+        <tr><td>主结果：回放误差和成功率（Tab. 4）、消融（Tab. 5、6）</td><td>Results</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览：回放和感知指标上领先，布局 IoU 不如 GPT-6 Astra</h2>
+  <ul class="tight results">
+    <li><b>1.79 cm 位移误差 · 100% 回放成功率</b>（Tab. 4，DROID 演示在 Isaac Sim 里原轨迹回放）：GPT-6 Astra 11.17 cm / 40%，RoLA 24.70 cm / 未报告。终点误差 5.83 vs 21.98 / 40.80 cm，方向误差 10.90° vs 81.30° / 53.00°，DTW 1.64 vs 10.82 / 10.30 cm，接触 F1 0.873 vs 0.653。</li>
+    <li><b>LPIPS 0.427 · DISTS 0.168</b>（Tab. 2，10 个 DROID 场景首帧对真实外置相机图）：两项感知指标最好（RoLA 0.506 / 0.206，Astra 0.606 / 0.299）；PSNR 13.57 略高于 RoLA 13.53，SSIM 0.570 低于 RoLA 0.587，Aesthetic 0.570 最高。</li>
+    <li><b>Rel. Dist. 0.219</b>（Tab. 3，17 个物体、8 对物体）：相对距离最好，四项都胜过开源 baseline；但 mask IoU 0.469 低于 Astra 0.598，位置误差 9.66 高于 Astra 8.72，Rel. Vec. 0.557 vs 0.552——作者自己说"空间指标上没有一致优势"（§4.3）。</li>
+    <li><b>33.86 → 31.77 → 2.34 cm</b>（Tab. 5，rail 任务 final 误差）：One-pass ✗（1 次回放）、Fixed Iterative ✗（2 次）、Full ✓（4 次）。重复精修但不诊断，修不好。</li>
+    <li><b>消融</b>（Tab. 6，同一 rail 任务）：去 stateful memory 仍成功、final 2.35 cm（几乎没变）；去 adaptive routing 失败、9.86 cm；去 feedback refinement 失败、33.86 cm。作者结论：adaptive routing 和 verification feedback 是关键，memory 主要保存跨 stage 的中间结果。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-WorldMirror/tab4.jpg" alt="Tab. 4：RoLA、GPT-6 Astra、WorldMirror 的 Motion Replay 四项误差和 Physical Interaction 的 F1、SR"></div>
+    <figcaption><b>Tab. 4</b>（作者原表）先看最后一列 SR：WorldMirror 100%，Astra 40%，RoLA 没报；再看 Disp. 那列 1.79 vs 11.17 vs 24.70 cm。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-WorldMirror/tab5.jpg" alt="Tab. 5：One-pass、Fixed Iterative、Full 三种策略的成功与误差"></div>
+    <figcaption><b>Tab. 5</b>（作者原表）看 Final 列：33.86 / 31.77 / 2.34 cm；Trans. 和 Lift 两列 One-pass 都是 0——物体根本没动。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-WorldMirror/tab6.jpg" alt="Tab. 6：Full、w/o Stateful Memory、w/o Adaptive Routing、w/o Feedback Refinement 的消融"></div>
+    <figcaption><b>Tab. 6</b>（作者原表）w/o Feedback Refinement 就是 One-pass 那一行；w/o Stateful Memory 和 Full 几乎一样。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-WorldMirror/fig3.jpg" alt="Fig. 3：四个 DROID 场景上 GT、RoboSnap、RoLA、GPT-6 Astra、Ours 的首帧渲染"></div>
+    <figcaption><b>Fig. 3</b>（作者原图）列：GT、RoboSnap、RoLA、GPT-6 Astra、Ours。RoboSnap 列背景有 Gaussian 的糊和飘浮伪影；Astra 列是干净但不像的合成场景；Ours 列背景接近 GT。第三行白圆桌上的小物件就是类似本页例子的 bowl 场景。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-WorldMirror/fig4.jpg" alt="Fig. 4：三个任务（pick up a fork、lift a pot lid、open a drawer）的腕部视角 GT / GPT-6 Astra / Ours 逐时刻对比"></div>
+    <figcaption><b>Fig. 4</b>（作者原图）腕部相机视角，横轴 t=0 到 t=T 六个时刻，每组三行 GT / GPT-6 Astra / Ours。(a) 刚体：pick up a fork；(b) 可分离部件：lift a pot lid；(c) articulated：open a drawer。Astra 行在 (b)(c) 里夹爪和物体明显对不上。</figcaption>
+  </figure>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>评测很小</b>（§5 作者自述）：视觉 10 个 DROID 场景，布局 17 个物体 / 8 对，消融只在一个 rail 任务上；回放成功率 100% 是"在评测的演示上"，论文没写具体条数。</li>
+    <li><b>没有下游验证</b>：没做 policy 学习、没做真机部署、没做跨任务泛化（§5）。</li>
+    <li><b>布局不如 GPT-6 Astra</b>：IoU 0.469 vs 0.598，位置误差 9.66 vs 8.72（Tab. 3）；Tab. 2 的 SSIM 也输给 RoLA。</li>
+    <li><b>上限受工具限制</b>：重建质量取决于可用的生成和仿真工具（§5）；Fig. 2 的 skill 库里 Meshy、Nano Banana、Rodin、Marble 都是商业服务。</li>
+    <li><b>没写成本</b>：每个 twin 要多少次工具调用、多少回放、多长时间，论文没报；Tab. 5 只给了 replay 次数（4）。</li>
+    <li><b>没有代码</b>：项目页只有论文链接（2026-11-03 查看）；judge 具体怎么判、failure type 有哪几类、construction graph 的合法转移表，论文都只有文字描述。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric-real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>把 real2sim-anything-indoor 的"视频 → Blender 房间"从 one-pass 改成"world program + judge + rewind"</b>：WorldMirror 的 Tab. 5 就是这个差距（33.86 → 2.34 cm）。具体可照搬的三件东西：一棵状态文件树（static / interactive / check_success）、一段可重跑的 assembly 脚本、每个 stage 一个返回 failure type + rewind target 的 judge。</li>
+    <li><b>相机锚定的坐标系是让"录下的动作直接回放"成立的关键</b>：先用 DINOv2 对应 + 渲染对图（光度 + LSD 线段）标定视频相机，再把物体和机器人底座（录下的外参）都变到这个系里。我们从视频里拿 GVHMR 人体动作放进 Blender 房间时，同样的"先标定相机、一切挂相机系"能避免人和场景对不上；回放成功本身可以当我们的验收指标。</li>
+    <li><b>WorldClaw 的 skill 库和它的 Construction Skills Library 同构</b>：它把 Meshy / Hunyuan3D / Articraft 当 skill，agent 只调不画；可以在 WorldClaw 的 prompt → white-box → Genesis 流程里加 Camera-calib-judge、Collider-fit、Scene-clean 这类"检查型"skill，而不只是"生成型"skill。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-03-WorldMirror.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "← 横向滚动 →";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
