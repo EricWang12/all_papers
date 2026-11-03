@@ -118,6 +118,11 @@ table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .
 .paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
 .paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
 .paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
 ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
 ol.read li + li { margin-top: .3rem; }
 ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
@@ -202,7 +207,7 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
   <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-03</p>
   <h1>Real2Gym</h1>
   <p class="full-title">Real2Gym: Building Gyms from Videos, Bringing Skills to Robots</p>
-  <p class="meta">Kerui Ren*, Yingxiang Xu*, Kaiwen Song, Lingning Xu, Bo Dai, Mulin Yu†, Tao Lu† · Shanghai AI Lab, SJTU, ZJU, USTC, CUHK, HKU · arXiv 2609.37089v1，2026-09-29</p>
+  <p class="meta">Kerui Ren*, Yingxiang Xu*, Kaiwen Song, Linning Xu, Bo Dai, Mulin Yu†, Tao Lu† · Shanghai AI Lab, SJTU, ZJU, USTC, CUHK, HKU · arXiv 2609.37089v1，2026-09-29</p>
   <p class="links">
     <a href="https://arxiv.org/abs/2609.37089">arXiv</a><a href="https://arxiv.org/pdf/2609.37089v1">PDF</a>
     <a href="https://real2gym.github.io/">Project page</a><a href="https://github.com/real2gym/Real2Gym">Code</a><a href="https://github.com/real2gym/R2G_Agent">Agent code</a>
@@ -224,7 +229,7 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
   <h2>直接让模型搭的场景"看着像"，但尺寸、布局、相机差一点，抓取就穿模或落空</h2>
   <div class="setup">
     <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
-    <p><b>Fig. 2 的 DROID 碗场景</b>：3 路同步视频 <span class="ex">W（wrist）· E1 · E2</span>，桌上一个碗和一个红色物体，Franka 抓放；动作事件在 <span class="ex">f198 · f200 · f208</span>（任务原文论文没给）→ 想要：一个和视频对齐、在 MuJoCo 里真能执行的 gym，6 个变体，以及一个在"碗换了位置"时也能成功的 skill。</p>
+    <p><b>Fig. 2 的 DROID 碗场景</b>（项目页 <a href="https://real2gym.github.io/#augmentation">Scene augmentation</a> 里叫 Pouring，任务 <span class="ex">Pour the contents of the cup into the bowl</span>；论文正文没给任务名）：3 路同步视频 <span class="ex">W（wrist）· E1 · E2</span>，桌上一个红碗和一个黄杯，Franka 抓起杯子往碗里倒；动作事件在 <span class="ex">f198 · f200 · f208</span> → 想要：一个和视频对齐、在 MuJoCo 里真能执行的 gym，6 个变体，以及一个在"碗换了位置"时也能成功的 skill。</p>
   </div>
   <div class="flow"><pre>
 flowchart TD
@@ -236,7 +241,7 @@ flowchart TD
   IN --> C1["<b>手工 twin</b><br/>RialTo：扫描、修 mesh<br/>建 articulation、调物理"]
   C1 --> CX["人工重、工具割裂<br/><span class='ex'>论文没有数字</span>"]:::gap
   </pre></div>
-  <p class="note">数字是 DROID 12 个场景的均值（Table 1、Table 2），论文没说 Fig. 2 是哪个 DROID 任务。"坏在哪"：第 1 条出自 §1 和 Fig. 3（论文写明尺寸、布局、外参不准导致穿模和抓空）；第 2 条的"横向抓卡死"出自 §4.3 的真机 Pick Block；第 3 条只出自 §1 的描述，论文没做这组实验。</p>
+  <p class="note">数字是 DROID 12 个场景的均值（Table 1、Table 2）：这个碗场景不在 24 个 benchmark 任务里（项目页 Real2Sim 的 D01–D12 都不是它），所以没有它自己的分数。"坏在哪"：第 1 条出自 §1 和 Fig. 3（论文写明尺寸、布局、外参不准导致穿模和抓空）；第 2 条的"横向抓卡死"出自 §4.3 的真机 Pick Block；第 3 条只出自 §1 的描述，论文没做这组实验。</p>
   <p class="crux"><b>根本问题：</b>场景没逐帧对上视频，动作没在原生物理里验过，agent 每次又从零开始。　<b>这篇的切入点：</b>建场景时按关键帧自查、用 MuJoCo 原生执行验收；执行时按 stage 写代码，把成败存成可复用的 skill。</p>
   <h3 id="related">Related work</h3>
   <div class="table-wrap">
@@ -271,6 +276,17 @@ flowchart TD
     <li><b>中下 "Agent Policy"：</b>Grasp / Place / Withdraw / Close 四个 stage；Execute → Reflect → Update skills，靠 "Success / failure experience" 回环，对应 Stage 4。</li>
     <li><b>右 "Real robot execution"：</b>Overhead + Wrist 两路相机，真机按同样四步完成；橙色箭头 "Sim2Real · Skills / experience"，"Same agent. Transferred skills."</li>
   </ol>
+  <figure class="paper-fig">
+    <div class="mat"><video src="2026-11-03-Real2Gym/web-hero.mp4" autoplay muted loop playsinline controls></video></div>
+    <figcaption><b>项目页</b> <a href="https://real2gym.github.io/#top">首页视频</a>（44 s，去了声、缩到 960 px）：Place Plate on Shelf 的完整 Real2Sim2Real 闭环，就是 Fig. 6(b) 那一个案例，也是 Fig. 1 的故事在真机上走一遍。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么看这段视频</p>
+  <ol class="read">
+    <li><b>"Zero-shot on Franka" → "Fail" → "Second Test"：</b>真机直接做 Place Plate on Shelf，盘子抓起来又掉回桌面，两次都失败（Fig. 6(a) 里两边都是 0%）。</li>
+    <li><b>"Human Video" → "Simulation"：</b>拍一段人手把盘子插进架子的第三人称视频，Real2Sim 建成 twin，Franka 出现在同一张桌子前。</li>
+    <li><b>"First Play" → "Second Play" → "Third Play" → "Skill+1"：</b>agent 在 twin 里三次尝试，第三次成功，抽出 skill（Fig. 6(b) 的 Iter. 1 fail、Iter. 2 fail、Iter. 3 success）。</li>
+    <li><b>"Sim2Real" → "Success!"：</b>带着 skill 回真机，盘子立进架子（真机 0% → 100%，见 <a href="#exp-4">E4</a>）。</li>
+  </ol>
   <div class="flow"><pre>
 flowchart LR
   I["<b>Input</b><br/><span class='ex'>3 路视频 + URDF</span>"]:::example --> G["<b>Gym 构建</b><br/><span class='ex'>对齐场景 + 6 变体</span>"]
@@ -282,8 +298,8 @@ flowchart LR
   <p class="eyebrow">Level 2 · Stages</p>
   <h2>4 个 stage，外加一个处处都有的 verify-then-retry</h2>
   <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-Real2Gym/fig2.jpg" alt="Real2Gym 四栏 pipeline：Real-world→Scene，Motion→Physics，Scene→Gym，Agent→Skills"></div>
-    <figcaption><b>Fig. 2</b>（作者原图）四栏就是四个 stage，整张图用的正是我们的例子：DROID 碗场景。</figcaption>
+    <div class="mat"><img src="2026-11-03-Real2Gym/web-fig2.jpg" alt="Real2Gym 四栏 pipeline：Real-world→Scene，Motion→Physics，Scene→Gym，Agent→Skills"></div>
+    <figcaption><b>Fig. 2</b>（作者原图，用的是项目页 <a href="https://real2gym.github.io/#method">Method</a> 的高清版，点开能看清小图）四栏就是四个 stage，整张图用的正是我们的例子：DROID 碗场景。</figcaption>
   </figure>
   <p class="eyebrow">怎么读这张图</p>
   <ol class="read">
@@ -336,7 +352,7 @@ flowchart LR
       </pre></div>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
-        <p>三路首帧 → Pi3X points、3-view masks、Instance IDs → 桌子、碗、红色物体各一个 mesh，加上 Franka（"Object meshes + robot model"）→ "Aligned scene · close-up / overview"。深度来自 Pi3X 估计，不是 DROID 的立体深度（我的推断：论文只提 Pi3X / MoGe-3）。</p>
+        <p>三路首帧 → Pi3X points、3-view masks、Instance IDs → 桌子、红碗、黄杯各一个 mesh，加上 Franka（"Object meshes + robot model"）→ "Aligned scene · close-up / overview"。深度来自 Pi3X 估计，不是 DROID 的立体深度（我的推断：论文只提 Pi3X / MoGe-3）。</p>
       </div>
     </div>
   </details>
@@ -368,7 +384,7 @@ flowchart TD
       </pre></div>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
-        <p>f198 / f200 / f208 三个关键帧（f200 被红框标出）；"Correct penetration + align to real views"：W、E1、E2 三个视角从 Before* 改到 Corrected*，贴近 Real；最后 198、200、208 三行 Real RGB / Blender RGB / MuJoCo RGB 对齐。注意第一步就"adjusting approach trajectories"，所以验收的不是原样不动的回放（我的推断，和 r2s-lite、WorldMirror 的原动作回放不同）。</p>
+        <p>f198 / f200 / f208 三个关键帧（f200 被红框标出）；"Correct penetration + align to real views"：W、E1、E2 三个视角从 Before* 改到 Corrected*，贴近 Real；最后 198、200、208 三行 Real RGB / Blender RGB / MuJoCo RGB 对齐（Fig. 2 第二栏）。注意第一步就"adjusting approach trajectories"，所以验收的不是原样不动的回放（我的推断，和 r2s-lite、WorldMirror 的原动作回放不同）。seed 环境的 Real / Blender / MuJoCo 视频项目页没放，放的是增强后的变体，见 Stage 3。</p>
       </div>
     </div>
   </details>
@@ -394,9 +410,25 @@ flowchart TD
   c -->|Pass| d["<b>04 Accept into Gym</b><br/><span class='ex'>6 个变体</span>"]:::win
   c -->|Fail| a
       </pre></div>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-03-Real2Gym/web-pour-real.mp4" autoplay muted loop playsinline controls></video><figcaption>Real · 原始 DROID 演示</figcaption></figure>
+          <figure><video src="2026-11-03-Real2Gym/web-pour-blender.mp4" autoplay muted loop playsinline controls></video><figcaption>Blender · Bowl position 变体</figcaption></figure>
+          <figure><video src="2026-11-03-Real2Gym/web-pour-mujoco.mp4" autoplay muted loop playsinline controls></video><figcaption>MuJoCo · 同一变体，原生执行</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://real2gym.github.io/#augmentation">Scene augmentation · Pouring · Object Pose</a>，External camera 2（页面里编号 24400334 的视角，Franka 在左上）。左边是原始演示，每个变体共用；中、右是碗挪了位置之后的 Blender 渲染和 MuJoCo 执行：轨迹按新碗位改过（01 Adjust trajectory），MuJoCo 里真的抓起杯子、倒、放回（02 Native execution）。比：三段里杯子和碗的相对位置，以及 MuJoCo 里杯子是否真被夹住。</figcaption>
+      </figure>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-03-Real2Gym/web-aug-distractors.mp4" autoplay muted loop playsinline controls></video><figcaption>Distractors · Blender</figcaption></figure>
+          <figure><video src="2026-11-03-Real2Gym/web-aug-background.mp4" autoplay muted loop playsinline controls></video><figcaption>Background · Blender</figcaption></figure>
+          <figure><video src="2026-11-03-Real2Gym/web-aug-lighting.mp4" autoplay muted loop playsinline controls></video><figcaption>Lighting · Blender</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> 同一场景、同一视角的另外三个变体（Blender 渲染）。看：桌上多出来的蓝色杯子（干扰物）、换成白墙的背景、变暗的光，而红碗、黄杯和动作不变。页面上 Pouring 的六个变体里 Table height 没有视频，Texture 这里没放；每个变体都有 Real / Blender / MuJoCo 三路、三个相机。</figcaption>
+      </figure>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
-        <p>碗场景 → 6 个变体：Bowl position、Ceramic surface、Table height、Background、Lighting、Distractors，每个都有一对 Blender / MuJoCo 画面；改碗位置的那个变体后面就是 Stage 4 的迁移测试。</p>
+        <p>碗场景 → 6 个变体：Bowl position、Ceramic surface、Table height、Background、Lighting、Distractors，每个都有一对 Blender / MuJoCo 画面（Fig. 2 第三栏；上面的视频是其中四个）；改碗位置的那个变体后面就是 Stage 4 的迁移测试。</p>
       </div>
     </div>
   </details>
@@ -413,7 +445,7 @@ flowchart TD
         <table class="grid">
           <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
           <tr><td>π<sub>θ</sub></td><td>agent 的策略，就是一个大模型；θ 是它的权重，全程不更新</td><td>GPT-6 Astra，medium effort</td></tr>
-          <tr><td>g</td><td>任务指令</td><td>碗场景的任务（原文论文没给）</td></tr>
+          <tr><td>g</td><td>任务指令</td><td>Pour the contents of the cup into the bowl（项目页的写法）</td></tr>
           <tr><td>o<sub>k</sub></td><td>第 k 次决策时看到的：相机画面、机器人本体状态、允许的执行反馈</td><td>W / E1 / E2 画面 + 关节和夹爪</td></tr>
           <tr><td>H<sub>k</sub></td><td>本 episode 里之前的对话和执行历史</td><td>Episode 1 里前几轮代码和结果</td></tr>
           <tr><td>K<sub>e</sub></td><td>这次选中、放进输入的 skill</td><td>Episode 2 选了 Episode 1 抽出的 skill</td></tr>
@@ -438,12 +470,44 @@ flowchart TD
   x --> r["<b>Episode 2</b><br/><span class='ex'>选 skill → 换碗成功</span>"]
       </pre></div>
       <figure class="paper-fig">
-        <div class="mat"><img src="2026-11-03-Real2Gym/fig5.jpg" alt="cabinet 和 adapter 两个任务，Ours 与 Ours w/ skills 的执行帧对比"></div>
-        <figcaption><b>Fig. 5</b>（作者原图）skill 复用：上两行 cabinet manipulation，下两行 adapter placement；每组先 Ours（探索），再 Ours (w/ skills)。</figcaption>
+        <div class="mat media-row">
+          <figure><video src="2026-11-03-Real2Gym/web-agent-d01-agentview.mp4" autoplay muted loop playsinline controls></video><figcaption>D01 · agentview</figcaption></figure>
+          <figure><video src="2026-11-03-Real2Gym/web-agent-d01-wrist.mp4" autoplay muted loop playsinline controls></video><figcaption>D01 · wrist</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://real2gym.github.io/#agent">Agent execution · D01</a>：一次完整的 stage 级执行长什么样。任务换成 benchmark 里最短的一条 <span class="ex">Drop the small yellow block … into the blue cup</span>（碗场景的 trace 页面没放）：7 次决策、701 control steps、167,757 tokens、207 s。看：机械臂每段只走一小截就停下核对，抓起黄块、移到蓝杯上方、松开、上撤拍验证图。</figcaption>
+      </figure>
+      <p class="eyebrow">这 7 次决策各写了什么（页面原文，执行器返回为节选）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>#</th><th>这一段代码打算做什么</th><th>控制步</th><th>执行器返回</th></tr>
+          <tr><td>1</td><td>限定掩码大小和图像位置，验证有限三维点；按不超过 6.5 cm 的段接近，每段检查 TCP 和关节误差</td><td>0</td><td>SAM3 找到黄块（score 0.91，世界坐标 [0.534, 0.160, −0.012]），但代码自己的断言 "接近距离过大" 触发，机器人没动</td></tr>
+          <tr><td>2</td><td>保留当前几何，先推进最多 24 cm，分成不超过 7 cm 的路段并逐段验证</td><td>117</td><td>每段 joint_error_rad ≈ 0.004；到达中间点，剩余距离 0.194 m</td></tr>
+          <tr><td>3</td><td>完成预抓取接近，用腕相机重定位黄块并估计桌面高度</td><td>89</td><td>腕相机确认黄块，支撑面 z = −0.039，TCP 到 [0.534, 0.159, 0.107]</td></tr>
+          <tr><td>4</td><td>复核中心，夹持点放在顶面下 1.4 cm 且高于桌面，闭合后抬升并检测黄块是否跟着动</td><td>169</td><td>闭合状态 0.447，黄块抬升 0.063 m，跟随验证 True</td></tr>
+          <tr><td>5</td><td>从杯沿深度估计杯心，先竖直抬高，再分段平移到杯上方，保持闭合</td><td>166</td><td>杯口 [0.549, −0.108]，半径约 0.042；杯上方 TCP 高 0.147，夹爪开度 0.444</td></tr>
+          <tr><td>6</td><td>拟合杯沿圆，补偿黄块相对 TCP 的偏移；到杯沿上方 4.5 cm 释放，再上撤 7 cm 拍验证图</td><td>160</td><td>杯心 [0.549, −0.109] 半径 0.035；释放横向误差 6e-5 m；已松开并上撤</td></tr>
+          <tr><td>7</td><td>视觉验证完成，停止运动</td><td>0</td><td>（stop）</td></tr>
+        </table>
+      </div>
+      <p class="note">第 2 段的代码（页面原文）：一段 stage 代码里自己分段、自己核对，这就是"一次回复协调多个动作和检查"的意思。</p>
+      <pre style="font: .78rem/1.5 var(--f-mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem .8rem; max-width: 72ch; margin: .5rem 0 0;">obs=get_observation()
+cur=np.array(obs['robot_cartesian_pos'][:3])
+mid=pre.copy(); mid[2]=max(pre[2],cur[2]-0.13)
+delta=mid-cur
+if np.linalg.norm(delta)&gt;0.24:
+    mid=cur+delta*0.24/np.linalg.norm(delta)
+n=int(np.ceil(np.linalg.norm(mid-cur)/0.07))
+for i in range(1,n+1):
+    obs=checked_move(cur+(mid-cur)*i/n,q_down)
+print('接近中间点',obs['robot_cartesian_pos'][:3], '剩余距离',np.linalg.norm(pre-np.array(obs['robot_cartesian_pos'][:3])))</pre>
+      <p class="note">项目页 trace 里的函数名（<code>get_observation</code>、<code>segment_sam3_text_prompt</code>、<code>mask_to_world_points</code>、<code>checked_move</code>）和论文正文的 <code>goto_pose()</code> / App G 的 <code>get_state()</code>、<code>post_actions()</code> 不是一套，是仿真端 agent 的代码层。Table 4 的 D1（Ours：8 responses、0.21M tokens、3.91 min）和这条 trace（7 次、167,757 tokens、207 s）也不是同一次运行。</p>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-03-Real2Gym/web-fig5.jpg" alt="cabinet 和 adapter 两个任务，Ours 与 Ours w/ skills 的执行帧对比"></div>
+        <figcaption><b>Fig. 5</b>（作者原图，项目页高清版）skill 复用：上两行 cabinet manipulation，下两行 adapter placement；每组先 Ours（探索），再 Ours (w/ skills)。</figcaption>
       </figure>
       <ol class="read">
-        <li><b>"Ours" 行：</b>第一次执行，agent 在柜门和 adapter 上来回探索。</li>
-        <li><b>"Ours (w/ skills)" 行：</b>第二次执行带上第一次抽出的 skill，按论文说"成功开柜"、adapter 放置"更直接"。</li>
+        <li><b>"Ours" 行：</b>第一次执行，agent 在柜门和 adapter 上来回探索（项目页说明：柜子那组是反复开门的尝试）。</li>
+        <li><b>"Ours (w/ skills)" 行：</b>第二次执行带上第一次抽出的 skill，柜子那组走完"放进去、关门"的完整序列，adapter 那组对准的重复次数更少；帧是挑出来的，不是等间隔。</li>
       </ol>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
@@ -463,7 +527,7 @@ flowchart TD
         <li><b>Stage 1：</b>reprojection 检查，联合修几何、pose、相机。</li>
         <li><b>Stage 2：</b>5 项自查 → 邻帧 → 局部修 → 再验；物理按 approach → 闭合 → 保持 → 支撑 → 释放 逐项标定。</li>
         <li><b>Stage 3：</b>Verify constraints 失败 → "Fail → adjust &amp; retry"。</li>
-        <li><b>Stage 4：</b>程序里的中间检查；episode 后 extraction 把失败变成 retry rule。</li>
+        <li><b>Stage 4：</b>程序里的中间检查（上面 D01 的 7 段里每段都有断言和核对）；episode 后 extraction 把失败变成 retry rule。</li>
         <li><b>同一个模型：</b>建场景、执行 policy、抽 skill 全用 GPT-6 Astra（medium effort），Real2Sim 的评委也是 GPT-6 Astra（high effort）。</li>
       </ul>
       <div class="flow"><pre>
@@ -485,14 +549,14 @@ flowchart LR
       <table class="grid">
         <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
         <tr><td>多视角重建 + 实例关联（Pi3X、SAM2）</td><td>Stage 1：W / E1 / E2 首帧 → 点云、masks、Instance IDs</td></tr>
-        <tr><td>补全 mesh + 导入机器人 + reprojection 精修</td><td>Stage 1：桌、碗、红色物体的 mesh + Franka → Aligned scene</td></tr>
+        <tr><td>补全 mesh + 导入机器人 + reprojection 精修</td><td>Stage 1：桌、红碗、黄杯的 mesh + Franka → Aligned scene</td></tr>
         <tr><td>事件关键帧 + 5 项自查 + 局部修正</td><td>Stage 2：f198 / f200 / f208，W、E1、E2 的 Before* → Corrected*</td></tr>
         <tr><td>MuJoCo 渐进物理标定 + 导回 Blender 三栏对比</td><td>Stage 2：198 / 200 / 208 的 Real / Blender / MuJoCo RGB</td></tr>
-        <tr><td>任务条件增强 + 原生物理验收</td><td>Stage 3：6 个变体，Adjust → Execute → Verify → Accept</td></tr>
-        <tr><td>stage 级代码策略（公式 1）</td><td>Stage 4：observe → plan_stage → execute_and_verify</td></tr>
+        <tr><td>任务条件增强 + 原生物理验收</td><td>Stage 3：6 个变体，Adjust → Execute → Verify → Accept；项目页的 Bowl position 变体视频</td></tr>
+        <tr><td>stage 级代码策略（公式 1）</td><td>Stage 4：observe → plan_stage → execute_and_verify；项目页 D01 的 7 段代码</td></tr>
         <tr><td>skill extraction 与复用（权重不动）</td><td>Stage 4：Episode 1 抽 skill → Episode 2 成功</td></tr>
         <tr><td>object-relative skill 迁移</td><td>Stage 4：Transfer · changed bowl position → Success*</td></tr>
-        <tr><td>Real2Sim2Real</td><td>例子延伸到真机：Place Plate on Shelf 拍一段人手视频，走同一流程，真机 0% → 100%（<a href="#exp-4">E4</a>）</td></tr>
+        <tr><td>Real2Sim2Real</td><td>例子延伸到真机：Place Plate on Shelf 拍一段人手视频，走同一流程，真机 0% → 100%（<a href="#exp-4">E4</a>，视频在 <a href="#l1">Big picture</a>）</td></tr>
       </table>
     </div>
   </details>
@@ -510,8 +574,8 @@ flowchart LR
       <figcaption><b>Table 1</b>（作者原图）先看最右列 Simulation success score：DROID 80.88 vs 71.08 vs 48.96；再看 Viewpoint 列。</figcaption>
     </figure>
     <figure class="paper-fig">
-      <div class="mat"><img src="2026-11-03-Real2Gym/fig3.jpg" alt="Fig. 3：五个场景，GPT-5.6 Sol、GPT-6 Astra、Ours 和源视频四行对比"></div>
-      <figcaption><b>Fig. 3</b>（作者原图）从上到下 GPT-5.6 Sol、GPT-6 Astra、Ours、Source Video；左两列 DROID（文件柜、橱柜），右三列 EgoDex。看 Ours 行是否保住柜子结构、物体相对大小和相机取景。</figcaption>
+      <div class="mat"><img src="2026-11-03-Real2Gym/web-fig3.jpg" alt="Fig. 3：五个场景，GPT-5.6 Sol、GPT-6 Astra、Ours 和源视频四行对比"></div>
+      <figcaption><b>Fig. 3</b>（作者原图，项目页高清版）从上到下 GPT-5.6 Sol、GPT-6 Astra、Ours、Source Video；左两列 DROID（文件柜、橱柜），右三列 EgoDex。看 Ours 行是否保住柜子结构、物体相对大小和相机取景。</figcaption>
     </figure>
     <figure class="paper-fig">
       <div class="mat"><img src="2026-11-03-Real2Gym/tab3.jpg" alt="Table 3：24 个任务逐个的四项分数"></div>
@@ -538,8 +602,8 @@ flowchart LR
       <figcaption><b>Table 2</b>（作者原图）先看 SR 列，再看 Tokens (M)；最后一行 Ours (w/ skills) 是同一任务的第二次执行。</figcaption>
     </figure>
     <figure class="paper-fig">
-      <div class="mat"><img src="2026-11-03-Real2Gym/fig4.jpg" alt="Fig. 4：bowl stacking 任务，Human、GPT-6 Astra、GPT-5.6 Sol、Ours 四行"></div>
-      <figcaption><b>Fig. 4</b>（作者原图）EgoDex 的 bowl-stacking：红框标出 Astra 和 Sol 的关键失败处；最下一行 Ours 叠成。</figcaption>
+      <div class="mat"><img src="2026-11-03-Real2Gym/web-fig4.jpg" alt="Fig. 4：bowl stacking 任务，Human、GPT-6 Astra、GPT-5.6 Sol、Ours 四行"></div>
+      <figcaption><b>Fig. 4</b>（作者原图，项目页高清版）EgoDex 的 bowl-stacking：红框标出 Astra（碗叠歪、掉落）和 Sol（两臂纠缠、抓空）的关键失败处；最下一行 Ours 叠成。</figcaption>
     </figure>
     <figure class="paper-fig">
       <div class="mat"><img src="2026-11-03-Real2Gym/tab4.jpg" alt="Table 4：24 个任务逐个的成功与成本"></div>
@@ -565,6 +629,13 @@ flowchart LR
       <div class="mat"><img src="2026-11-03-Real2Gym/fig6.jpg" alt="Fig. 6：上半四个真机任务的成功率条形图，下半 Place Plate on Shelf 的 Real2Sim2Real 过程"></div>
       <figcaption><b>Fig. 6</b>（作者原图）(a) 四个真机任务的 zero-shot 成功率，蓝条 Ours、橙条 Baseline；(b) 是 <a href="#exp-4">E4</a>。</figcaption>
     </figure>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-03-Real2Gym/web-real-microwave-astra.mp4" autoplay muted loop playsinline controls></video><figcaption>GPT-6 Astra Direct Mode · Failure</figcaption></figure>
+        <figure><video src="2026-11-03-Real2Gym/web-real-microwave-ours.mp4" autoplay muted loop playsinline controls></video><figcaption>Ours · Success</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://real2gym.github.io/#robot">Real robot · Place Cup in Microwave and Close Door</a>，外部相机。左：baseline 把杯子放在了微波炉门口的门槛上（§4.3 的 "imprecise cup placement on the doorway threshold"），片子 2 s 就停；右：杯子放进炉腔，再把门推上，9 s。页面每个任务只放一条 clip，Pick Block 那条放的是 baseline 成功的那次，所以"横向抓卡死"看不到。</figcaption>
+    </figure>
     <dl class="exp-notes">
       <div><dt>说明什么</dt><dd><b>4 个任务里 3 个 100%，baseline 只有 1 个。</b>Pick Block into Plate 100%（3/3）vs 33%（1/3）：baseline 横向抓，block 比夹爪横向开口略宽，卡住；Hang the Mug 都是 100%，总时间 1302.7 s vs 1522.7 s；Cup in Microwave + Close Door 100% vs 33%：baseline 把杯子放在门槛上，或回撤时撞门框触发关节安全停；Place Plate on Shelf 两边都是 0%。</dd></div>
       <div><dt>在故事里</dt><dd>说明 stage 代码 + 同一感知控制接口在真机上仍然有效，为 E4 的"仿真里练、真机上用"铺路。</dd></div>
@@ -589,6 +660,14 @@ flowchart LR
       </table>
     </div>
     <p class="note">按 §4.3 和 Fig. 6(b) 的文字整理成表；图见 <a href="#exp-3">E3</a> 的 Fig. 6 下半。</p>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-03-Real2Gym/web-real-plate-astra.mp4" autoplay muted loop playsinline controls></video><figcaption>GPT-6 Astra · zero-shot · Failure</figcaption></figure>
+        <figure><video src="2026-11-03-Real2Gym/web-real-plate-noskill.mp4" autoplay muted loop playsinline controls></video><figcaption>Ours · 没有 evolved skills · Failure</figcaption></figure>
+        <figure><video src="2026-11-03-Real2Gym/web-real-plate-skills.mp4" autoplay muted loop playsinline controls></video><figcaption>Ours · 带 evolved skills · Success</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://real2gym.github.io/#robot">Real robot · Place Plate on Shelf</a>，外部相机。左：baseline 把盘子提起来又落回桌面；中：没有 skill 时盘子只被顶起一边，插不进去；右：仿真里练出 skill 之后，盘子立进架子。从真机失败到人手视频、twin 里三次 play、再回真机的全过程，见 <a href="#l1">Big picture</a> 的项目页视频。</figcaption>
+    </figure>
     <dl class="exp-notes">
       <div><dt>说明什么</dt><dd><b>Place Plate on Shelf 真机从 0% 到 100%。</b>zero-shot 失败的原因：抓取要精确控深度以免撞桌，接近朝向要把弯的盘沿对上平行夹爪，放入要塞进窄的架框。</dd></div>
       <div><dt>在故事里</dt><dd>闭合 Real2Sim2Real 回路，是整篇的终点主张：失败驱动的 skill 获取。</dd></div>
@@ -628,6 +707,7 @@ flowchart LR
     <li>我的推断：Real2Sim 的评委是 GPT-6 Astra，和建场景的模型同源；没有人工标注或物理实测的 Real2Sim 成功率。</li>
     <li>我的推断：n 很小，每个数据集 12 个任务、每任务一次；真机每任务 3 次。</li>
     <li>我的推断：允许调整轨迹（"01 Adjust trajectory"），所以 sim success 不是原动作不变回放的成功率；深度来自 Pi3X / MoGe-3 估计，没用 DROID 的立体深度。</li>
+    <li>我的观察：项目页 Agent execution 只放了 24 个任务里的 18 个，缺的 D05、D10、D11、E10、E11、E12 正好是 Table 4 里失败或两次才解决的那几个。</li>
     <li>代码：R2G_Agent 只发布 "C0 continuous stage-code execution path"，"does not load previous-task procedures or build a persistent experience library"，所以 "w/ skills" 一行可能无法用发布代码复现。</li>
   </ul>
 </section>
@@ -637,7 +717,7 @@ flowchart LR
   <h2>对我们有什么用</h2>
   <ul class="tight">
     <li><b>当 r2s-lite 的 baseline：</b>它也吃 DROID，但报的是 LLM rubric 的 sim 分（80.88）且允许改轨迹；放进我们的 E0 评测（Isaac、原动作回放、<code>verify.judge.decides: rules</code>）要写一个 MJCF → <code>sim/scene.json</code> 的 adapter，并把"改过轨迹"的版本单独报。</li>
-    <li><b>复现清单：</b>Real2Gym + R2G_Agent 两个 repo；GPT-6 Astra（走 proxy，花费先问）；Blender 4.5.3 LTS、MuJoCo 3.3.7、SAM2 / SAM3 0.1.0、Pi3X / MoGe-3、Contact-GraspNet（PyTorch）；Franka Panda + Robotiq 2F-85 URDF。</li>
+    <li><b>复现清单：</b>Real2Gym + R2G_Agent 两个 repo；GPT-6 Astra（走 proxy，花费先问）；Blender 4.5.3 LTS、MuJoCo 3.3.7、SAM2 / SAM3 0.1.0、Pi3X / MoGe-3、Contact-GraspNet（PyTorch）；Franka Panda + Robotiq 2F-85 URDF。项目页的 data.js 带每个 benchmark 场景的 Real / Blender / MuJoCo 视频和 glb 模型，可以直接当对照数据。</li>
     <li><b>可借鉴：</b>关键帧 5 项自查和 Real / Blender / MuJoCo 三栏逐帧对比，对应我们的 X-ray review 和 sim X-ray；他们报 token 和 wall-clock，我们也该报（再加 GPU 小时）；object-relative motion rule 适合 WorldClaw 和 harness 的 skill 库。</li>
   </ul>
 </section>
@@ -683,7 +763,7 @@ flowchart LR
       box.replaceChildren(sc);
       scale(sc.querySelector("svg"));
       const hint = document.createElement("p");
-      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "← 横向滚动 →";
       box.append(hint);
       sc.addEventListener("scroll", () => fit(box), { passive: true });
       fit(box);
