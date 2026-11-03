@@ -121,6 +121,11 @@ table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .
 ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
 ol.read li + li { margin-top: .3rem; }
 ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
 
 /* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
    fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
@@ -161,8 +166,16 @@ details.stage[open] > summary::after { content: "\2212"; }
 details.recap { margin-top: 1.25rem; }
 details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
 
-/* results */
-.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
 
 footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
 
@@ -170,7 +183,7 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
 .lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
 
 @media (max-width: 560px) {
-  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
   .crumb .proj { display: none; }
 }
 </style>
@@ -219,8 +232,15 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
     <p><b>红笔进白碗</b>（Fig. 2 左上）：一段 DROID 的 in-the-wild 视频 <span class="ex">V</span>（外置相机 RGB，桌上有 red marker 和 white bowl，指令 "Put the red marker inside the white bowl"）+ 当时录下的机械臂关节轨迹 <span class="ex">T</span>（含相机到机器人底座的外参）→ 想要：一个 Isaac Sim 里的场景，背景像真的、marker 和 bowl 是可编辑的 asset、相机和机器人底座都在同一坐标系里，<b>把 T 原封不动播一遍，marker 真的落进 bowl</b>。再想要：第一次回放失败时，系统能自己找出是哪一步错了并只重做那一步。</p>
   </div>
   <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-WorldMirror/fig1.jpg" alt="Fig. 1：GPT-6 Astra 与 WorldMirror 在 Spatial Structure、Visual Fidelity、Collision & Physical Consistency 三行上的对比"></div>
-    <figcaption><b>Fig. 1</b>（作者原图）左 GPT-6 Astra，右 WorldMirror，三行是三个要求：Spatial Structure（两边都 ✓）、Visual Fidelity（Astra "Low Visual Realism" ✗）、Collision &amp; Physical Consistency（Astra "Unstable Interaction" ✗，夹爪和碗的接触位置画了虚线圈）。</figcaption>
+    <div class="mat media-row">
+      <figure><video src="2026-11-03-WorldMirror/web-pen-real-ext.mp4" autoplay muted loop playsinline controls></video><figcaption>真机 · 外置相机（输入 V）</figcaption></figure>
+      <figure><video src="2026-11-03-WorldMirror/web-pen-real-wrist.mp4" autoplay muted loop playsinline controls></video><figcaption>真机 · 腕部相机</figcaption></figure>
+    </div>
+    <figcaption><b>项目页</b> <a href="https://worldmirror-page.github.io/#replay">Demos · Red pen 1</a>："Round table with a bowl and a marker"，就是 Fig. 2 里那段 DROID 片段。看外置相机：Franka 臂夹着 red marker 移到 white bowl 上方；腕部相机里 marker 在夹爪中、bowl 在下方。页面只放了 2.5 s 的片段。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-WorldMirror/web-teaser.jpg" alt="Fig. 1：GPT-6 Astra 与 WorldMirror 在 Spatial Structure、Visual Fidelity、Collision & Physical Consistency 三行上的对比"></div>
+    <figcaption><b>Fig. 1</b>（项目页高清版，和论文 Fig. 1 相同）左 GPT-6 Astra，右 WorldMirror，三行是三个要求：Spatial Structure（两边都 ✓）、Visual Fidelity（Astra "Low Visual Realism" ✗）、Collision &amp; Physical Consistency（Astra "Unstable Interaction" ✗，夹爪和碗的接触位置画了虚线圈）。</figcaption>
   </figure>
   <div class="flow"><pre>
 flowchart LR
@@ -235,6 +255,16 @@ flowchart LR
   D1 --> DX["布局对、外观假、碰撞不稳<br/><span class='ex'>LPIPS 0.606、成功率 40%<br/>方向误差 81°（Tab. 2, 4）</span>"]:::gap
   </pre></div>
   <p class="note">推断的"坏在哪"：论文只报告了各 baseline 的指标（Tab. 2–4）和能力表（Tab. 1），没有逐个分析失败步骤。RoLA "没标定相机、没统一坐标系"来自 Tab. 1 的 ✗（Camera Calibration、Camera-Pose-Anchored Representation、Demonstration Replay）；RoboSnap 的"背景糊"是我看 Fig. 3 第二列的描述；SimFoundry 只在 Tab. 3 出现，论文没评它的视觉和回放；GPT-6 Astra 的"外观假、碰撞不稳"是 Fig. 1 作者自己的标注。位置误差 Tab. 3 没写单位。</p>
+  <figure class="paper-fig">
+    <div class="mat media-row">
+      <figure><img src="2026-11-03-WorldMirror/web-pen-gt.jpg" alt="真机首帧：白圆桌上 red marker 和 bowl"><figcaption>真机首帧</figcaption></figure>
+      <figure><img src="2026-11-03-WorldMirror/web-pen-robosnap.jpg" alt="RoboSnap 重建首帧"><figcaption>RoboSnap</figcaption></figure>
+      <figure><img src="2026-11-03-WorldMirror/web-pen-rola.jpg" alt="RoLA 重建首帧"><figcaption>RoLA</figcaption></figure>
+      <figure><img src="2026-11-03-WorldMirror/web-pen-gpt6.jpg" alt="GPT-6 Astra 重建首帧"><figcaption>GPT-6 Astra</figcaption></figure>
+      <figure><img src="2026-11-03-WorldMirror/web-pen-ours.jpg" alt="WorldMirror 重建首帧"><figcaption>WorldMirror</figcaption></figure>
+    </div>
+    <figcaption><b>项目页</b> <a href="https://worldmirror-page.github.io/#baselines">Comparison · Red pen 1 · First frame</a>：同一个例子，四种重建在 t = 0 的外置相机画面。RoboSnap 背景是糊的 Gaussian、bowl 成了一个平盘；RoLA 画面偏暗、bowl 的位置和真机对不上；GPT-6 Astra 是干净的合成灰房间和八角桌；WorldMirror 的背景、圆桌、marker、bowl 都和真机首帧对得上。回放视频在 <a href="#exp-3">E3</a>。</figcaption>
+  </figure>
   <p class="crux"><b>根本问题：</b>real-to-sim 要同时满足视觉、几何、物理三类耦合的约束——摆错了要调布局，少了东西要重新分解场景，碰撞不对要重做物理表示——而 feed-forward 重建一次定型没法改，通用 agent 自己又生不出精细几何和真实外观（§1）。　<b>这篇的切入点：</b>把世界写成一个可执行的程序，让 coding agent 调专用生成工具一步步建、judge 验证、失败就回退到出错的那一步重做；相机先标定，场景、物体、机器人全都挂在这个相机坐标系下，所以原轨迹能直接回放。</p>
   <h3 id="related">Related work</h3>
   <div class="table-wrap">
@@ -264,6 +294,7 @@ flowchart LR
     <li><b>Router agent 不自由发挥</b>：按一张固定的 construction graph 走（scene preparation → camera calibration → support fitting → object construction → layout → robot alignment → trajectory replay，§3.3），只决定"前进 / 调哪个 skill / 回退到哪 / 停下 / 接受"。</li>
     <li><b>Agent-as-Tool</b>：四个专用 agent（Reconstruction、Calibration、Layout、Replay）被当成 router 可调用的工具，每个带自己的 judge。</li>
     <li><b>一个相机坐标系锚住一切</b>（§3.5）：先标定相机得到 world frame <span class="ex">W</span>，场景、物体、机器人底座都用它表示，所以录下的关节轨迹不用重规划、不用 retarget，直接播。</li>
+    <li><b>想看重建出来的世界长什么样</b>：项目页 <a href="https://worldmirror-page.github.io/#story">Scene</a> 节有 7 个 DROID 场景的 3D 环绕视图（可拖动，真机首帧放在角上对照），这里嵌不了。</li>
   </ul>
   <div class="flow"><pre>
 flowchart LR
@@ -276,8 +307,8 @@ flowchart LR
   <p class="eyebrow">Level 2 · Stages</p>
   <h2>5 个 stage + 贯穿全程的 world state memory 和 verification loop</h2>
   <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-WorldMirror/fig2.jpg" alt="Fig. 2：WorldMirror framework，左 Agent Workspace 文件树，上 Router Agent Loop，中 Agent-As-Tool 四个 agent，下 Construction Skills Library 和 Verification-Guided Refinement"></div>
-    <figcaption><b>Fig. 2</b>（作者原图）WorldMirror framework。coding agent 维护一个可编辑的世界，调场景 / 物体生成工具，用 assembly 代码对齐相机、asset 和机器人；渲染结果和执行反馈指导有针对性的修改。</figcaption>
+    <div class="mat"><img src="2026-11-03-WorldMirror/web-framework.jpg" alt="Fig. 2：WorldMirror framework，左 Agent Workspace 文件树，上 Router Agent Loop，中 Agent-As-Tool 四个 agent，下 Construction Skills Library 和 Verification-Guided Refinement"></div>
+    <figcaption><b>Fig. 2</b>（项目页高清版，和论文 Fig. 2 相同）WorldMirror framework。coding agent 维护一个可编辑的世界，调场景 / 物体生成工具，用 assembly 代码对齐相机、asset 和机器人；渲染结果和执行反馈指导有针对性的修改。</figcaption>
   </figure>
   <p class="eyebrow">符号表（§3 和 Fig. 2 用到的）</p>
   <div class="table-wrap">
@@ -452,9 +483,18 @@ flowchart LR
   J --> OK["<b>REPLAY SUCCESS</b><br/><span class='ex'>marker 进 bowl → 接受</span>"]:::win
   J --> NO["<b>失败</b><br/><span class='ex'>failure type + rewind target</span>"]:::gap
       </pre></div>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-03-WorldMirror/web-pen-real-ext.mp4" autoplay muted loop playsinline controls></video><figcaption>真机 · 外置相机</figcaption></figure>
+          <figure><video src="2026-11-03-WorldMirror/web-pen-replay-ext.mp4" autoplay muted loop playsinline controls></video><figcaption>WorldMirror 回放 · 外置相机</figcaption></figure>
+          <figure><video src="2026-11-03-WorldMirror/web-pen-real-wrist.mp4" autoplay muted loop playsinline controls></video><figcaption>真机 · 腕部相机</figcaption></figure>
+          <figure><video src="2026-11-03-WorldMirror/web-pen-replay-wrist.mp4" autoplay muted loop playsinline controls></video><figcaption>WorldMirror 回放 · 腕部相机</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://worldmirror-page.github.io/#replay">Demos · Red pen 1 · WorldMirror replay</a>："Same trajectory, no retargeting"。比左右两列：同一时刻机械臂的姿态、marker 在夹爪里的位置、bowl 在画面中的位置都对得上；腕部视角里仿真的 marker 和 bowl 落在真机画面的同一处。</figcaption>
+      </figure>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
-        <p>Fig. 2 Replay agent 面板：上 Real observation 是真机夹爪把 marker 放进 bowl，下 Simulation scene 是 Isaac Sim 里同一时刻的画面，判 REPLAY SUCCESS。Fig. 4 给了三个别的 DROID 片段的腕部视角逐帧对比（pick up a fork、lift a pot lid、open a drawer）。</p>
+        <p>Fig. 2 Replay agent 面板：上 Real observation 是真机夹爪把 marker 放进 bowl，下 Simulation scene 是 Isaac Sim 里同一时刻的画面，判 REPLAY SUCCESS。上面的视频就是这个片段的真机和回放。Fig. 4（<a href="#exp-3">E3</a>）给了三个别的 DROID 片段的腕部视角逐帧对比。</p>
       </div>
     </div>
   </details>
@@ -482,8 +522,8 @@ flowchart TD
   R --> C
       </pre></div>
       <figure class="paper-fig">
-        <div class="mat"><img src="2026-11-03-WorldMirror/fig5.jpg" alt="Fig. 5：rail manipulation 任务上 w/o Verification Feedback 与 Full WorldMirror 的回放对比"></div>
-        <figcaption><b>Fig. 5</b>（作者原图，右侧面板）Failure diagnosis and refinement。顶上 Real demonstration；左列 w/o Verification Feedback：No diagnosis or refinement → Object remains stationary（Failure）；右列 Full WorldMirror：Failure diagnosis &amp; Verification-guided refinement → Object reaches target placement（Success）。</figcaption>
+        <div class="mat"><img src="2026-11-03-WorldMirror/web-failure.jpg" alt="Fig. 5：rail manipulation 任务上 w/o Verification Feedback 与 Full WorldMirror 的回放对比"></div>
+        <figcaption><b>Fig. 5</b>（项目页高清版，和论文 Fig. 5 相同）Failure diagnosis and refinement。顶上 Real demonstration；左列 w/o Verification Feedback：No diagnosis or refinement → Object remains stationary（Failure）；右列 Full WorldMirror：Failure diagnosis &amp; Verification-guided refinement → Object reaches target placement（Success）。</figcaption>
       </figure>
       <p class="eyebrow">怎么读这张图</p>
       <ol class="read">
@@ -511,7 +551,7 @@ flowchart TD
         <tr><td>Camera-pose-anchored 坐标系，机器人底座也变到 W（§3.5）</td><td>Stage 3 得 T_camw，Stage 4 把 marker、bowl、底座都放进 W</td></tr>
         <tr><td>原轨迹直接回放，不 retarget（§3.5、§4.4）</td><td>Stage 5：Isaac Sim 执行 T 不改一帧</td></tr>
         <tr><td>Verification-guided refinement：typed failure + rewind（§3.4）</td><td>stage-all：第一次回放失败 → 回到 layout 重做 → 第 4 次成功（Tab. 5）</td></tr>
-        <tr><td>主结果：回放误差和成功率（Tab. 4）、消融（Tab. 5、6）</td><td>Results</td></tr>
+        <tr><td>主结果：回放误差和成功率（Tab. 4）、消融（Tab. 5、6）</td><td>Results：<a href="#exp-3">E3</a> 的四段回放视频就是这个例子，E4、E5 是 rail 任务</td></tr>
       </table>
     </div>
   </details>
@@ -519,34 +559,122 @@ flowchart TD
 
 <section id="results">
   <p class="eyebrow">Results</p>
-  <h2>结果一览：回放和感知指标上领先，布局 IoU 不如 GPT-6 Astra</h2>
-  <ul class="tight results">
-    <li><b>1.79 cm 位移误差 · 100% 回放成功率</b>（Tab. 4，DROID 演示在 Isaac Sim 里原轨迹回放）：GPT-6 Astra 11.17 cm / 40%，RoLA 24.70 cm / 未报告。终点误差 5.83 vs 21.98 / 40.80 cm，方向误差 10.90° vs 81.30° / 53.00°，DTW 1.64 vs 10.82 / 10.30 cm，接触 F1 0.873 vs 0.653。</li>
-    <li><b>LPIPS 0.427 · DISTS 0.168</b>（Tab. 2，10 个 DROID 场景首帧对真实外置相机图）：两项感知指标最好（RoLA 0.506 / 0.206，Astra 0.606 / 0.299）；PSNR 13.57 略高于 RoLA 13.53，SSIM 0.570 低于 RoLA 0.587，Aesthetic 0.570 最高。</li>
-    <li><b>Rel. Dist. 0.219</b>（Tab. 3，17 个物体、8 对物体）：相对距离最好，四项都胜过开源 baseline；但 mask IoU 0.469 低于 Astra 0.598，位置误差 9.66 高于 Astra 8.72，Rel. Vec. 0.557 vs 0.552——作者自己说"空间指标上没有一致优势"（§4.3）。</li>
-    <li><b>33.86 → 31.77 → 2.34 cm</b>（Tab. 5，rail 任务 final 误差）：One-pass ✗（1 次回放）、Fixed Iterative ✗（2 次）、Full ✓（4 次）。重复精修但不诊断，修不好。</li>
-    <li><b>消融</b>（Tab. 6，同一 rail 任务）：去 stateful memory 仍成功、final 2.35 cm（几乎没变）；去 adaptive routing 失败、9.86 cm；去 feedback refinement 失败、33.86 cm。作者结论：adaptive routing 和 verification feedback 是关键，memory 主要保存跨 stage 的中间结果。</li>
-  </ul>
-  <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-WorldMirror/tab4.jpg" alt="Tab. 4：RoLA、GPT-6 Astra、WorldMirror 的 Motion Replay 四项误差和 Physical Interaction 的 F1、SR"></div>
-    <figcaption><b>Tab. 4</b>（作者原表）先看最后一列 SR：WorldMirror 100%，Astra 40%，RoLA 没报；再看 Disp. 那列 1.79 vs 11.17 vs 24.70 cm。</figcaption>
-  </figure>
-  <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-WorldMirror/tab5.jpg" alt="Tab. 5：One-pass、Fixed Iterative、Full 三种策略的成功与误差"></div>
-    <figcaption><b>Tab. 5</b>（作者原表）看 Final 列：33.86 / 31.77 / 2.34 cm；Trans. 和 Lift 两列 One-pass 都是 0——物体根本没动。</figcaption>
-  </figure>
-  <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-WorldMirror/tab6.jpg" alt="Tab. 6：Full、w/o Stateful Memory、w/o Adaptive Routing、w/o Feedback Refinement 的消融"></div>
-    <figcaption><b>Tab. 6</b>（作者原表）w/o Feedback Refinement 就是 One-pass 那一行；w/o Stateful Memory 和 Full 几乎一样。</figcaption>
-  </figure>
-  <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-WorldMirror/fig3.jpg" alt="Fig. 3：四个 DROID 场景上 GT、RoboSnap、RoLA、GPT-6 Astra、Ours 的首帧渲染"></div>
-    <figcaption><b>Fig. 3</b>（作者原图）列：GT、RoboSnap、RoLA、GPT-6 Astra、Ours。RoboSnap 列背景有 Gaussian 的糊和飘浮伪影；Astra 列是干净但不像的合成场景；Ours 列背景接近 GT。第三行白圆桌上的小物件就是类似本页例子的 bowl 场景。</figcaption>
-  </figure>
-  <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-WorldMirror/fig4.jpg" alt="Fig. 4：三个任务（pick up a fork、lift a pot lid、open a drawer）的腕部视角 GT / GPT-6 Astra / Ours 逐时刻对比"></div>
-    <figcaption><b>Fig. 4</b>（作者原图）腕部相机视角，横轴 t=0 到 t=T 六个时刻，每组三行 GT / GPT-6 Astra / Ours。(a) 刚体：pick up a fork；(b) 可分离部件：lift a pot lid；(c) articulated：open a drawer。Astra 行在 (b)(c) 里夹爪和物体明显对不上。</figcaption>
-  </figure>
+  <h2>外观和回放上领先，布局不如 GPT-6 Astra；回放成功靠的是"验证 + 带诊断的回退"，不是多跑几轮</h2>
+  <p>顺序同论文 §4：<a href="#exp-1">E1</a> 外观像不像真机 → <a href="#exp-2">E2</a> 物体摆得准不准 → <a href="#exp-3">E3</a> 原轨迹能不能直接回放 → <a href="#exp-4">E4</a> 回放成功靠的是哪种精修策略 → <a href="#exp-5">E5</a> 三个组件各贡献多少。前两个比重建质量，后三个比回放误差和成功率；论文没有比较运行时间和成本。所有评测都在 DROID 的 in-the-wild 演示上，回放用 Isaac Sim。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>重建出来的场景，看起来像真机画面吗？<span class="exp-src">§4.2</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-WorldMirror/tab2.jpg" alt="Table 2：RoLA、RoboSnap、GPT-6 Astra、WorldMirror 的 PSNR、SSIM、LPIPS、DISTS、Aesthetic"></div>
+      <figcaption><b>Table 2</b>（作者原图）先看 LPIPS 和 DISTS 两列（越低越好），WorldMirror 两项都最低；再看 SSIM 列，RoLA 更高。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-WorldMirror/web-4scene.jpg" alt="Fig. 3：四个 DROID 场景上 GT、RoboSnap、RoLA、GPT-6 Astra、Ours 的首帧渲染"></div>
+      <figcaption><b>Fig. 3</b>（项目页高清版，和论文 Fig. 3 相同）列：GT、RoboSnap、RoLA、GPT-6 Astra、Ours。RoboSnap 列背景有 Gaussian 的糊和飘浮伪影；Astra 列是干净但不像的合成场景；Ours 列背景接近 GT。第三行白圆桌上的小物件就是本页例子那类场景。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>感知指标上最像，像素指标上和 RoLA 持平。</b>LPIPS 0.427（RoLA 0.506、RoboSnap 0.641、Astra 0.606），DISTS 0.168（0.206 / 0.209 / 0.299），Aesthetic 0.570 最高；PSNR 13.57 只比 RoLA 的 13.53 高一点，SSIM 0.570 低于 RoLA 的 0.587。作者的措辞是"competitive PSNR"、"improved visual correspondence, particularly under perceptual metrics"。</dd></div>
+      <div><dt>在故事里</dt><dd>回应 Problem 第二行：通用 agent（Astra）"Low Visual Realism"，Gaussian one-shot（RoboSnap）背景糊；专用生成工具 + agent 调度能把外观做像。</dd></div>
+      <div><dt>指标</dt><dd>PSNR、SSIM（越高越好）、LPIPS、DISTS（越低越好）、aesthetic score（越高越好），全是图像级指标，没有成功 / 失败判定；论文没写多少次、几个 seed。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>10 个 DROID 场景，拿仿真的第一帧渲染和真机外置相机图比（同一视角）。</li>
+        <li>baseline：RoLA、RoboSnap（开源）、GPT-6 Astra（闭源）；SimFoundry 没进这张表。怎么跑 baseline 论文没细说；项目页注明 RoboSnap 不支持接机械臂，"keep the same arm setting as WorldMirror"。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>物体有没有摆回真机里的位置？<span class="exp-src">§4.3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-WorldMirror/tab3.jpg" alt="Table 3：RoLA、RoboSnap、SimFoundry、GPT-6 Astra、WorldMirror 的 IoU、Pos. Err.、Rel. Vec.、Rel. Dist."></div>
+      <figcaption><b>Table 3</b>（作者原图）先看最后一列 Rel. Dist.（WorldMirror 最低），再看 IoU 和 Pos. Err. 两列（GPT-6 Astra 更好）。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>胜过所有开源 baseline，但不如 GPT-6 Astra。</b>Rel. Dist. 0.219 最低（Astra 0.331）；mask IoU 0.469 低于 Astra 0.598，Pos. Err. 9.66 高于 Astra 8.72，Rel. Vec. 0.557 vs 0.552。开源三家：IoU 0.232 / 0.313 / 0.169，Pos. Err. 30.65 / 27.79 / 19.54。作者自己说："not a consistent advantage across spatial metrics"。</dd></div>
+      <div><dt>在故事里</dt><dd>Fig. 1 第一行"Spatial Structure"两边都打 ✓ 的依据；也是论文坦白的短板。</dd></div>
+      <div><dt>指标</dt><dd>mask IoU（越高越好）、位置误差、相对向量误差、相对距离误差（越低越好）；3D 指标从可见表面的质心算。Pos. Err. 论文没写单位；没有成功 / 失败判定。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>DROID 里共享的 17 个任务相关物体和 8 对物体。</li>
+        <li>baseline：RoLA、RoboSnap、SimFoundry（开源），GPT-6 Astra（闭源）；这是 SimFoundry 唯一出现的表。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>录下的轨迹原封不动播，机器人还能完成同样的交互吗？<span class="exp-src">§4.4</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-WorldMirror/tab4.jpg" alt="Tab. 4：RoLA、GPT-6 Astra、WorldMirror 的 Motion Replay 四项误差和 Physical Interaction 的 F1、SR"></div>
+      <figcaption><b>Table 4</b>（作者原图）先看最后一列 SR：WorldMirror 100%，Astra 40%，RoLA 没报；再看 Disp. 那列 1.79 vs 11.17 vs 24.70 cm。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-03-WorldMirror/web-pen-real-ext.mp4" autoplay muted loop playsinline controls></video><figcaption>真机</figcaption></figure>
+        <figure><video src="2026-11-03-WorldMirror/web-pen-rola.mp4" autoplay muted loop playsinline controls></video><figcaption>RoLA</figcaption></figure>
+        <figure><video src="2026-11-03-WorldMirror/web-pen-gpt6.mp4" autoplay muted loop playsinline controls></video><figcaption>GPT-6 Astra</figcaption></figure>
+        <figure><video src="2026-11-03-WorldMirror/web-pen-replay-ext.mp4" autoplay muted loop playsinline controls></video><figcaption>WorldMirror</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://worldmirror-page.github.io/#baselines">Comparison · Red pen 1 · Replay episode</a>：同一条录下的轨迹在三种重建里回放，2.5 s 片段。RoLA 的画面里没有机械臂、marker 一直躺在桌上（Tab. 1：没有标定和回放）；Astra 在合成的八角桌上空夹着 marker；WorldMirror 的臂、marker、bowl 和真机同步。这个片段的结局页面没放，成功与否以 Tab. 4 为准。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-WorldMirror/fig4.jpg" alt="Fig. 4：三个任务（pick up a fork、lift a pot lid、open a drawer）的腕部视角 GT / GPT-6 Astra / Ours 逐时刻对比"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）腕部相机视角，横轴 t=0 到 t=T 六个时刻，每组三行 GT / GPT-6 Astra / Ours。(a) 刚体：pick up a fork；(b) 可分离部件：lift a pot lid；(c) articulated：open a drawer。Astra 行在 (b)(c) 里夹爪和物体明显对不上。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>回放误差全面最低，成功率 100%。</b>位移误差 1.79 cm（Astra 11.17、RoLA 24.70），终点误差 5.83（21.98 / 40.80）cm，方向误差 10.90°（81.30° / 53.00°），DTW 1.64（10.82 / 10.30）cm；接触 F1 0.873 vs Astra 0.653；成功率 100% vs 40%。RoLA 的 F1 和 SR 是 "–"。</dd></div>
+      <div><dt>在故事里</dt><dd>论文的核心主张：camera-anchored 坐标系 + 验证精修让"不改轨迹、不 retarget"的直接回放成立（§3.5）；也是 Fig. 1 第三行"Physical Consistency"的依据。</dd></div>
+      <div><dt>指标</dt><dd>
+        <ul class="tight">
+          <li>Motion replay：仿真里物体的运动和真机比——位移、终点位置、方向、DTW 误差（§4.1 "object-motion errors"）。</li>
+          <li>Physical interaction：接触 F1（contact F1）和回放成功率（SR）；"成功"的具体判据论文没有写。</li>
+          <li>评测了多少条演示论文没写（"on the evaluated demonstrations"）。</li>
+        </ul></dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>Isaac Sim 里直接执行原 DROID 关节轨迹，不改轨迹、不重规划、不做 IK 适配（§4.4）。</li>
+        <li>baseline 只有 RoLA 和 GPT-6 Astra；RoboSnap、SimFoundry 没进这张表。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>回放失败后，怎样的精修才救得回来？<span class="exp-src">§4.5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-WorldMirror/tab5.jpg" alt="Table 5：One-pass、Fixed Iterative、Full 三种策略的成功与误差"></div>
+      <figcaption><b>Table 5</b>（作者原图）看 Final 列：33.86 / 31.77 / 2.34 cm；Trans. 和 Lift 两列 One-pass 都是 0——物体根本没动；最后一列 Replay Iter. 是回放次数。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-03-WorldMirror/web-block-real-ext.mp4" autoplay muted loop playsinline controls></video><figcaption>真机 · rail 任务</figcaption></figure>
+        <figure><video src="2026-11-03-WorldMirror/web-block-replay-ext.mp4" autoplay muted loop playsinline controls></video><figcaption>Full WorldMirror 回放</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://worldmirror-page.github.io/#replay">Demos · Block</a>："Colored blocks on a wooden table"，就是 Fig. 5 和 Tab. 5、6 的 rail manipulation 场景。看夹爪碰到的那块木块是否跟着动；没有验证的那一版（Fig. 5 左列）页面没放视频。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>只有带失败诊断的精修能成功；重复精修不行。</b>One-pass ✗，final 误差 33.86 cm，Trans. 0、Lift 0；Fixed Iterative 跑了 2 次回放仍 ✗，31.77 cm；Full 第 4 次回放 ✓，final 2.34 cm、Trans. 32.98 cm、Lift 11.11 cm、DTW 0.95 cm。</dd></div>
+      <div><dt>在故事里</dt><dd>撑起 §3.4 的论点：要的是 typed failure + rewind target，不是"多跑几轮"；Fig. 5 是它的定性版（见 <a href="#stage-all">stage-all</a>）。</dd></div>
+      <div><dt>指标</dt><dd>Success（✓/✗）、final / translation / lift / direction / DTW 误差、Replay Iter.（回放次数）；"成功"的判据论文没有写。单个任务，没有多次或多 seed。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>一个 rail manipulation 任务（木桌上的彩色木块），三种策略共用同一次重建。</li>
+        <li>One-pass：重建后只回放一次；Fixed Iterative：反复精修但不做失败诊断；Full：结构化诊断 + 有针对性的精修。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>stateful memory、adaptive routing、feedback refinement 各起多大作用？<span class="exp-src">§4.5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-WorldMirror/tab6.jpg" alt="Table 6：Full、w/o Stateful Memory、w/o Adaptive Routing、w/o Feedback Refinement 的消融"></div>
+      <figcaption><b>Table 6</b>（作者原图）先看 Success 列：去 memory 仍 ✓，去 routing 和去 refinement 都 ✗；w/o Feedback Refinement 那行就是 Tab. 5 的 One-pass。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>adaptive routing 和 verification feedback 是关键，memory 几乎不影响结果。</b>w/o Stateful Memory ✓、final 2.35 cm（Full 2.34）；w/o Adaptive Routing ✗、9.86 cm、Trans. 42.23 cm（过头）；w/o Feedback Refinement ✗、33.86 cm、物体没动。</dd></div>
+      <div><dt>在故事里</dt><dd>把 §3 的三个设计分开计价：router 的自适应回退和 judge 的反馈决定成败；world state memory 的作用是跨 stage 保存中间结果（作者原话）。</dd></div>
+      <div><dt>指标</dt><dd>同 E4。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>同一个 rail 任务，"shared setup with identical replay conditions"，每次去掉一个组件。</li>
+        <li>没有在别的任务上重复，也没有多 seed。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
 </section>
 
 <section id="limits">
