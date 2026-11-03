@@ -118,6 +118,11 @@ table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .
 .paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
 .paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
 .paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
 ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
 ol.read li + li { margin-top: .3rem; }
 ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
@@ -161,8 +166,16 @@ details.stage[open] > summary::after { content: "\2212"; }
 details.recap { margin-top: 1.25rem; }
 details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
 
-/* results */
-.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
 
 footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
 
@@ -170,7 +183,7 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
 .lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
 
 @media (max-width: 560px) {
-  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
   .crumb .proj { display: none; }
 }
 </style>
@@ -216,8 +229,12 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
   <h2>模拟器能算物理，但"哪个 solver、什么 contact model、参数多少"藏在引擎里，人和 agent 都没法快速对照真实视频去调</h2>
   <div class="setup">
     <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
-    <p><b>Sponge wiping（双臂 YAM）</b>：输入是一段手机视频 <span class="ex">一只臂握住 bar，另一只臂用泡沫 sponge 擦掉 bar 上的 marker 条纹</span>，没有 CAD、没有相机标定；再加一句给 coding agent（Claude Code / Codex）的 prompt → 想要：一个 multi-physics 仿真（刚体臂 + 可形变 sponge，接触力可读），行为和视频一致，能在里面训 policy 并部署到真机。</p>
+    <p><b>Sponge wiping（双臂 YAM）</b>：输入是一段手机视频 <span class="ex">一只臂握住 bar，另一只臂用泡沫 sponge 擦掉 bar 上的 marker 条纹</span>，没有 CAD、没有相机标定；再加一句给 coding agent（Claude Code / Codex）的 prompt <span class="ex">Set up github.com/robosimstudio/robosimstudio and create a simulation for @wipe_the_bar.mov</span> → 想要：一个 multi-physics 仿真（刚体臂 + 可形变 sponge，接触力可读），行为和视频一致，能在里面训 policy 并部署到真机。</p>
   </div>
+  <figure class="paper-fig">
+    <div class="mat"><video src="2026-11-03-RoboSimStudio/web-input-real.mp4" autoplay muted loop playsinline controls></video></div>
+    <figcaption><b>项目页</b> <a href="https://robosimstudio.github.io/#workflow">How it works · 1 Input</a>：就是这段手机视频（wipe_the_bar.mov，36 s）。看三件事：左臂握住 bar 不动，右臂拿白色 sponge 沿 bar 来回擦，marker 条纹被擦掉；镜头是手持的，没有标定。</figcaption>
+  </figure>
   <div class="flow"><pre>
 flowchart LR
   IN["<b>例子输入</b><br/><span class='ex'>手机视频 + prompt</span>"] --> A1["<b>通用模拟器 + 自己写 glue</b><br/>MuJoCo / IsaacLab / Genesis / Newton"]
@@ -282,6 +299,17 @@ flowchart LR
     <li><b>中行右 Robot Interfaces：</b>Robot Controllers（YAM、Franka、UR5）、Grippers（YAM、Robotiq）、IK / Motion Planning（pyroki、cuRobo、DLS）；例子用 YAM 双臂。</li>
     <li><b>底行左 Newton：</b>Multi-Physics Backend（MuJoCo Warp、VBD）+ Compiler（NVIDIA Warp + CUDA）；臂和 bar 走 MuJoCo-Warp。</li>
     <li><b>底行右 Other Physics Solver Extensions：</b>Genesis、SuperDex；sponge 的 FEM 走 SuperDex，和 Newton co-simulate。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-RoboSimStudio/fig7.jpg" alt="Agentic Real2Sim2Real for sponge wiping，九个子图"></div>
+    <figcaption><b>Fig. 7</b>（作者原图）作者把整个例子画成九格：(a) 真机视频 (b) 三个难点 (c) agent 建仿真的时间线 (d) multi-physics 仿真 (e) 物理 / 空间变体 (f) GaP 改进 (g) 真机部署 (h) 真机失败 (i) agent 修正仿真。下面的 5 个 stage 按 (a)→(i) 的顺序走。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>(b) Task challenges：</b>三个圈标出 1. Accurate Robot Motion（右臂的擦拭动作）、2. Accurate Robot-Object Contact（sponge 压在 bar 上）、3. Accurate Object-Object Contact（bar 和支座）；Stage 1–3 要把这三样都对上。</li>
+    <li><b>(c) → (d)：</b>agent 从空场景到 verified 的四个时间戳，结果是 (d) 的渲染；Stage 1–3。</li>
+    <li><b>(e) → (f) → (g)：</b>变 sponge 刚度（6 / 20 / 100 kPa）和布局，GaP 从 iter 0 的 0% 学到 iter 14 的 100%，再上真机；Stage 4。</li>
+    <li><b>(h) → (i)：</b>真机的红圈是被推动的 bar 支座；(i) 左 original: fixed，右 revised: free；Stage 5。</li>
   </ol>
   <div class="flow"><pre>
 flowchart TD
@@ -353,6 +381,13 @@ flowchart LR
         <li><b>Cable Routing、Film Peeling、Towel Handling、Heat-Transfer Printing：</b>臂紫色 MuJoCo-Warp，线缆 / 薄膜 / 毛巾 / 转印纸琥珀色 = VBD。</li>
         <li><b>共同点：</b>五个任务用同一套 robot interface 和场景描述框架，只是 solver 分配不同。</li>
       </ol>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-03-RoboSimStudio/web-sim-render.mp4" autoplay muted loop playsinline controls></video><figcaption>仿真 · path-traced 渲染</figcaption></figure>
+          <figure><video src="2026-11-03-RoboSimStudio/web-sim-multiphysics.mp4" autoplay muted loop playsinline controls></video><figcaption>同一段 · multi-physics 视图</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://robosimstudio.github.io/#workflow">How it works · 3 Simulation</a>：同一次擦拭的两种视图，各 10 s。右边紫色标 "MuJoCo · rigid bodies"，青色标 "SuperDex · FEM soft body"，右下角实时打出 contact 力和峰值压力（视频里从 0.0 N / 0 kPa 到接触时的 4–6 N、峰值 26–33 kPa，抬起后回到 0），红箭头是接触力方向：这就是 Stage 2 说的"接触力可读"。3D 回放见项目页的 <a href="https://robosimstudio.github.io/#demo=bar">3D rollouts</a>（Viser 交互 viewer，无法嵌入）。</figcaption>
+      </figure>
       <div class="flow"><pre>
 flowchart LR
   R["<b>Newton · MuJoCo-Warp</b><br/><span class='ex'>YAM 臂, bar</span>"] <--> X["<b>交换 pose / wrench</b>"]
@@ -391,6 +426,10 @@ flowchart LR
         <li><b>右四格：</b>Soft bending / Soft stretch、Stiff bending / Stiff stretch、Stiff bending / Soft stretch、Soft bending / Stiff stretch；同一拖拽下褶皱形状明显不同，这就是"调参 = 直接看物理行为"。</li>
       </ol>
       <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-03-RoboSimStudio/web-agent-build.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://robosimstudio.github.io/#workflow">How it works · 2 Coding agent</a>：agent 建仿真的全程快放（3.6 min 看完约 1 小时）。左边是 Viser studio 里的场景，右边是 agent 的终端，右上角是倒计时。看场景怎么从两只空臂（51:00 左右）变成有 bar、有 sponge、有木条背景的完整工位（02:20 左右），终端里是每一步"改 → 跑 → 看反馈"的记录。时间戳和 Fig. 7c 对应。</figcaption>
+      </figure>
+      <figure class="paper-fig">
         <div class="mat"><img src="2026-11-03-RoboSimStudio/fig6.jpg" alt="屏幕上的 tool hanging 仿真，手边是 Gello leader arm"></div>
         <figcaption><b>Fig. 6</b>（作者原图）Tool-hanging teleoperation：屏幕上是 RSS 里的仿真臂和带孔挂板，操作者手里是 Gello leader arm，接触力从它的电机回传。</figcaption>
       </figure>
@@ -421,6 +460,10 @@ flowchart TD
         <li><b>How · 空间变体：</b>生成 30 个 bar 和 sponge 的空间布局（Fig. 7e 下行）。</li>
         <li><b>How · 学习：</b>GaP（Graph-as-Policy，同一组的 multi-agent self-learning harness）用 RSS 的 spatial-temporal 仿真反馈改进 policy；改进后的 policy 部署到真机完成擦拭（Fig. 7g）。</li>
       </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-03-RoboSimStudio/fig7-f.jpg" alt="Fig. 7f：GaP 四个 iteration 的仿真截图，0%、29%、71%、100%"></div>
+        <figcaption><b>Fig. 7(f)</b>（作者原图）四格是 iter 0 / 9 / 11 / 14 的仿真截图，标注的百分比是 simulated wiped area。看 bar 上深色条纹（marker）剩多少。</figcaption>
+      </figure>
       <div class="flow"><pre>
 flowchart TD
   V["<b>Verified 仿真</b>"] --> Var["<b>变体</b><br/><span class='ex'>E 6 / 20 / 100 kPa · 30 个布局</span>"]
@@ -429,7 +472,7 @@ flowchart TD
       </pre></div>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
-        <p>仿真里的 simulated wiped area：<span class="ex">iter 0: 0% → iter 9: 29% → iter 11: 71% → iter 14: 100%</span>（Fig. 7f / Fig. 1 ④）。随后 policy 在真机上完成擦拭。</p>
+        <p>仿真里的 simulated wiped area：<span class="ex">iter 0: 0% → iter 9: 29% → iter 11: 71% → iter 14: 100%</span>（Fig. 7f / Fig. 1 ④）。随后 policy 在真机上完成擦拭（真机视频见 Results E5）。</p>
       </div>
     </div>
   </details>
@@ -448,6 +491,10 @@ flowchart TD
         <li><b>How · 修改：</b>把 fixed constraint 换成 free rigid body，bar 和支座能在接触力下运动（Fig. 7i）。</li>
         <li><b>How · 验证：</b>在不同擦拭轨迹和接触条件下评估：原 fixed-bar 仿真重现不了位移，revised 仿真在 sponge 施力够大或偏离 bar 中心时出现 bar 移动和倾倒；修正后的仿真可用于进一步评估和改进 policy。</li>
       </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-03-RoboSimStudio/fig7-hi.jpg" alt="Fig. 7h 真机失败的红圈支座，Fig. 7i 原 fixed 与修正后 free 的仿真对比"></div>
+        <figcaption><b>Fig. 7(h)(i)</b>（作者原图）左：真机上被推动的 bar 支座（红圈）。右：original: fixed 的 bar 纹丝不动；revised: free 里 off-center 的擦拭把 bar 连支座一起推歪、倾倒（红色虚线框是移动前的位置）。</figcaption>
+      </figure>
       <div class="flow"><pre>
 flowchart LR
   Fh["<b>真机失败</b><br/><span class='ex'>bar 支座被推动，sponge 脱离</span>"]:::gap --> A["<b>agent 诊断</b><br/><span class='ex'>supports 被错误 fixed</span>"]
@@ -455,7 +502,7 @@ flowchart LR
       </pre></div>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
-        <p>Fig. 7i 左 <span class="ex">original: fixed</span> 的 bar 纹丝不动；右 <span class="ex">revised: free</span> 里 off-center 的擦拭把 bar 连支座一起推歪、倾倒（红色虚线框）。</p>
+        <p>agent 拿到失败视频和一句失败描述，把 bar supports 从环境的 fixed constraint 改成 free rigid body；修正后的仿真在 off-center 擦拭下重现了 bar 的位移和倾倒（Fig. 7i）。</p>
       </div>
     </div>
   </details>
@@ -475,7 +522,7 @@ flowchart LR
         <tr><td>物理 / 空间变体</td><td>Stage 4：E 6/20/100 kPa，30 个布局</td></tr>
         <tr><td>GaP self-learning + Sim2Real</td><td>Stage 4：0% → 100%，真机完成擦拭</td></tr>
         <tr><td>Failure-driven simulation refinement</td><td>Stage 5：bar 支座 fixed → free</td></tr>
-        <tr><td>18 个 contact-rich 任务</td><td>Results：人用视觉反馈建的，不在例子里</td></tr>
+        <tr><td>18 个 contact-rich 任务</td><td>Results E2：人用视觉反馈建的，不在例子里</td></tr>
       </table>
     </div>
   </details>
@@ -483,27 +530,116 @@ flowchart LR
 
 <section id="results">
   <p class="eyebrow">Results</p>
-  <h2>结果一览（pilot study，主要是定性）</h2>
-  <ul class="tight results">
-    <li><b>约 1 小时</b> 两个 off-the-shelf coding agent（Claude Code、Codex）各自从手机视频独立建出 multi-physics 仿真，无 CAD、无相机标定；其中一个 56 min 完成验证（§4.3，Fig. 7c）。</li>
-    <li><b>0% → 100%</b> GaP 在 RSS 的 spatial-temporal 反馈下 14 轮把 simulated wiped area 从 0% 提到 100%（Fig. 7f）；policy 部署真机完成擦拭（Fig. 7g）。</li>
-    <li><b>1 次真机失败 → 仿真修正</b> bar 支座被推动，agent 把 fixed 改 free，修正后的仿真重现位移和倾倒（Fig. 7h, 7i）。</li>
-    <li><b>18 个任务</b> 人用视觉反馈循环建出 18 个 contact-rich 仿真（Fig. 5）：刚体接触、关节机构、cable、cloth、soft body。论文点名三例：Connector insertion（USB-C 亚毫米间隙，mesh contact + 可调 collision resolution）、Leaf pressing（shell 仿真，按压后回弹）、Strip polishing（从 solver 读接触力，用 Preston 方程算材料去除）。</li>
-    <li><b>Force feedback</b> Gello leader arm + tool-hanging：操作者能感到工具插进挂架时的接触，用来采集示教和直接评估 contact model（§4.2，定性）。</li>
-    <li><b>Table 1</b> 对比 MuJoCo / IsaacLab / ManiSkill3 / Genesis / Newton：Video-driven agentic Real2Sim、Force-feedback Real2Sim（IsaacLab 为 ~）、Failure-driven refinement 三行只有 RSS 打勾；Structured feedback for coding agents 和 Shared human-agent refinement 其它都是 Custom。</li>
-  </ul>
-  <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-RoboSimStudio/fig7.jpg" alt="Agentic Real2Sim2Real for sponge wiping，九个子图"></div>
-    <figcaption><b>Fig. 7</b>（作者原图）Sponge wiping 的 Agentic Real2Sim2Real：(a) 真机视频 (b) 三个难点：robot motion、robot-object contact、object-object contact (c) agent 建仿真的时间线 (d) multi-physics 仿真 (e) 物理 / 空间变体 (f) GaP 改进 (g) 真机部署 (h) 真机失败 (i) agent 修正仿真。先看 (c) 和 (f) 的四个时间戳 / 百分比，再看 (h) → (i)。</figcaption>
-  </figure>
-  <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-RoboSimStudio/fig5.jpg" alt="18 个 contact-rich 任务的仿真截图"></div>
-    <figcaption><b>Fig. 5</b>（作者原图）18 个任务：Tool Sorting、Sharps Disposal、Basket Packing、Gear Meshing、Tool Hanging、Plate Racking、Connector Insertion、Cable Routing、Drawer Unlocking、Conduit Threading、Crate Flipping、Leaf Pressing、Towel Folding、Film Peeling、Carton Tape Cutting、Sponge Wiping、Strip Polishing、Heat-Transfer Printing。</figcaption>
-  </figure>
-  <figure class="paper-fig">
-    <div class="mat"><img src="2026-11-03-RoboSimStudio/tab1.jpg" alt="Table 1：六个仿真框架在物理、交互接口和 Real2Sim 工作流上的对比"></div>
-    <figcaption><b>Table 1</b>（作者原表）✓ 内置，~ 部分支持，Custom 需自己实现，– 没有。先看最后三行 Real2Sim Workflows。</figcaption>
-  </figure>
+  <h2>一个 pilot study：工具能建 18 种接触任务，agent 能从一段视频在一小时内建出一个，仿真里学的 policy 能上真机，真机失败能反过来改仿真</h2>
+  <p>顺序同论文：<a href="#exp-1">E1</a> 和现有框架比缺什么（Table 1）→ <a href="#exp-2">E2</a> 人用视觉反馈能建多少任务（§4.1）→ <a href="#exp-3">E3</a> 人用力反馈能感到什么（§4.2）→ <a href="#exp-4">E4</a> agent 从视频建仿真要多久（§4.3）→ <a href="#exp-5">E5</a> 仿真里 GaP 学得怎样、真机行不行（§4.3）→ <a href="#exp-6">E6</a> 真机失败能否改回仿真（§4.3）。全文没有和别的方法比成功率或速度的实验：E1 比的是功能有无，E2、E3、E6 是定性，E4 报的是时间，E5 报的是仿真里的擦拭面积。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>和 MuJoCo / IsaacLab / ManiSkill3 / Genesis / Newton 比，RSS 多了什么？<span class="exp-src">§2 · Table 1</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-RoboSimStudio/tab1.jpg" alt="Table 1：六个仿真框架在物理、交互接口和 Real2Sim 工作流上的对比"></div>
+      <figcaption><b>Table 1</b>（作者原表）✓ 内置，~ 部分支持，Custom 需自己实现，– 没有。先看最后三行 Real2Sim Workflows，再看 Interactive Interfaces 的后两行。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>功能上多了三个 Real2Sim 工作流和两个接口。</b>Video-driven agentic Real2Sim、Force-feedback Real2Sim（IsaacLab 为 ~）、Failure-driven simulation refinement 三行只有 RSS 打勾；Structured feedback for coding agents 和 Shared human-agent refinement 其它五个都是 Custom；Coupled multi-physics solvers 只有 Genesis 和 RSS 是 ✓（IsaacLab、Newton 为 ~）。</dd></div>
+      <div><dt>在故事里</dt><dd>撑起 Problem 的三条 lane：物理能力大家都在补齐，差的是把它交给人和 agent 迭代的接口。</dd></div>
+      <div><dt>指标</dt><dd>作者自评的功能有无，没有精度、速度或成功率的数字。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>六个框架，11 个功能项，作者按文档和实现判断。</li><li>对 RSS 有利之处：行是按 RSS 的卖点列的；"Custom" 意味着别的框架也能做，只是要自己写。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>人用视觉反馈循环，能在 RSS 里建出哪些 contact-rich 任务？<span class="exp-src">§4.1 · Fig. 5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-RoboSimStudio/fig5.jpg" alt="18 个 contact-rich 任务的仿真截图"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）18 个任务：Tool Sorting、Sharps Disposal、Basket Packing、Gear Meshing、Tool Hanging、Plate Racking、Connector Insertion、Cable Routing、Drawer Unlocking、Conduit Threading、Crate Flipping、Leaf Pressing、Towel Folding、Film Peeling、Carton Tape Cutting、Sponge Wiping、Strip Polishing、Heat-Transfer Printing。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>覆盖面：18 个任务，跨刚体接触、关节机构、cable、cloth、soft body。</b>论文点名三例：Connector insertion（USB-C 亚毫米间隙，mesh contact + 可调 collision resolution）、Leaf pressing（shell 仿真，按压后回弹）、Strip polishing（从 solver 读接触力，用 Preston 方程算材料去除）。</dd></div>
+      <div><dt>在故事里</dt><dd>证明 Stage 1–3 的人工路径够通用：同一套 robot interface 和场景描述，换 solver 分配就能换任务（Fig. 3）。</dd></div>
+      <div><dt>指标</dt><dd>定性："用户执行任务，比较仿真和真实的运动与形变，直接调 contact 和材料参数，直到两者 qualitatively agree"；没有逐任务的对齐数字或用时。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>从真实任务的观察出发，用户在 studio 里选 robot 和 asset、摆几何、选物理模型，再在视觉循环里调参。</li><li>没有 baseline，也没说每个任务花了多久、由几个人建。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>通过 Gello 的力反馈，操作者能感到仿真里的接触吗？<span class="exp-src">§4.2 · Fig. 6</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-RoboSimStudio/fig6.jpg" alt="屏幕上的 tool hanging 仿真，手边是 Gello leader arm"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）Tool-hanging teleoperation：屏幕上是 RSS 里的仿真臂和带孔挂板，操作者手里是 Gello leader arm。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>能：操作者感到工具插进挂架时的接触，并据此调整动作。</b>反馈来自所选 solver 和参数算出的力，所以既能采示教，也能直接评估 contact model。</dd></div>
+      <div><dt>在故事里</dt><dd>Stage 3 的第三种反馈：视觉之外，人还能"摸"到仿真的接触模型对不对。</dd></div>
+      <div><dt>指标</dt><dd>定性，没有数字。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>任务：从桌上拿起薄工具插进 hanger；低成本 Gello leader arm 驱动仿真臂，命令与仿真关节的差从 leader 电机回传。</li><li>两个工程处理：速度相关 deadband，仿真暂停或落后时释放反馈；夹爪用实测开度。没有和无力反馈的对照。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>off-the-shelf coding agent 从一段手机视频建出 multi-physics 仿真，要多久？<span class="exp-src">§4.3 · Fig. 7c</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-RoboSimStudio/fig7-c.jpg" alt="Fig. 7c：agent 建仿真的四个时间戳"></div>
+      <figcaption><b>Fig. 7(c)</b>（作者原图）一个 agent 的四个时间戳：14 min: arms, bar → 42 min: first wipe → 51 min: scenery → 56 min: verified。全程快放见 <a href="#stage-3">Stage 3</a> 的项目页视频。</figcaption>
+    </figure>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>时间（Fig. 7c）</th><th>仿真里有了什么</th></tr>
+        <tr><td>14 min</td><td>两只臂和 bar</td></tr>
+        <tr><td>42 min</td><td>第一次擦拭（sponge 接触到 bar）</td></tr>
+        <tr><td>51 min</td><td>场景背景（木条墙、桌面）</td></tr>
+        <tr><td>56 min</td><td>verified：仿真行为和视频对上</td></tr>
+      </table>
+    </div>
+    <p class="note">这张表是从 Fig. 7c 的四个标签整理的，论文没有更细的时间记录。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>约 1 小时，无 CAD、无相机标定。</b>两个 agent 各自独立建出仿真；其中一个 56 min 完成验证。仿真反馈帮 agent 发现 robot kinematics 和接触条件的错误，把擦拭动作调到 sponge 贴住 bar。</dd></div>
+      <div><dt>在故事里</dt><dd>Stage 1–3 的 agent 路径可行：RSS 的接口够让通用 coding agent 不加改造地用。</dd></div>
+      <div><dt>指标</dt><dd>建成的时间；"verified" 的判据是 agent 用视觉观察加 spatial-temporal 反馈判断仿真和视频一致，论文没给定量阈值。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>一个任务（双臂 sponge wiping），一段手机视频，两个 agent：Claude Code 里的 Claude Fable 5.1、Codex 里的 GPT-6 Astra。</li><li>没有 baseline（比如没有 RSS 接口的同一 agent），也没说跑了几次、人有没有干预。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>在仿真变体里 GaP 学得怎样，学出的 policy 能上真机吗？<span class="exp-src">§4.3 · Fig. 7e–g</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-RoboSimStudio/fig7-f.jpg" alt="Fig. 7f：GaP 四个 iteration 的仿真截图"></div>
+      <figcaption><b>Fig. 7(f)</b>（作者原图）iter 0 / 9 / 11 / 14 的仿真截图；Fig. 1 ④ 是同一组数字的折线。</figcaption>
+    </figure>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>GaP iteration（Fig. 7f）</th><th>simulated wiped area</th></tr>
+        <tr><td>0</td><td>0%</td></tr>
+        <tr><td>9</td><td>29%</td></tr>
+        <tr><td>11</td><td>71%</td></tr>
+        <tr><td>14</td><td>100%</td></tr>
+      </table>
+    </div>
+    <p class="note">这张表是从 Fig. 7f 的标签整理的；Fig. 1 ④ 的折线只标了这四个点。</p>
+    <figure class="paper-fig">
+      <div class="mat"><video src="2026-11-03-RoboSimStudio/web-real-deploy.mp4" autoplay muted loop playsinline controls></video></div>
+      <figcaption><b>项目页</b> <a href="https://robosimstudio.github.io/#workflow">How it works · 5 Sim2Real</a>：改进后的 policy 在真机上跑（13 s）。看右臂拿 sponge 落到 bar 上、沿 bar 擦过去；这是 Fig. 7g 的动态版。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>仿真里 14 轮从 0% 到 100%，真机能完成擦拭。</b>GaP 用 RSS 的 spatial-temporal 反馈自我改进；部署到真机"完成了擦拭任务"（Fig. 7g）。</dd></div>
+      <div><dt>在故事里</dt><dd>Stage 4：显式参数让变体（E = 6 / 20 / 100 kPa，30 个布局）一改就有，仿真反馈够 GaP 学，且学到的东西能过 sim-to-real。</dd></div>
+      <div><dt>指标</dt><dd>simulated wiped area（仿真里被擦掉的 marker 面积比例）；真机只说"完成"，没有成功率。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>仿真：变 sponge 刚度和 30 个 bar / sponge 布局，GaP 迭代 14 轮；论文没说每轮评多少个变体、面积怎么算。</li><li>真机：同一台双臂 YAM 工位；没有 baseline policy，没有试验次数。E6 的失败说明至少有一次 rollout 没成。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-6">
+    <h3><span class="exp-n">E6</span>真机失败能否反过来让 agent 修正仿真？<span class="exp-src">§4.3 Real-world Feedback and Simulation Refinement · Fig. 7h, 7i</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-03-RoboSimStudio/fig7-hi.jpg" alt="Fig. 7h 真机失败，Fig. 7i 修正前后的仿真"></div>
+      <figcaption><b>Fig. 7(h)(i)</b>（作者原图）左：真机失败，红圈是被推动的 bar 支座。右：original: fixed vs revised: free，同一个 off-center 擦拭。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>能：修正后的仿真重现了真机上的位移和倾倒，原仿真不能。</b>agent 从失败视频和描述判断"bar supports 被错误地固定在环境上"，把 fixed constraint 改成 free rigid body。</dd></div>
+      <div><dt>在故事里</dt><dd>Stage 5，也是 Table 1 最后一行的证据：仿真里的约束是可读可改的数据，真机失败才能变成一次修改。</dd></div>
+      <div><dt>指标</dt><dd>定性：修正后的仿真在"sponge 施力够大或偏离 bar 中心"时出现 bar 移动和倾倒，原仿真没有；没有位移量或复现率。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>一次真机失败 rollout 的视频 + 一句失败描述给 agent；agent 改场景后在不同擦拭轨迹和接触条件下评估。</li><li>论文说修正后的仿真"可用于"进一步改进 policy，但没有报告改进后再上真机的结果。</li></ul></dd></div>
+    </dl>
+  </div>
 </section>
 
 <section id="limits">
