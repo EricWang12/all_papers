@@ -55,16 +55,17 @@ code { font-family: var(--f-mono); font-size: .9em; }
 @media (max-width: 560px) { ol.papers a { grid-template-columns: minmax(0, 1fr); } .date { grid-row: auto; } }
 </style>
 <header class="frame">
-  <p class="eyebrow">all_papers/ · 5 个 project · 14 篇 paper</p>
+  <p class="eyebrow">all_papers/ · 5 个 project · 15 篇 paper</p>
   <h1>Zhaoning Paper Pile</h1>
   <p class="sub">每篇 paper 先对着一个 <span class="ex">running example</span> 讲清 problem，
   再 big picture → stages → details，并逐块解读作者原图。下面的文件夹和磁盘上的
   <code>all_papers/</code> 一一对应。</p>
 </header>
 <main class="frame">
-<section id="Agent-centric-real-to-sim"><div class="proj"><h2>Agent-centric-real-to-sim</h2><span class="count">Agent-centric-real-to-sim/ · 3 篇</span></div>
+<section id="Agent-centric-real-to-sim"><div class="proj"><h2>Agent-centric-real-to-sim</h2><span class="count">Agent-centric-real-to-sim/ · 4 篇</span></div>
 <ol class="papers">
 <li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-WorldMirror.html"><span class="date">2026-11-03</span><span class="name">WorldMirror</span><span class="title">WorldMirror: Agentic Real-to-Sim Generation of Interactive Worlds from In-the-Wild Robot Demonstrations · arXiv 2026</span><span class="tldr">Coding agent 把一段 DROID 机器人视频写成可执行的 world program：调专用生成工具重建、以标定相机为锚对齐、Isaac Sim 回放验证、失败就回退重做；原轨迹不改一帧回放成功率 100%。</span></a></li>
+<li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-RoboSimStudio.html"><span class="date">2026-11-03</span><span class="name">RoboSimStudio</span><span class="title">RoboSimStudio: An Interactive Toolkit for Rapid Real2Sim of Robot Manipulation Tasks · CoRL 2026</span><span class="tldr">手机视频 + 一句 prompt → coding agent 约 1 小时在 Newton 上建出 MuJoCo-Warp + SuperDex 的 sponge-wiping 仿真；solver / contact model / 参数显式可编辑，人和 agent 共用一个迭代循环；GaP 14 轮 0%→100% 后上真机，真机失败再由 agent 改仿真</span></a></li>
 <li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-Real2Gym.html"><span class="date">2026-11-03</span><span class="name">Real2Gym</span><span class="title">Real2Gym: Building Gyms from Videos, Bringing Skills to Robots · arXiv 2026</span><span class="tldr">Real2Gym：agent 把人或机器人视频建成对齐的 Blender + MuJoCo gym，原生物理验收并增强；agent 在 gym 里按 stage 写代码、攒 skill，再迁回真机。</span></a></li>
 <li><a href="Agent-centric-real-to-sim/artifact/2026-10-15-DexAgent.html"><span class="date">2026-10-15</span><span class="name">DexAgent</span><span class="title">DexAgent: An Agentic Human2Sim2Robot Framework for Dexterous Manipulation with Self-Evolving Tool Library · arXiv 2026</span><span class="tldr">agent 把一段人手视频转成验证过的机器人训练数据，按物体 property 选或写 skill 与 verifier；11 个真机任务平均 63.6%，最强 baseline 18.2%。</span></a></li>
 </ol>

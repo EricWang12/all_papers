@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>RoboSimStudio</title>
+<meta name="description" content="手机视频 + 一句 prompt → coding agent 约 1 小时在 Newton 上建出 MuJoCo-Warp + SuperDex 的 sponge-wiping 仿真；solver / contact model / 参数显式可编辑，人和 agent 共用一个迭代循环；GaP 14 轮 0%→100% 后上真机，真机失败再由 agent 改仿真">
+<meta name="paper:title" content="RoboSimStudio: An Interactive Toolkit for Rapid Real2Sim of Robot Manipulation Tasks">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.18835">
+<meta name="paper:venue" content="CoRL 2026">
+<meta name="paper:pdf" content="https://robosimstudio.github.io/robosimstudio.pdf?v=d80a683b9b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-03</p>
+  <h1>RoboSimStudio</h1>
+  <p class="full-title">RoboSimStudio: An Interactive Toolkit for Rapid Real2Sim of Robot Manipulation Tasks</p>
+  <p class="meta">Kaiyuan Chen, Shuangyu Xie, Uksang Yoo, Xinyue Zhu, Cael Magner, Alvin Zhu, et al. (Ken Goldberg) · NVIDIA, UC Berkeley · CoRL 2026 / arXiv 2026-10-13</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.18835">arXiv</a><a href="https://robosimstudio.github.io/robosimstudio.pdf?v=d80a683b9b">PDF</a>
+    <a href="https://robosimstudio.github.io">Project page</a><a href="https://github.com/robosimstudio/robosimstudio">Code</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：coding agent 把一段手机视频变成可调参的 multi-physics 仿真，再用真机失败修正它；它同时是一个基于 Newton 的仿真工具包，也和 Sim-robot-learning 相关。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>让仿真和真机的接触物理对上（Real2Sim）要选 solver、contact model、参数，并反复对照真实行为改；现有模拟器把这些藏在引擎里，人和 coding agent 都难迭代。</dd></div>
+    <div><dt>Idea</dt><dd>RoboSimStudio (RSS)：Newton 上的 multi-physics 仿真，把 solver / contact model / 物理参数做成场景里显式可编辑的项，给人（Viser studio + 滑块）和 coding agent（spatial-temporal feedback）同一个可交互仿真去"改 → 跑 → 看 → 再改"。</dd></div>
+    <div><dt>Result</dt><dd>手机视频 → Claude Code / Codex 约 1 小时（一个 agent 56 min）建出 MuJoCo-Warp + SuperDex 的 sponge-wiping 仿真；GaP 14 轮把擦拭面积 0% → 100% 后上真机；真机失败（bar 支座被推动）由 agent 把 fixed 改成 free 修正。人用视觉反馈建了 18 个 contact-rich 任务。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>模拟器能算物理，但"哪个 solver、什么 contact model、参数多少"藏在引擎里，人和 agent 都没法快速对照真实视频去调</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Sponge wiping（双臂 YAM）</b>：输入是一段手机视频 <span class="ex">一只臂握住 bar，另一只臂用泡沫 sponge 擦掉 bar 上的 marker 条纹</span>，没有 CAD、没有相机标定；再加一句给 coding agent（Claude Code / Codex）的 prompt → 想要：一个 multi-physics 仿真（刚体臂 + 可形变 sponge，接触力可读），行为和视频一致，能在里面训 policy 并部署到真机。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>手机视频 + prompt</span>"] --> A1["<b>通用模拟器 + 自己写 glue</b><br/>MuJoCo / IsaacLab / Genesis / Newton"]
+  A1 --> AX["刚体臂和 FEM sponge 要跨 solver 耦合，<br/>agent 只能从图像猜有没有接触<br/><span class='ex'>Table 1：Coupled – / ~，Feedback = Custom</span>"]:::gap
+  IN --> B1["<b>前沿 VLM 直接重建</b><br/>Claude / GPT-6 Astra / Gemini → Blender"]
+  B1 --> BX["场景看着对，sponge 没有形变和接触力<br/><span class='ex'>§2：视觉真 ≠ 物理真</span>"]:::gap
+  IN --> C1["<b>专用 Real2Sim pipeline</b><br/>RialTo / URDFormer / SplatSim"]
+  C1 --> CX["固定流程重建；真机失败后改不了物理约束<br/><span class='ex'>Table 1：Failure-driven refinement –</span>"]:::gap
+  </pre></div>
+  <p class="note">论文没有在这个任务上跑 baseline，三条 lane 的"坏在哪"是推断：依据 Table 1 的 – / ~ / Custom、§2 Real2Sim 一段（"visual realism does not guarantee physical accuracy"）和 §3 Iterative Interface for Agents（接触事件"may be difficult to infer from images alone"）。</p>
+  <p class="crux"><b>根本问题：</b>solver、contact model、参数不是场景里显式可编辑的项，仿真状态也不以结构化反馈暴露，于是人和 agent 都做不了"改 → 跑 → 看 → 再改"的 Real2Sim 循环。　<b>这篇的切入点：</b>把这些选择显式化、可编辑，并把仿真状态转成 spatial-temporal 反馈，让人和 coding agent 共用同一个可交互 multi-physics 仿真。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>通用机器人模拟器</b> <span class="win">本文所属</span><br><span class="muted">MuJoCo, IsaacLab, ManiSkill3, Genesis, Newton</span></td><td>给 robot learning 提供物理环境</td><td>各自的 solver，GPU 并行仿真</td><td>缺 coupled multi-physics 和给 agent 的结构化反馈（都要 Custom）→ RSS 在 Newton 上 co-simulate 外部引擎，反馈内置</td></tr>
+      <tr><td><b>专用 Real2Sim 重建</b><br><span class="muted">RialTo, URDFormer, Digital Cousins, Articulate-Anything, SplatSim</span></td><td>从图片 / 视频重建 digital twin 或 cousin</td><td>固定的重建 / 生成 pipeline</td><td>缺可编辑的物理和失败驱动的修正 → RSS 把 solver / contact / 参数留成场景里的显式项，真机失败后 agent 直接改</td></tr>
+      <tr><td><b>前沿 VLM 重建</b><br><span class="muted">Claude Fable 5.1, GPT-6 Astra, Gemini 4 Argon → Blender</span></td><td>从视频得到视觉合理的 3D 场景</td><td>模型直接生成场景和渲染</td><td>缺物理准确性（cable / cloth / sponge）→ RSS 让 agent 对照物理行为而不是外观迭代</td></tr>
+      <tr><td><b>LLM 生成仿真任务 / 环境</b><br><span class="muted">GenSim, GenSim2, Video2Policy, RoboGen, Holodeck, Eureka, DrEureka</span></td><td>自动生成任务、环境、reward、domain randomization</td><td>LLM 写代码生成</td><td>目标是"生成得多"，不对齐某一段真实视频 → RSS 以真实视频为目标把一个仿真调到一致</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Coding agent 改进机器人策略</b><br><span class="muted">CaP-X, GaP, ASPIRE, ENPIRE, RPG, DexAgent, agentic Push-T</span></td><td>用 agent 迭代改 policy / skill</td><td>ReAct 式"改代码 → 执行 → 看反馈"</td><td>它们改 policy，仿真物理固定 → RSS 把仿真本身交给同一类 agent 改；GaP 在本文里只做 policy 学习器</td></tr>
+      <tr><td><b>Agent-computer interface</b><br><span class="muted">SWE-agent</span></td><td>让 coding agent 做软件工程</td><td>结构化的环境接口 + 执行反馈</td><td>对象是代码仓库 → RSS 给物理仿真做同样的接口：状态、接触事件、任务进度</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2 Related Work 和 Table 1，未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>把 solver、contact model、参数做成可编辑项，让人和 coding agent 在同一个 multi-physics 仿真里"改 → 跑 → 看 → 再改"，直到和视频对上</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-RoboSimStudio/fig1.jpg" alt="RoboSimStudio 总览：手机视频 → AI agent + RSS 建仿真 → 参数调节和空间变体 → GaP 自学习 → 真机"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）手机视频 → Claude / Codex agent 在 RSS 里建出 Newton（刚体）+ SuperDex（sponge）的仿真 → 人或 agent 调 solver、contact model、参数直到与视频一致 → 变 Young's modulus E 和布局 → GaP 在仿真反馈下改进 → 真机。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>① Real-world Video Input：</b>手机拍的双臂 sponge wiping 两帧，就是例子的输入。</li>
+    <li><b>② AI Agent + RoboSimStudio：</b>左半 "rendered" 是 agent 建出的仿真渲染；右半是 multi-physics 视图，紫色 "rigid · MuJoCo" 是臂和 bar，青色 "soft · SuperDex" 是 sponge，热力图是 pressure，红箭头是 force。</li>
+    <li><b>③ Agentic Parameter Tuning：</b>三行滑块 E = 6 / 20 / 100 kPa，同一次接触下 sponge 的压力分布随刚度变化；下面 Spatial Variations 是 6 种 bar 和 sponge 的摆放。</li>
+    <li><b>④ Self-learning with GaP：</b>completion rate 随 iteration 走 0% → 29% → 71% → 100%（iter 14）；箭头 "learn" 表示用 ③ 的变体训练。</li>
+    <li><b>⑤ Real robot rollout：</b>Sim2Real 箭头把 policy 部署到真机；虚线 "improve" 回到 ②，真机失败再改仿真。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>手机视频 + prompt</span>"] --> M["<b>RSS 可交互仿真</b><br/><span class='ex'>人 + agent 调到和视频一致</span>"]
+  M --> O["<b>Output</b><br/><span class='ex'>verified 仿真 + policy 上真机</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-RoboSimStudio/fig2.jpg" alt="RoboSimStudio 架构：三种用法、asset 与 robot interface、Newton 与外部 solver"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）RSS 架构：asset 创建、robot interface、Newton 多物理后端和外部 solver 扩展，上面架着交互可视化、人的 Real2Sim 和 agent 的 Real2Sim 三种用法。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>顶行三个入口：</b>Interactive Task Visualization（Viser 里的 towel 和 inspector）、Human Real2Sim（18 个任务缩略图）、Agentic Real2Sim（Claude、GPT 6 Astra）——三种用法共用下面同一套框架。</li>
+    <li><b>中行左 Asset Creation &amp; Processing：</b>MJCF、.obj、Deformable、Soft、Articulated；例子里 bar 是刚体 asset，sponge 是 Soft。</li>
+    <li><b>中行右 Robot Interfaces：</b>Robot Controllers（YAM、Franka、UR5）、Grippers（YAM、Robotiq）、IK / Motion Planning（pyroki、cuRobo、DLS）；例子用 YAM 双臂。</li>
+    <li><b>底行左 Newton：</b>Multi-Physics Backend（MuJoCo Warp、VBD）+ Compiler（NVIDIA Warp + CUDA）；臂和 bar 走 MuJoCo-Warp。</li>
+    <li><b>底行右 Other Physics Solver Extensions：</b>Genesis、SuperDex；sponge 的 FEM 走 SuperDex，和 Newton co-simulate。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Compose scene</b><br/><span class='ex'>YAM 双臂 + bar + sponge，几何从视频估</span>"] --> S2["<b>2 · Couple physics</b><br/><span class='ex'>MuJoCo-Warp 刚体 + SuperDex FEM sponge</span>"]
+  S2 --> S3["<b>3 · Refine loop（人 / agent）</b><br/><span class='ex'>改 → 跑 → 看反馈，56 min verified</span>"]
+  S3 --> S4["<b>4 · Vary + learn（GaP）</b><br/><span class='ex'>E 6/20/100 kPa，30 布局 → 0% → 100%</span>"]
+  S4 --> S5["<b>5 · Real → fix sim</b><br/><span class='ex'>真机失败：bar 支座 fixed → free</span>"]
+  S5 -. 再评估、再改进 .-> S3
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。Stage 3 的循环是整个工具的核心，Stage 5 是同一个循环用真机反馈再跑一次。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Compose scene：assets + robot interface + 显式的物理选择</span>
+      <span class="stage-io">视频 + prompt → 场景描述（robot、objects、每类物理用哪个 solver）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>Real2Sim 第一步是把场景写出来；RSS 把"物体是什么"和"用什么 solver 算它"分开写，后者可以改而不重写任务（§3）。</li>
+        <li><b>How · robot interface：</b>机器人声明式指定 model、joints、mounting、hand geometry；统一的 FK / IK / motion generation / control 接口；IK 可换 solver（pyroki），motion 含 joint-space、Cartesian、guarded contact 和 cuRobo 避碰规划。</li>
+        <li><b>How · 观测边界：</b>policy 在 joint 或 end-effector 空间下命令；被操作物体的 privileged state 和 robot 能看到的观测分开。</li>
+        <li><b>支持的机器人：</b>Franka Panda、UR5e、单臂和双臂 YAM，可扩展。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  V["<b>视频帧</b><br/><span class='ex'>双臂擦 bar</span>"] --> G["<b>估几何 + 选 assets</b><br/><span class='ex'>YAM×2, bar, sponge</span>"]
+  G --> P["<b>指定物理</b><br/><span class='ex'>臂/bar: rigid · sponge: soft</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>agent 从视频估出场景几何，配置 YAM 双臂、bar、sponge 的 asset（§4.3）；Fig. 7c 第一格 <span class="ex">14 min: arms, bar</span> 就是这一步完成的时刻。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Couple physics：Newton 内部 solver 之间、以及和外部引擎 co-simulate</span>
+      <span class="stage-io">场景描述 → 可运行的 multi-physics 仿真，接触力 / 压力可读</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>一个场景里同时有关节臂、刚体和可形变物，没有单一物理模型够用（§3）。</li>
+        <li><b>How · 默认分配：</b>articulated robot → MuJoCo-Warp；cable、cloth → Vertex Block Descent (VBD)；soft body → 外部引擎（SuperDex、Genesis）与 Newton co-simulate。</li>
+        <li><b>How · 耦合：</b>Newton 内部 solver 之间交换接触力；和外部引擎交换 pose 和 contact wrench。</li>
+        <li><b>关键：</b>solver、coupling 方式、contact model、材料参数都是场景里的显式条目，改它们不用重写任务。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-03-RoboSimStudio/fig3.jpg" alt="五个任务的渲染和 multi-physics 着色"></div>
+        <figcaption><b>Fig. 3</b>（作者原图）五个任务用不同 solver 和耦合方式：上行渲染，下行按 solver 着色（MuJoCo-Warp 紫、FEM 青、VBD 琥珀）。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>Sponge Wiping（第一列）：</b>臂和 bar 紫色 = MuJoCo-Warp，sponge 青色 = FEM，就是例子。</li>
+        <li><b>Cable Routing、Film Peeling、Towel Handling、Heat-Transfer Printing：</b>臂紫色 MuJoCo-Warp，线缆 / 薄膜 / 毛巾 / 转印纸琥珀色 = VBD。</li>
+        <li><b>共同点：</b>五个任务用同一套 robot interface 和场景描述框架，只是 solver 分配不同。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  R["<b>Newton · MuJoCo-Warp</b><br/><span class='ex'>YAM 臂, bar</span>"] <--> X["<b>交换 pose / wrench</b>"]
+  X <--> S["<b>SuperDex FEM</b><br/><span class='ex'>sponge</span>"]
+  X --> F["<b>输出</b><br/><span class='ex'>force, pressure</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>臂和 bar 在 Newton 的 MuJoCo-Warp 里，sponge 在 SuperDex 的 FEM 里；擦拭时读出接触力和压力分布（Fig. 7d，Fig. 1 ② 的热力图和红箭头）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Refine loop：人用 Viser 滑块，agent 用 spatial-temporal feedback，同一个仿真</span>
+      <span class="stage-io">初版仿真 + 真实视频 → 行为和视频一致的 verified 仿真</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>物理选择只能对照真实行为反复改；人和 agent 的循环本质相同：改场景 → 执行 → 看差异 → 再改（§1）。</li>
+        <li><b>How · 人（Viser studio）：</b>浏览器里选中、拖动、检查物体，直接控制臂；每个物体的 inspector 暴露参数、单位和范围；stiffness / damping 运行中可改，需要重建场景的参数单独标出（Fig. 4）。</li>
+        <li><b>How · agent：</b>rollout 组织成 robot motion primitives；仿真状态转成 spatial-temporal feedback：target error、object motion、contact events、grasping / slipping、task progress；因为来自仿真状态，能看到图像看不出的接触；agent 把结果归因到动作，改 policy 或仿真参数，直到和视频一致。</li>
+        <li><b>How · 人 + agent 同时在：</b>agent 改场景时人同步在 Viser 里看，拖滑块调 stiffness / damping / contact，异步给指令，不打断 agent 的工作流（§3 Human-in-the-Loop Agentic Real2Sim）。</li>
+        <li><b>How · 力反馈变体（§4.2，论文用 tool-hanging 示例）：</b>Gello leader arm 驱动仿真臂，命令关节和仿真关节的差作为反馈从 leader 电机回传；速度相关的 deadband 避免把仿真延迟当成接触，仿真暂停或落后时释放反馈；夹爪用实测开度而不是命令开度，区分抓到东西和空合。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-03-RoboSimStudio/fig4.jpg" alt="Viser 里的 towel 和 inspector，以及四种 bending / stretch 刚度下的同一次拖拽"></div>
+        <figcaption><b>Fig. 4</b>（作者原图）左：towel 和它的 inspector，tri_ke 控制拉伸刚度，edge_ke 控制弯曲刚度；右：同一条毛巾、同一次拖拽、同一时刻，四种 bending / stretch 组合。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左图场景：</b>一块 "30 cm square of 5 mm terry towelling" 的 towel 躺在桌上，臂在上方，拖拽手柄（红绿蓝）在毛巾一角。</li>
+        <li><b>左图 inspector 面板：</b>标签 cloth · towel · fabric；Parameters 里 "re-captures" 和 "needs a rebuild" 标出哪些参数改了要重建；material → in-plane：tri_ke = 1000 N/m（拉伸刚度）、tri_ka = 1e+04 N/m、tri_kd = 0.015 N*s/m；bending：edge_ke = 10 N*m/rad（弯曲刚度）。</li>
+        <li><b>右四格：</b>Soft bending / Soft stretch、Stiff bending / Stiff stretch、Stiff bending / Soft stretch、Soft bending / Stiff stretch；同一拖拽下褶皱形状明显不同，这就是"调参 = 直接看物理行为"。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-03-RoboSimStudio/fig6.jpg" alt="屏幕上的 tool hanging 仿真，手边是 Gello leader arm"></div>
+        <figcaption><b>Fig. 6</b>（作者原图）Tool-hanging teleoperation：屏幕上是 RSS 里的仿真臂和带孔挂板，操作者手里是 Gello leader arm，接触力从它的电机回传。</figcaption>
+      </figure>
+      <div class="flow"><pre>
+flowchart TD
+  M["<b>改场景 / 参数</b><br/><span class='ex'>agent 改代码，或人拖滑块</span>"] --> E["<b>执行 motion primitive</b><br/><span class='ex'>一次擦拭</span>"]
+  E --> O["<b>看反馈</b><br/><span class='ex'>contact events · object motion · progress</span>"]
+  O -- 和视频不一致 --> M
+  O -- 一致 --> V["<b>Verified 仿真</b><br/><span class='ex'>56 min</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>两个 agent（Claude Code 里的 Claude Fable 5.1、Codex 里的 GPT-6 Astra）各自独立约 1 小时建出仿真。仿真反馈帮它们发现 robot kinematics 和接触条件的错误，调整擦拭动作让 sponge 真正贴到 bar。一个 agent 的时间线（Fig. 7c）：<span class="ex">14 min: arms, bar → 42 min: first wipe → 51 min: scenery → 56 min: verified</span>。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Vary + learn：变物理参数和布局，GaP 用仿真反馈自学习，上真机</span>
+      <span class="stage-io">verified 仿真 → 鲁棒的 policy，部署到真机</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>一个仿真训出的 policy 不鲁棒；RSS 的参数是显式的，直接改就能生成变体（Fig. 1 ③）。</li>
+        <li><b>How · 物理变体：</b>变 sponge 刚度，Young's modulus E = 6 / 20 / 100 kPa（Fig. 7e 上行，压力分布跟着变）。</li>
+        <li><b>How · 空间变体：</b>生成 30 个 bar 和 sponge 的空间布局（Fig. 7e 下行）。</li>
+        <li><b>How · 学习：</b>GaP（Graph-as-Policy，同一组的 multi-agent self-learning harness）用 RSS 的 spatial-temporal 仿真反馈改进 policy；改进后的 policy 部署到真机完成擦拭（Fig. 7g）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  V["<b>Verified 仿真</b>"] --> Var["<b>变体</b><br/><span class='ex'>E 6 / 20 / 100 kPa · 30 个布局</span>"]
+  Var --> G["<b>GaP 迭代</b><br/><span class='ex'>擦拭面积 0% → 29% → 71% → 100%（iter 0/9/11/14）</span>"]:::win
+  G --> R["<b>真机部署</b><br/><span class='ex'>完成擦拭（Fig. 7g）</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>仿真里的 simulated wiped area：<span class="ex">iter 0: 0% → iter 9: 29% → iter 11: 71% → iter 14: 100%</span>（Fig. 7f / Fig. 1 ④）。随后 policy 在真机上完成擦拭。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Failure-driven refinement：真机失败 → agent 改仿真的物理约束</span>
+      <span class="stage-io">真机失败视频 + 失败描述 → 修正后的仿真</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>仿真里没建模的物理会在真机暴露；要能把失败反馈回仿真（Table 1 最后一行，只有 RSS 打勾）。</li>
+        <li><b>失败：</b>真机一次 rollout 里擦拭动作推动了 bar 的支座，仿真里支座是 fixed 的，于是 sponge 失去接触（Fig. 7h，红圈）。</li>
+        <li><b>How · 诊断：</b>agent 看失败视频和描述，判断原始仿真错误地把 bar supports 固定在环境上。</li>
+        <li><b>How · 修改：</b>把 fixed constraint 换成 free rigid body，bar 和支座能在接触力下运动（Fig. 7i）。</li>
+        <li><b>How · 验证：</b>在不同擦拭轨迹和接触条件下评估：原 fixed-bar 仿真重现不了位移，revised 仿真在 sponge 施力够大或偏离 bar 中心时出现 bar 移动和倾倒；修正后的仿真可用于进一步评估和改进 policy。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  Fh["<b>真机失败</b><br/><span class='ex'>bar 支座被推动，sponge 脱离</span>"]:::gap --> A["<b>agent 诊断</b><br/><span class='ex'>supports 被错误 fixed</span>"]
+  A --> Fx["<b>改为 free rigid body</b><br/><span class='ex'>重现位移和倾倒</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 7i 左 <span class="ex">original: fixed</span> 的 bar 纹丝不动；右 <span class="ex">revised: free</span> 里 off-center 的擦拭把 bar 连支座一起推歪、倾倒（红色虚线框）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>Robot interface（声明式 robot、统一 FK/IK/motion）</td><td>Stage 1：YAM 双臂一句配置</td></tr>
+        <tr><td>Solver / contact model / 参数显式可编辑</td><td>Stage 1 指定、Stage 3 调、Stage 4 变、Stage 5 改</td></tr>
+        <tr><td>Multi-physics coupling（Newton 内部 + 外部引擎）</td><td>Stage 2：MuJoCo-Warp 臂 + SuperDex FEM sponge</td></tr>
+        <tr><td>人的交互界面（Viser、inspector、滑块）</td><td>Stage 3：论文用 towel 的 Fig. 4 展示，例子里人可同步看 agent 的场景</td></tr>
+        <tr><td>agent 的 spatial-temporal feedback</td><td>Stage 3：发现 kinematics 和接触错误，调到 sponge 贴 bar</td></tr>
+        <tr><td>Human-in-the-loop agentic Real2Sim</td><td>Stage 3：人异步调滑块、给指令，不打断 agent</td></tr>
+        <tr><td>Force-feedback Real2Sim（Gello）</td><td>Stage 3 的变体：论文用 tool-hanging 示例，不在 sponge 例子里</td></tr>
+        <tr><td>物理 / 空间变体</td><td>Stage 4：E 6/20/100 kPa，30 个布局</td></tr>
+        <tr><td>GaP self-learning + Sim2Real</td><td>Stage 4：0% → 100%，真机完成擦拭</td></tr>
+        <tr><td>Failure-driven simulation refinement</td><td>Stage 5：bar 支座 fixed → free</td></tr>
+        <tr><td>18 个 contact-rich 任务</td><td>Results：人用视觉反馈建的，不在例子里</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览（pilot study，主要是定性）</h2>
+  <ul class="tight results">
+    <li><b>约 1 小时</b> 两个 off-the-shelf coding agent（Claude Code、Codex）各自从手机视频独立建出 multi-physics 仿真，无 CAD、无相机标定；其中一个 56 min 完成验证（§4.3，Fig. 7c）。</li>
+    <li><b>0% → 100%</b> GaP 在 RSS 的 spatial-temporal 反馈下 14 轮把 simulated wiped area 从 0% 提到 100%（Fig. 7f）；policy 部署真机完成擦拭（Fig. 7g）。</li>
+    <li><b>1 次真机失败 → 仿真修正</b> bar 支座被推动，agent 把 fixed 改 free，修正后的仿真重现位移和倾倒（Fig. 7h, 7i）。</li>
+    <li><b>18 个任务</b> 人用视觉反馈循环建出 18 个 contact-rich 仿真（Fig. 5）：刚体接触、关节机构、cable、cloth、soft body。论文点名三例：Connector insertion（USB-C 亚毫米间隙，mesh contact + 可调 collision resolution）、Leaf pressing（shell 仿真，按压后回弹）、Strip polishing（从 solver 读接触力，用 Preston 方程算材料去除）。</li>
+    <li><b>Force feedback</b> Gello leader arm + tool-hanging：操作者能感到工具插进挂架时的接触，用来采集示教和直接评估 contact model（§4.2，定性）。</li>
+    <li><b>Table 1</b> 对比 MuJoCo / IsaacLab / ManiSkill3 / Genesis / Newton：Video-driven agentic Real2Sim、Force-feedback Real2Sim（IsaacLab 为 ~）、Failure-driven refinement 三行只有 RSS 打勾；Structured feedback for coding agents 和 Shared human-agent refinement 其它都是 Custom。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-RoboSimStudio/fig7.jpg" alt="Agentic Real2Sim2Real for sponge wiping，九个子图"></div>
+    <figcaption><b>Fig. 7</b>（作者原图）Sponge wiping 的 Agentic Real2Sim2Real：(a) 真机视频 (b) 三个难点：robot motion、robot-object contact、object-object contact (c) agent 建仿真的时间线 (d) multi-physics 仿真 (e) 物理 / 空间变体 (f) GaP 改进 (g) 真机部署 (h) 真机失败 (i) agent 修正仿真。先看 (c) 和 (f) 的四个时间戳 / 百分比，再看 (h) → (i)。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-RoboSimStudio/fig5.jpg" alt="18 个 contact-rich 任务的仿真截图"></div>
+    <figcaption><b>Fig. 5</b>（作者原图）18 个任务：Tool Sorting、Sharps Disposal、Basket Packing、Gear Meshing、Tool Hanging、Plate Racking、Connector Insertion、Cable Routing、Drawer Unlocking、Conduit Threading、Crate Flipping、Leaf Pressing、Towel Folding、Film Peeling、Carton Tape Cutting、Sponge Wiping、Strip Polishing、Heat-Transfer Printing。</figcaption>
+  </figure>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-03-RoboSimStudio/tab1.jpg" alt="Table 1：六个仿真框架在物理、交互接口和 Real2Sim 工作流上的对比"></div>
+    <figcaption><b>Table 1</b>（作者原表）✓ 内置，~ 部分支持，Custom 需自己实现，– 没有。先看最后三行 Real2Sim Workflows。</figcaption>
+  </figure>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题（论文自述）</h2>
+  <ul class="tight">
+    <li>这是一个 developing system 加 pilot study，只说明可行性。</li>
+    <li>agent 建仿真依赖 RSS 已有的材料模型、物理耦合和 robot asset；能力受支持的 solver 限制。</li>
+    <li>和外部引擎 co-simulation 有计算开销，可能限制吞吐。</li>
+    <li>sim-to-real 只在一个任务上做；仿真和真实的一致性主要靠定性观察。</li>
+    <li>未来：跨任务的定量评估，包括仿真精度、接触力、物体轨迹、agent 建仿真的时间、真机成功率。</li>
+    <li>页面补充：Table 1 的对比是功能有无，不是精度或速度的数字；18 个任务也没有报告每个任务的对齐指标。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li>我们的 real2sim-anything-indoor（视频 → Blender 房间）正是本文说的"视觉真 ≠ 物理真"那条路；RSS 补的是接触物理这一层：solver / contact / 参数做成 agent 可改的显式项，仿真状态转成 contact events / progress 的结构化反馈。WorldClaw 的 Genesis sim 可以直接借这个"给 agent 的反馈接口"的设计，而且 RSS 本身就把 Genesis 作为外部 solver 之一。</li>
+    <li>RSS 的 agent 工作流就是 Claude Code / Codex + 一个 repo + 一段视频，和我们 robot-harness 里 coding-agent-as-policy 的形态同构；区别是它让 agent 改的对象从 policy 扩到仿真本身，policy 交给 GaP。两者可以在同一个 Runtime 里串起来。</li>
+    <li>Failure-driven refinement（真机失败视频 → agent 改仿真约束 → 再评估）是我们 real2sim 闭环里还没有的一环；它要求仿真里的约束（fixed vs free）是可读可改的数据，而不是埋在场景生成代码里。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-03-RoboSimStudio.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "← 横向滚动 →";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
