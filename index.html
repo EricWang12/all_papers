@@ -55,15 +55,17 @@ code { font-family: var(--f-mono); font-size: .9em; }
 @media (max-width: 560px) { ol.papers a { grid-template-columns: minmax(0, 1fr); } .date { grid-row: auto; } }
 </style>
 <header class="frame">
-  <p class="eyebrow">all_papers/ · 5 个 project · 16 篇 paper</p>
+  <p class="eyebrow">all_papers/ · 5 个 project · 19 篇 paper</p>
   <h1>Zhaoning Paper Pile</h1>
   <p class="sub">每篇 paper 先对着一个 <span class="ex">running example</span> 讲清 problem，
   再 big picture → stages → details，并逐块解读作者原图。下面的文件夹和磁盘上的
   <code>all_papers/</code> 一一对应。</p>
 </header>
 <main class="frame">
-<section id="Agent-centric-real-to-sim"><div class="proj"><h2>Agent-centric-real-to-sim</h2><span class="count">Agent-centric-real-to-sim/ · 5 篇</span></div>
+<section id="Agent-centric-real-to-sim"><div class="proj"><h2>Agent-centric-real-to-sim</h2><span class="count">Agent-centric-real-to-sim/ · 7 篇</span></div>
 <ol class="papers">
+<li><a href="Agent-centric-real-to-sim/artifact/2026-11-04-RoboSnap.html"><span class="date">2026-11-04</span><span class="name">RoboSnap</span><span class="title">RoboSnap: One-Shot Real-to-Sim Scene Generation for Generalizable Robot Learning and Evaluation · CoRL 2026</span><span class="tldr">一张 RGB 图 → 分层 sim-ready 场景：物体按 scene graph 做 SDF–physics 交替精修，背景是 Gaussian 视觉层；能回放 DROID 轨迹、生成训练数据（π0.5 32.7→41.7%），sim 评测与真机 r = 0.887。</span></a></li>
+<li><a href="Agent-centric-real-to-sim/artifact/2026-11-04-AgenticReal2Sim.html"><span class="date">2026-11-04</span><span class="name">Agentic Real2Sim</span><span class="title">Agentic Real2Sim: Physics-based World Modeling with Vision-Language Agents · arXiv 2026 (v5, 2026-10-11)</span><span class="tldr">VLM agents 按固定的 episode contract 调 SAM 3、SAM 3D、FoundationPose 等工具，把一条 DROID 录像转成 MuJoCo 里能回放的 twin；DROID-500 回放成功 48.4%，开源 Gemma 4 31B 的花费只有 GPT-5.4 的约 3%。</span></a></li>
 <li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-WorldMirror.html"><span class="date">2026-11-03</span><span class="name">WorldMirror</span><span class="title">WorldMirror: Agentic Real-to-Sim Generation of Interactive Worlds from In-the-Wild Robot Demonstrations · arXiv 2026</span><span class="tldr">Coding agent 把一段 DROID 机器人视频写成可执行的 world program：调专用生成工具重建、以标定相机为锚对齐、Isaac Sim 回放验证、失败就回退重做；原轨迹不改一帧回放成功率 100%。</span></a></li>
 <li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-SceneRig.html"><span class="date">2026-11-03</span><span class="name">SceneRig</span><span class="title">SceneRig: An Agentic System for Simulation-Ready 3D Scene Reconstruction from Single Images · CoRL 2026 Agentic Robotics Workshop</span><span class="tldr">agent 在 Blender + PhysX 里边改边仿真，把一张照片变成物体对位、5 s 重力下不动的 USD 场景；机器人回放 20/25 vs SimFoundry 9/25。</span></a></li>
 <li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-RoboSimStudio.html"><span class="date">2026-11-03</span><span class="name">RoboSimStudio</span><span class="title">RoboSimStudio: An Interactive Toolkit for Rapid Real2Sim of Robot Manipulation Tasks · CoRL 2026</span><span class="tldr">手机视频 + 一句 prompt → coding agent 约 1 小时在 Newton 上建出 MuJoCo-Warp + SuperDex 的 sponge-wiping 仿真；solver / contact model / 参数显式可编辑，人和 agent 共用一个迭代循环；GaP 14 轮 0%→100% 后上真机，真机失败再由 agent 改仿真</span></a></li>
@@ -92,8 +94,9 @@ code { font-family: var(--f-mono); font-size: .9em; }
 <li><a href="Sim-robot-learning/artifact/2026-10-23-AdaDex.html"><span class="date">2026-10-23</span><span class="name">AdaDex</span><span class="title">Learning Adaptable Dexterous Skills via Hybrid Dexterous Mimicking · arXiv 2026</span><span class="tldr">一个 goal-conditioned policy 同时在 TrackEnv（dense 跟踪人手）和 GenEnv（加噪 goal + sparse 奖励）里训练，从几秒人手动作学到像人又能去新目标的灵巧技能。</span></a></li>
 </ol>
 </section>
-<section id="misc"><div class="proj"><h2>misc</h2><span class="count">misc/ · 2 篇</span></div>
+<section id="misc"><div class="proj"><h2>misc</h2><span class="count">misc/ · 3 篇</span></div>
 <ol class="papers">
+<li><a href="misc/artifact/2026-11-03-sudoai.html"><span class="date">2026-11-03</span><span class="name">sudoai</span><span class="title">#sudo R1 背后可能是什么：localization、RGB 怎么进 policy、policy 怎么训 · 专题 · 公开资料倒推 2026-11-03</span><span class="tldr">sudo（原 Hillbot 班底，苏昊的 SAPIEN/ManiSkill 团队）的 #sudo R1 只用仿真数据训 pick policy。按视频截图、招聘帖和采访倒推：点一下 → target mask → 低分辨率 stereo RGB 进单步闭环 policy；在 SAPIEN/ManiSkill 里由看得到真值的 expert 蒸馏出视觉 student。</span></a></li>
 <li><a href="misc/artifact/2026-11-02-MLP-vs-Transformer.html"><span class="date">2026-11-02</span><span class="name">MLP vs Transformer</span><span class="title">为什么机器人 RL 低层控制器大多用 MLP 而不是 Transformer，以及 policy 何时需要历史、历史多长才够 · 专题 · 文献检索 2026-11-02</span><span class="tldr">RL 低层控制器多用 MLP：输入短、要几亿步样本、transformer 在 RL 下难训、板上延迟紧；历史在 0.5–2 s 内常够用，更长要靠蒸馏才训得进去。</span></a></li>
 <li><a href="misc/artifact/2026-11-02-GOTT.html"><span class="date">2026-11-02</span><span class="name">GOTT</span><span class="title">GOTT: Object-centric Dexterous Manipulation with a Reusable Cross-Embodiment Primitive · arXiv 2026 (v2, 2026-10-08)</span><span class="tldr">灵巧手缺一个可复用的“建立接触”底层 primitive。GOTT 把执行拆成 reach → acquire → move：高层只给 object trajectory 和大致的 reach，一个跨手的闭环 contact-acquisition RL policy 负责抓稳，再按物体位姿跟踪。真机 4 任务平均 tSR 80.0%，开环 baseline 35.0%。</span></a></li>
 </ol>

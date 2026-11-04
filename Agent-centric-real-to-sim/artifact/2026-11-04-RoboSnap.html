@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>RoboSnap</title>
+<meta name="description" content="一张 RGB 图 → 分层 sim-ready 场景：物体按 scene graph 做 SDF–physics 交替精修，背景是 Gaussian 视觉层；能回放 DROID 轨迹、生成训练数据（π0.5 32.7→41.7%），sim 评测与真机 r = 0.887。">
+<meta name="paper:title" content="RoboSnap: One-Shot Real-to-Sim Scene Generation for Generalizable Robot Learning and Evaluation">
+<meta name="paper:source" content="https://arxiv.org/abs/2607.06699">
+<meta name="paper:venue" content="CoRL 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2607.06699v2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-04</p>
+  <h1>RoboSnap</h1>
+  <p class="full-title">RoboSnap: One-Shot Real-to-Sim Scene Generation for Generalizable Robot Learning and Evaluation</p>
+  <p class="meta">Shujie Zhang, Jingkun Yi, Weipeng Zhong, Zirui Zhou, Yangkun Zhu, Hanqing Wang, et al. · Shanghai AI Lab, SJTU, ZJU, Tsinghua · CoRL 2026（arXiv v2，2026-10-31）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2607.06699">arXiv</a><a href="https://arxiv.org/pdf/2607.06699v2">PDF</a>
+    <a href="https://robosnap.github.io">Project page</a><a href="https://github.com/robosnap/robosnap">Code</a><a href="https://huggingface.co/datasets/shutzang/DROID-Sim">DROID-Sim</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：把一张真实照片变成能仿真、能回放、能生成训练数据的场景，正是"真实世界 → 仿真"这条线。它是固定流水线，VLM 只负责给物体命名和判断关系，不是 agent。数据生成和 sim 评测两部分也和 Sim-robot-learning 相关。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>想从一张 RGB 照片得到一个仿真场景：看起来像现场，放进模拟器也不散架，好在里面回放真机录像、批量生成训练数据、代替真机做评测。单图重建出的物体一开 physics 就倒（10 个 DROID 场景上 Falling 0.3810–0.5900），多视角方法又要额外采集。</dd></div>
+    <div><dt>Idea</dt><dd><b>分两层</b>。要交互的物体和桌面做成带碰撞体的 asset，按 VLM 推出的 scene graph（谁托着谁、谁挨着谁）<b>交替做 SDF 优化和 SAPIEN 物理沉降</b>，直到物体落稳、又不偏离原布局。其余背景先 inpaint，再由生成式 world model 变成 <b>Gaussian 视觉层</b>，只负责渲染，不参与物理。</dd></div>
+    <div><dt>Result</dt><dd>Collision 0.0256（RoLA 0.3226），DROID 轨迹回放 5/5（RoLA 2/5）。生成的数据按 R2 混入后，10 个真机任务平均成功率 π0.5 从 32.7% 升到 41.7%，"Close the laptop" 从 50.0 升到 80.0。sim 与真机成功率的 Pearson r = 0.887（Table 1、2，Fig. 4、6）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>想用一张照片在仿真里补数据、做评测。真机 demo 少而脆，2D 增强变不出新轨迹，单图重建的场景一开 physics 就散架</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Close the laptop（Task 4.2，作者实验室的 Scene 04）</b>：桌上有 <span class="ex">laptop</span>、<span class="ex">can</span>、<span class="ex">white bin</span>、<span class="ex">mug</span>、<span class="ex">wooden shelf</span>。机器人是 Franka Research 3 + Robotiq 2F-85，外置和腕部各一台 RealSense D435i（Fig. 5）。手上只有这张桌子的<b>一张 RGB 照片</b>，加上每个任务 <span class="ex">30</span> 条真机 demo。</p>
+    <p>→ 想要：一个 Isaac Sim 场景。laptop 的屏幕能转动；物体放上去不倒、不穿模；从任意相机渲染都像这张桌子。然后在里面生成几千条"合上 laptop"的 demo 补进训练，并且在 sim 里评测 policy，结果要和真机一致。</p>
+    <p>→ 再扩展到 DROID 数据集：同一套流程只拿录像的一帧建场景，再把当时录下的机械臂轨迹放回去回放。</p>
+  </div>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-04-RoboSnap/fig5.jpg" alt="Fig. 5：真机设置、四个场景的 Real/Sim 对照和 10 个任务"></div>
+    <figcaption><b>Fig. 5</b>（作者原图）真机设置和任务。左边是设备；中间是 Scene01–04 的 Real / Sim 对照；右边是 10 个任务。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左 Experiment Settings：</b>Franka Research 3 机械臂、Robotiq 2F-85 夹爪、腕部和外置各一台 RealSense D435i、固定底座。</li>
+    <li><b>中 Real / Sim：</b>四个真机场景和它们的仿真版。最下面一行 Scene04 就是本页的例子：左边是真机，右边是 RoboSnap 场景。</li>
+    <li><b>右 Task description：</b>Scene04 有三个任务：4.1 can 放进 white bin，<b>4.2 Close the laptop</b>，4.3 mug 挂到 wooden shelf。3.1、3.2 是一个长程任务的两段。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><video src="2026-11-04-RoboSnap/web-laptop-fail.mp4" autoplay muted loop playsinline controls></video></div>
+    <figcaption><b>项目页</b> <a href="https://robosnap.github.io/#experiment-3">Before co-training · 50% success rate · Failure Case（5× 速）</a>：只用 30 条真机 demo 训的 π0.5 去合 laptop。夹爪靠近了屏幕，但视频结束时屏幕还开着。这就是下图第一条路的 50.0%。</figcaption>
+  </figure>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>Scene 04 一张 RGB</span><br/><span class='ex'>+ 30 条真机 demo</span>"]
+  IN --> A1["<b>Real-only</b><br/>只用 30 条 demo<br/>fine-tune π0.5"]
+  A1 --> AX["demo 少，环境一变就掉<br/><span class='ex'>50.0%，相机移位后 23.3%</span><br/><span class='ex'>（Table 2、3）</span>"]:::gap
+  IN --> B1["<b>2D 生成式增强</b><br/>RoboEngine：分割机器人<br/>+ 生成新背景"]
+  B1 --> BX["轨迹还是那 30 条<br/><span class='ex'>53.3%（Table 5）</span>"]:::gap
+  IN --> C1["<b>单图重建，不精修</b><br/>SAM 3D、+FoundationPose<br/>RoLA"]
+  C1 --> CX["一开 physics 就倒、穿模<br/><span class='ex'>Falling 0.5640 / 0.5900</span><br/><span class='ex'>/ 0.3810；RoLA 回放 2/5</span>"]:::gap
+  IN --> D1["<b>多视角 / 扫描重建</b><br/>RialTo、Re3Sim<br/>SplatSim…"]
+  D1 --> DX["要多视角采集或人工精修<br/><span class='ex'>DROID 只有录下的帧</span><br/><span class='ex'>论文没给数字</span>"]:::gap
+  </pre></div>
+  <p class="note">推断的"坏在哪"：第 2 条，论文只给了 RoboEngine 的成功率（App A.3.5）。"轨迹还是那 30 条"是我按 RoboEngine 的做法（分割机器人、生成背景）推出来的。第 3 条的数字来自 10 个 DROID 场景的平均（Table 1）和 5 个 DROID 场景的回放（Fig. 4），论文没在 Scene 04 上跑这些 baseline。第 4 条，论文只在 §1、§2 说这类方法要额外采集或人工干预，没有做实验对比。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-04-RoboSnap/fig7.jpg" alt="Fig. 7：四种重建在重力下仿真的时间序列"></div>
+    <figcaption><b>Fig. 7</b>（作者原图）四种重建结果加载进 IsaacLab 后在重力下仿真，每行从左到右是时间推进。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>SAM 3D 行：</b>每个物体单独重建、单独估位姿。浅蓝色的物体在桌面上滑开，位置一直在变。</li>
+    <li><b>SAM 3D + Foundationpose 行：</b>位姿换成 FoundationPose 估计。物体挤在桌角，第 4 帧有东西掉到了桌子下面。</li>
+    <li><b>RoLA 行：</b>带真实背景的单图方法。图太小，看不清物体有没有动；Table 1 给它的 Falling 是 0.3810。</li>
+    <li><b>Ours 行：</b>五帧几乎不变，就是第 3 条路缺的"sim-ready"。</li>
+  </ol>
+  <p class="crux"><b>根本问题：</b>真机 demo 少，环境一变就掉。想在仿真里补数据、做评测，场景必须同时满足两点：看起来是这张桌子，物体放上去也不倒。但单图重建的每个物体位姿是各自独立估出来的，合到一起就悬空、互相穿插；多视角方法又需要额外采集。　<b>这篇的切入点：</b>把场景分成两层。只有要交互的那一小块做成物理 asset，并按 scene graph 精修到落稳；剩下的背景只做一个不参与物理的 Gaussian 视觉层。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>单图 real-to-sim</b>（本文所属）<br><span class="muted">RoLA, Digital Cousins, CAST, GRS</span></td><td>一张图 → 可仿真的场景或任务</td><td>单图分割 + image-to-3D，或检索相似资产（digital cousins）</td><td>物体位姿各估各的，不管谁托着谁：RoLA 的 Falling 是 0.3810，回放 2/5；而且多半止于检索、静态重建或合成 demo → 本文按 scene graph 做 SDF–physics 交替精修，产出可复用、可回放的场景</td></tr>
+      <tr><td><b>多视角 / 扫描 real-to-sim</b><br><span class="muted">RialTo, Re3Sim, SplatSim, Robo-GS, TwinAligner, PolaRiS</span></td><td>重建真实场景的 digital twin，用来训练和评测</td><td>多视角采集或扫描 + 神经重建，常要人工精修</td><td>对齐要靠单张图以外的信息或人工 → 本文只要一张 RGB，所以能批量跑完 DROID 的 564 个场景</td></tr>
+      <tr><td><b>2D 生成式数据增强</b><br><span class="muted">RoboEngine, ReBot, Real2Render2Real, RoboVIP</span></td><td>不采新 demo 也能扩充真机数据</td><td>分割机器人、生成背景 / 新视角 / 视频，或把真轨迹放进仿真重新渲染</td><td>不在物理场景里规划新轨迹：RoboEngine 在 4.2 上只有 53.3% → 本文在 S* 里用 cuRobo 生成新轨迹并加 6 类扰动，同样的 R2 配比下是 80.0%（Table 5）</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>单物体 image-to-3D 与位姿</b><br><span class="muted">SAM 3D, FoundationPose, VGGT, Hunyuan3D</span></td><td>一张图 → 单个物体的 mesh、6D 位姿或场景几何</td><td>生成式 3D 资产、前馈几何预测、位姿估计</td><td>只管单个物体，拼到一起会悬空、穿插（SAM 3D Falling 0.5640，+FoundationPose 0.5900）→ 本文把它们当零件，再用 scene graph 精修</td></tr>
+      <tr><td><b>程序化 / 生成式场景与仿真 benchmark</b><br><span class="muted">RoboCasa, PhyScene, MesaTask, SIMPLER, LIBERO</span></td><td>为 robot learning 造或提供可仿真的场景，并在其中评测</td><td>用程序规则或生成模型合成新场景；benchmark 手搭固定场景，并用 sim-real 相关性检验</td><td>造出的不是某个真实现场的复制品 → 本文复原 Scene 04 这类具体现场；评测沿用 SIMPLER 的 MMRV 指标（r = 0.887）</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §1、§2 Related Work，§4.1 的 baseline（RoLA、SAM 3D、FoundationPose），§4.2 对 ReBot、RialTo 的区分，App A.3.5（RoboEngine）。未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>把场景拆成两层：物理层精修到稳，视觉层只负责像。拆完的场景能回放、能生成数据，也能当评测器</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-04-RoboSnap/web-teaser.jpg" alt="Fig. 1：DROID-Sim、轨迹回放、数据生成、鲁棒性、sim-real 相关性五块"></div>
+    <figcaption><b>Fig. 1</b>（项目页高清版，和论文 Fig. 1 相同）中间一行字是全文主张："From One RGB Image to Sim-Ready Real-to-Sim 3D Scene"。四个色块是这种场景的四种用途。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左上 DROID-Sim：</b>DROID 场景的原图、深度、mask、生成的资产（Fig. 17 是放大版），一共 564 个场景。</li>
+    <li><b>左上 Trajectory Replay：</b>把录下的机械臂轨迹放进重建场景里回放（E3）。</li>
+    <li><b>右上 Simulation Data Generation：</b>"Close the laptop." 就是本页的例子。Generated 一栏从 Real Scene 得到 Data Gen；Augmented 一栏有 Object、BG Object、Camera Pose、Texture、Lighting、Initial State 六类扰动。柱状图是 10 个真机任务的平均成功率（π0.5 / π0）：Real-only 32.7 / 29.3，Ratio 2 41.7 / 42.7（打星），只用 sim 数据的 Ratio 3 是 17.3 / 15.0（E4）。</li>
+    <li><b>左下 Robustness under Perturbation：</b>六类真机扰动下成功率的下降，Real-only 平均 13%，co-trained 平均 8%（E5）。</li>
+    <li><b>右下 Sim-real Correlation：</b>10 个任务的真机和仿真成功率散点，r(R, R<sub>S</sub>) = 0.887，MMRV = 0.0066（E6）。</li>
+    <li><b>最底一排：</b>每张图左半是真实、右半是仿真（标了 Real / Sim）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  I["<b>Input</b><br/><span class='ex'>Scene 04 一张 RGB</span>"] --> P["<b>物理层</b><br/><span class='ex'>laptop、can、mug…</span><br/>SDF–physics 精修到稳"]
+  I --> V["<b>视觉层</b><br/><span class='ex'>黑幕布 + 房间</span><br/>Gaussian，只管渲染"]
+  P --> S["<b>S* · sim-ready 场景</b><br/><span class='ex'>Isaac Sim 里可交互</span>"]
+  V --> S
+  S --> U["<b>用途</b><br/><span class='ex'>生成 demo：50.0→80.0%</span><br/><span class='ex'>sim 评测：r = 0.887</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage：物理层 → 世界坐标系与视觉层 → 精修 → 生成数据 → 回放与评测</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-04-RoboSnap/web-method.jpg" alt="Fig. 2：Layered Scene Decomposition、Simulation-ready Refinement、Applications 三栏"></div>
+    <figcaption><b>Fig. 2</b>（项目页高清版，和论文 Fig. 2 相同）三栏依次是：① 分层分解、② 精修、③ 应用。作者用一个 DROID 场景举例（orange plate、pizza、donut），流程和本页的 Scene 04 相同。</figcaption>
+  </figure>
+  <p class="eyebrow">符号表（Fig. 2 和 §3 里的记号）</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+      <tr><td>I</td><td>输入的那一张 RGB 照片</td><td>Scene 04 的一张照片（论文没写用的是哪台相机）</td></tr>
+      <tr><td>ℓ<sub>i</sub>, M<sub>i</sub>, 𝓜<sub>i</sub></td><td>第 i 个物体的名字、2D mask、3D mesh</td><td>laptop 的名字、mask、mesh</td></tr>
+      <tr><td>V, W</td><td>V 是相机坐标系；W 是以桌面为准的世界坐标系（+z 朝上，原点在桌面中心）</td><td>W 的原点是 Scene 04 桌面的中心</td></tr>
+      <tr><td>S<sup>i</sup> = (s, R<sub>i</sub>, t<sub>i</sub>)</td><td>Fig. 2 ① 底部：第 i 个物体的尺度、旋转、平移</td><td>laptop 的大小、朝向、位置（论文没给数值）</td></tr>
+      <tr><td>T<sup>init</sup><sub>i→V</sub>, T<sup>init</sup><sub>i→W</sub></td><td>物体的初始位姿，分别在相机系和世界系下</td><td>精修前 laptop 的位姿</td></tr>
+      <tr><td>T<sub>B→W</sub></td><td>机器人底座在世界系里的位姿</td><td>Scene 04 用相机–机器人标定得到</td></tr>
+      <tr><td>𝒢<sub>M</sub></td><td>背景的 Gaussian splat 场景</td><td>桌子后面的黑幕布和房间</td></tr>
+      <tr><td>S<sup>(0)</sup>, S*</td><td>精修前 / 精修后的分层场景</td><td>S* 就是生成数据和评测用的场景</td></tr>
+      <tr><td>ΔT<sub>sdf</sub>, ΔT<sub>phy</sub></td><td>Fig. 2 ②：SDF 阶段和物理阶段各自对物体位姿的修正</td><td>精修时 laptop 等物体位姿的小改动</td></tr>
+      <tr><td>ℓ<sup>pen</sup>, ℓ<sup>sup</sup>, ℓ<sup>con</sup>, 𝓛<sub>reg</sub></td><td>四个 loss：穿模、支撑、接触、"别改太多"</td><td>见 Stage 3</td></tr>
+      <tr><td>D<sub>sim</sub></td><td>生成的仿真数据：RGB 视频、机器人状态、动作、元数据</td><td>2,000 条生成 + 2,000 条增强的 "Close the laptop" demo</td></tr>
+      <tr><td>R, R<sub>S</sub></td><td>N 个任务的真机 / 仿真成功率，各排成一个向量</td><td>4.2 这一项：真机 50.0，仿真 73.3</td></tr>
+      <tr><td>r(R, R<sub>S</sub>), MMRV(R, R<sub>S</sub>)</td><td>Pearson 相关系数（数值是否一起涨落）；平均最大排序违例（sim 排出的任务难易顺序错了多少）</td><td>0.887；0.0066</td></tr>
+    </table>
+  </div>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>① 左上 RGB Image → OpenAI 图标 → "orange plate", "pizza", "donut", … "background"：</b>VLM 看图，列出交互区里的物体名（包括支撑面），再加一个 "background"。在 Scene 04 上，这一步会列出 laptop、can、white bin、mug、wooden shelf（按 Fig. 5 的任务列表推断；论文没印出 Scene 04 的 VLM 输出）。</li>
+    <li><b>① 中 SAM 3 → SAM 3D 框：</b>每个名字得到一个 mask，再生成一个带纹理的 mesh 和初始位姿（图中的 s、R<sub>0</sub>、t<sub>0</sub> 坐标轴）。</li>
+    <li><b>① 左 P3-SAM → Articulate Object：</b>articulated 物体被切成部件，图里画的正好是笔记本电脑（底座和屏幕两块不同颜色）。本页要合上的 laptop 就走这条支路。</li>
+    <li><b>① 右列 Inpainted → 3D World Model：</b>把前景（连同桌面）抹掉后补全背景，再交给生成式 world model，得到能从新视角渲染的 Gaussian 背景。摄像机图标表示新视角。</li>
+    <li><b>① 底 RANSAC（n → +z）Gravity Alignment、VGGT Pointcloud Alignment：</b>拟合桌面平面，把法向 n 转到 +z；再用 VGGT 点云对齐每个 mesh。合起来得到每个物体的 S<sup>i</sup> = (s, R<sub>i</sub>, t<sub>i</sub>)。</li>
+    <li><b>② 上 Set of Mask Prompting → Scene Graph（Contact、Support、fixed root）→ Edge：</b>给 VLM 看带编号的 mask，得出谁托着谁、谁挨着谁。只托着别人的物体（桌子）是 fixed root。</li>
+    <li><b>② 中 SDF Phase（ΔT<sub>sdf</sub>，四个 loss 图标）⇄ Physics Phase（V-HACD、SAPIEN，Kinematic / Dynamic Obj.，Collision hulls，ΔT<sub>phy</sub>）：</b>两个阶段轮流修 R<sub>i</sub>、t<sub>i</sub>。物体落稳，或到了 N = Max Round，就停下得到 S*。最下面的 Before / After Refinement 是同一张桌子精修前后的对比。</li>
+    <li><b>③ Applications：</b>Data Generation 一栏，Task &amp; S* 经过 AnyGrasp 得到 6D EEF waypoints，再经 CuRobo 得到 Joint actions，整个在 InternDataEngine 里跑，输出 D<sub>sim</sub>。Policy Evaluation 一栏，比较 Real / Sim success，算 r(R, R<sub>S</sub>) 和 MMRV。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Physical layer</b><br/><span class='ex'>laptop、can、mug…</span><br/><span class='ex'>mesh + 相机系位姿</span>"] --> S2["<b>2 · World frame + visual layer</b><br/><span class='ex'>桌面法向 = +z</span><br/><span class='ex'>背景 → Gaussian</span>"]
+  S2 --> S3["<b>3 · Sim-ready refinement</b><br/><span class='ex'>S⁽⁰⁾ → S*：落稳、不穿模</span>"]
+  S3 --> S4["<b>4 · Render + data gen</b><br/><span class='ex'>2,000 + 2,000 条 demo</span><br/><span class='ex'>真机 50.0 → 80.0%</span>"]
+  S3 --> S5["<b>5 · Replay + evaluation</b><br/><span class='ex'>sim 73.3% vs 真机 50.0%</span><br/><span class='ex'>DROID 回放 5/5</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。Stage 1–3 在 DROID 上批量自动化的做法见 <a href="#stage-all">DROID-Sim</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Interactive physical layer</span>
+      <span class="stage-io">一张 RGB → N 个带纹理 mesh + 相机系下的位姿（articulated 的拆成部件）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>机器人要碰的东西必须是一个个独立、能被移动、带碰撞体的 asset，而且位置要贴合照片里的几何。</li>
+        <li><b>命名：</b>VLM（GPT-4 系，[51]）看图，列出交互区里的物体名 ℓ<sub>i</sub>，包括支撑平台。</li>
+        <li><b>分割 + 生成：</b>SAM 3 按名字出实例 mask M<sub>i</sub>；SAM 3D 为每个 mask 生成带纹理的 mesh，并给出初始位姿和尺度。</li>
+        <li><b>对齐到照片几何：</b>VGGT 从这张图预测相机几何、置信度和稠密点图（相机系 V）。对每个 mask 取高置信的前景点，和 mesh 表面采样点做由粗到细、固定尺度的 ICP。旋转或平移改得太多的更新直接拒掉，结果记为 T<sup>init</sup><sub>i→V</sub>。</li>
+        <li><b>Articulated 物体：</b>P3-SAM（点云部件分割）把 mesh 切成语义部件，按部件框拆开，再挂上从 SAPIEN 关节物体数据集里检索到的类别级运动学参数（§3.1）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>VLM 列名字</b><br/><span class='ex'>laptop、can、white bin…</span>"] --> b["<b>SAM 3 → SAM 3D</b><br/><span class='ex'>每个物体一个 mesh</span>"]
+  b --> c["<b>VGGT 点图 + ICP</b><br/><span class='ex'>mesh 贴到照片几何上</span>"]
+  b --> d["<b>P3-SAM 拆部件</b><br/><span class='ex'>laptop：底座 + 屏幕</span><br/><span class='ex'>+ SAPIEN 铰链参数</span>"]:::win
+  c --> e["<b>T<sup>init</sup><sub>i→V</sub></b><br/><span class='ex'>相机系下的初始位姿</span>"]
+  d --> e
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Scene 04 的照片 → laptop、can、white bin、mug、wooden shelf 和桌面，每个得到一个 mask 和一个 mesh，再用 ICP 贴到 VGGT 点图上。laptop 走 articulated 支路：拆成底座和屏幕、装上铰链，否则 "Close the laptop" 在 sim 里根本做不了。</p>
+        <p class="muted">论文没展示 Scene 04 的中间结果。物体名来自 Fig. 5 的任务列表，laptop 走 articulated 支路是按 §3.1 推断的。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">World frame, robot base and visual context layer</span>
+      <span class="stage-io">相机系物体 + 照片 → 重力对齐的 W、机器人底座、Gaussian 背景 = 初始分层场景 S⁽⁰⁾</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>模拟器需要知道哪边是"下"、原点在哪；机器人要放在相对桌子正确的位置。背景太大太杂，做成物理 asset 既慢又没必要，但不画出来训练图像又不像现场：去掉背景层后，4.2 从 80.0 掉到 66.7（Table 5）。</li>
+        <li><b>世界系 W：</b>从点图里选出支撑点，RANSAC 拟合平面，再用最小二乘精修。T<sub>V→W</sub> 把平面法向转到 +z、平面中心放到原点，物体位姿随之变到 W 下（Eq. 1）。</li>
+        <li><b>机器人底座：</b>DROID 这种标定过的数据，直接用相机系下的底座位姿（T<sub>B→W</sub> = T<sub>V→W</sub> T<sub>B→V</sub>）。没标定的照片，按桌面几何和指定的"机器人朝向"初始化。真机部署时用相机–机器人标定（§3.3）。</li>
+        <li><b>视觉层：</b>先 mask 掉前景，用 Gemini-2.5-flash-image 按 prompt 补全背景。prompt 要求"把桌面也去掉，只留空背景，因为交互区单独生成"（App B.1.1）。补全的图交给生成式 world model（World Labs Marble），得到 Gaussian splat 𝒢<sub>M</sub>；再用稀疏对应 + ICP 对齐到 V，最后变换到 W。</li>
+        <li><b>合起来：</b>S⁽⁰⁾ =（每个物体的 mask、名字、mesh、W 下位姿；𝒢<sub>M</sub> 和它的位姿；W；底座 T<sub>B→W</sub>）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  p["<b>RANSAC 拟合桌面</b><br/><span class='ex'>法向 → +z，中心 → 原点</span>"] --> q["<b>物体变到 W + 放底座</b><br/><span class='ex'>真机：相机–机器人标定</span>"]
+  m["<b>mask 掉前景和桌面</b><br/><span class='ex'>Gemini 补全背景</span>"] --> g["<b>world model → Gaussian</b><br/><span class='ex'>Marble；对齐到 V 再到 W</span>"]:::win
+  q --> s["<b>S⁽⁰⁾</b><br/><span class='ex'>物理层 + 视觉层，同一个 W</span>"]
+  g --> s
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><img src="2026-11-04-RoboSnap/web-scene09-rgb.jpg" alt="DROID 原图：木桌上有 orange plate、pizza、donut、绿色小球"><figcaption>Original RGB</figcaption></figure>
+          <figure><img src="2026-11-04-RoboSnap/web-scene09-bg.jpg" alt="补全后的背景：桌子和物体都被抹掉"><figcaption>Inpainted background</figcaption></figure>
+          <figure><img src="2026-11-04-RoboSnap/web-scene09-sim.jpg" alt="物理层和 Gaussian 背景合成后的仿真渲染"><figcaption>Rendered simulation</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://robosnap.github.io/#method">Layered Scene Reconstruction</a>，Fig. 2 用的那个 DROID 场景。左：原图，木桌上有 orange plate、pizza、donut、绿色小球。中：Gemini 补全的背景，桌子和物体都被抹掉，只剩后面的纸箱和房间。右：物理层（桌子和物体）和 Gaussian 背景合成后的仿真渲染。对比左右两张，桌子和物体的位置一致。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Scene 04 的桌面 → W，桌面法向朝 +z。Franka 底座按相机–机器人标定放好。桌子后面的黑幕布和房间 → Gaussian 背景，只用来渲染外置和腕部相机的画面。</p>
+        <p class="muted">论文没单独展示 Scene 04 的背景层，这里是按 §3.1、§3.3 的流程推断的。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Simulation-ready refinement</span>
+      <span class="stage-io">S⁽⁰⁾ → S*：物体落稳、不穿模，又尽量不离开原位置</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>每个物体的位姿是独立估出来的，合在一起常常悬空、互相穿插、接触不稳，一开重力就倒或被弹飞。不精修时 Falling 0.4320、Collision 0.2982（Table 1，w/o refinement）。</li>
+        <li><b>Scene graph：</b>做法受 CAST 启发。给 GPT-4V 看 5 张随机化的 Set-of-Mark 叠图（每个 mask 上标号），多数投票，得到有向的 Support 边（谁托着谁）和双向的 Contact 边（谁挨着谁）。只托着别人的物体是 root，固定不动。</li>
+        <li><b>只改一点：</b>每个非 root 物体只优化一个小的刚体修正 ΔT<sub>i</sub>（旋转 Δr<sub>i</sub>、平移 Δt<sub>i</sub>），乘在初始位姿上（Eq. 2）。</li>
+        <li><b>SDF 阶段</b>（每轮 15 步 Adam）有四个 loss：穿模，即物体 j 的表面点落进物体 i 的 SDF 内部就罚；支撑，即被托的物体最近点贴到托它的面上，且不能穿进去；接触，即 Contact 边两端既不分开也不穿插；正则，即修正量的 ℓ2，旋转权重 λ<sub>r</sub> = 5（App B.2，Eq. 4–7）。</li>
+        <li><b>物理阶段：</b>用 V-HACD 把 mesh 分解成凸碰撞体。在 SAPIEN 里 root 设为 kinematic、其余为 dynamic，跑 200 步。前 100 步把水平速度压到接近 0、竖直速度限在 0.01 m/s，让物体在重力下慢慢落下，不被碰撞冲量弹飞。Gaussian 背景不参与。</li>
+        <li><b>循环：</b>沉降后的位姿作为下一轮 SDF 的起点。最大位移 &lt; 10<sup>−4</sup> 就停，最多 20 轮，最后一轮物理步数 ×5（Algorithm 1）。</li>
+        <li><b>预计算和参数：</b>mesh 先修成 watertight，再算 128³ 的 SDF 网格（Open3D），表面取 1024 个采样点加全部顶点。SAPIEN 步长 1/100 s，统一密度 3000 kg/m³，摩擦 0.5（物体–物体）/ 5.0（物体–地面），无反弹。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  g["<b>Scene graph</b><br/><span class='ex'>GPT-4V × 5 次投票</span><br/><span class='ex'>桌面 = root</span>"] --> sdf["<b>SDF 阶段</b><br/><span class='ex'>穿模 / 支撑 / 接触 / 正则</span><br/><span class='ex'>15 步 Adam</span>"]:::win
+  sdf --> phy["<b>物理阶段</b><br/><span class='ex'>SAPIEN 200 步</span><br/><span class='ex'>前 100 步锁水平速度</span>"]:::win
+  phy -->|"位移 ≥ 1e-4，下一轮"| sdf
+  phy -->|"落稳或满 20 轮"| out["<b>S*</b><br/><span class='ex'>物体落在桌上、不穿模</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-04-RoboSnap/fig16.jpg" alt="Fig. 16：四个场景精修前后对比"></div>
+        <figcaption><b>Fig. 16</b>（作者原图）上排精修前，下排精修后。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>第 1 列（Fig. 2 的 DROID 场景）：</b>精修前 donut 悬在桌面上方，影子和物体是分开的；精修后 donut、pizza、小球都落在桌面上。</li>
+        <li><b>第 2 列：</b>叠放的书从错位变成叠齐。</li>
+        <li><b>第 3 列：</b>零食袋、碗、深色袋子原本悬空（影子离得远），精修后都贴到桌面上。</li>
+        <li><b>第 4 列：</b>装汉堡的碗原本悬在微波炉前面，精修后落到桌面上。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-04-RoboSnap/web-refine-books.mp4" autoplay muted loop playsinline controls></video><figcaption>Example-1 · 书</figcaption></figure>
+          <figure><video src="2026-11-04-RoboSnap/web-refine-table.mp4" autoplay muted loop playsinline controls></video><figcaption>Example-2 · 餐桌</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://robosnap.github.io/#method">Simulation-Ready Refinement</a>：精修过程的动画（各 4 s）。看物体是一点点"落"下来、对齐的，不是被弹走的；布局基本保持不变。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>桌面只托着别的物体，所以是 root，固定不动。laptop、can、white bin、mug、wooden shelf 都由桌面托着，各自只能小幅修正位姿，交替做 SDF 和物理阶段，直到落稳得到 S*。</p>
+        <p class="muted">Scene 04 的 scene graph 论文没画出来，这里是按 root 的定义推断的。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Layered rendering and trajectory-based data generation</span>
+      <span class="stage-io">S* + 任务配置 → 带图像的仿真 demo（生成 + 增强）→ 和真机 demo 混合 co-train</span>
+    </summary>
+    <div class="stage-body">
+      <p class="eyebrow">符号表（Eq. 3：分层渲染）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+          <tr><td>Q</td><td>要渲染的那台相机</td><td>Scene 04 的外置或腕部相机</td></tr>
+          <tr><td>I<sub>fg</sub>, D<sub>fg</sub>, α<sub>fg</sub></td><td>Isaac Sim 渲染的物理层：颜色、深度、该像素有没有前景</td><td>laptop、mug 等物体和机械臂</td></tr>
+          <tr><td>I<sub>bg</sub>, D<sub>bg</sub></td><td>同一相机下 Gaussian 背景的颜色和深度</td><td>黑幕布和房间</td></tr>
+          <tr><td>m(u)</td><td>像素 u 用前景还是背景：前景有东西且不比背景远，就用前景</td><td>laptop 挡住的地方显示 laptop</td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>Why：</b>训练 VLA 要大量带图像的 demo：画面要像真机相机拍的，轨迹要在物理上可行。</li>
+        <li><b>分层渲染（Eq. 3）：</b>对同一台相机，物理层由 Isaac Sim 渲染，背景由 Gaussian 渲染，按深度逐像素合成。</li>
+        <li><b>任务配置（App A.3.2 的 YAML）：</b>场景 asset、franka 和恢复出的底座位姿、腕部 + 外置相机、目标物体和容器的 USD 与位姿、语言指令、技能序列（pick / place / close / open 模板）、输出 rgb、robot_state、actions、camera_params、metadata。</li>
+        <li><b>生成：</b>在 InternDataEngine（InternData-A1 的数据引擎）里，抓取类技能用 AnyGrasp 给候选。技能输出 6D 末端 waypoint，cuRobo 把它变成无碰撞的稠密关节动作，只保存成功的 rollout。</li>
+        <li><b>作者对引擎的改动：</b>滤掉真机上不太可能成功的 IK 抓取位姿；放置位姿和前一个位姿保持一致。8 张 RTX 4090 一天约 10,000 条轨迹。</li>
+        <li><b>增强：</b>在 6 类扰动上均匀采样：被操作物体位移、背景物体、光照、相机位姿、机械臂初始状态、桌面纹理。</li>
+        <li><b>Co-training：</b>每个任务 2,000 条生成 + 2,000 条增强，和 30 条真机 demo 按 (real, sim, sim-aug) 的比例流式混合：R1 (0.2, 0.4, 0.4)，R2 (0.6, 0.2, 0.2)，R3 (0, 0.5, 0.5)。π0.5 和 π0 都训 15k 步、batch 16，余弦学习率、峰值 2×10<sup>−5</sup>。比例只改 mini-batch 的来源，不改步数（App A.3.1）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  y["<b>任务 YAML</b><br/><span class='ex'>target = laptop</span><br/><span class='ex'>skill = close 模板</span>"] --> e["<b>InternDataEngine</b><br/><span class='ex'>6D waypoint → cuRobo</span><br/><span class='ex'>分层渲染外置 + 腕部</span>"]
+  e --> d["<b>D<sub>sim</sub></b><br/><span class='ex'>2,000 生成 + 2,000 增强</span>"]
+  d --> t["<b>R2 混合 fine-tune π0.5</b><br/><span class='ex'>0.6 真机 : 0.2 : 0.2</span><br/><span class='ex'>真机 50.0 → 80.0%</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-04-RoboSnap/fig12.jpg" alt="Fig. 12：laptop 场景的八种增强渲染"></div>
+        <figcaption><b>Fig. 12</b>（作者原图）Synthetic trajectories augmentation：就是 Scene 04（laptop、can、white bin、mug、wooden shelf）的八个增强版本。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>桌面纹理：</b>绿色、白色、蓝色织物、深色布纹、灰色格纹等不同的桌面。</li>
+        <li><b>光照：</b>从明亮到昏暗、偏暖都有。</li>
+        <li><b>视角和物体位置：</b>相机角度不同；laptop、mug、wooden shelf 的相对位置也有变化。任务始终是 "Close the laptop"。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-04-RoboSnap/web-aug-camera.mp4" autoplay muted loop playsinline controls></video><figcaption>增强 · 相机位姿</figcaption></figure>
+          <figure><video src="2026-11-04-RoboSnap/web-aug-light.mp4" autoplay muted loop playsinline controls></video><figcaption>增强 · 光照</figcaption></figure>
+          <figure><video src="2026-11-04-RoboSnap/web-aug-texture.mp4" autoplay muted loop playsinline controls></video><figcaption>增强 · 桌面纹理</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://robosnap.github.io/#experiment-3">Browse Data Generated in RoboSnap Scenes</a> 的 task 4 外置相机视频：同一个 "合上 laptop" 的动作，换了视角、光照和桌布。看夹爪从屏幕上方压下、把屏幕合上。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>YAML 里目标是 laptop、技能是 close 模板 → 2,000 条合上屏幕的 demo，加上 2,000 条增强 demo（Fig. 12 和上面的视频）。按 R2 和 30 条真机 demo 混合训 π0.5，真机成功率从 50.0% 升到 80.0%（Table 2，E4）。</p>
+        <p class="muted">"close" 技能模板怎么生成动作，论文没细说；AnyGrasp 只写明用于抓取类技能。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Trajectory replay and policy evaluation</span>
+      <span class="stage-io">S* + 录下的轨迹或真机 policy → 回放成败；仿真成功率 R<sub>S</sub> vs 真机 R（r、MMRV）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>场景好不好，最终看机器人在里面的交互和真实是否一致：录下的真轨迹能不能复现接触，真机 policy 在 sim 里的成败能不能预测真机。</li>
+        <li><b>回放（DROID）：</b>物体按 S* 摆好，机器人按数据集的底座外参放好，开环播录下的夹爪轨迹。轨迹只用来测，不拿来调物体位姿，也不用仿真特权信息修补失败（App A.2）。</li>
+        <li><b>评测：</b>把真机 policy 的动作直接放进 S* 闭环执行。对 N 个任务，比较真机成功率向量 R 和仿真成功率向量 R<sub>S</sub>：Pearson r 看数值是否一起涨落；MMRV（来自 SIMPLER）看任务难易的排序是否一致（§3.3）。</li>
+        <li><b>评测预算：</b>每个任务 30 次 sim rollout。A.5 用 20 批统计显示，约 30 次以后相关性趋于稳定。</li>
+        <li><b>行为诊断（App A.5）：</b>比较真机和仿真 rollout 的末端位移轨迹（相对起点），以及每个关节每步增量的分布。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  r1["<b>回放</b><br/><span class='ex'>DROID 一帧 + 录下的轨迹</span>"] --> r2["<b>开环播夹爪轨迹</b><br/><span class='ex'>抓到并放到目标、无穿模？</span>"]
+  r2 --> r3["<b>5/5</b><br/><span class='ex'>RoLA 2/5（Fig. 4）</span>"]:::win
+  e1["<b>评测</b><br/><span class='ex'>real-only π0.5 进 S*</span>"] --> e2["<b>每任务 30 次 rollout</b><br/><span class='ex'>4.2：sim 73.3 vs 真机 50.0</span>"]
+  e2 --> e3["<b>10 个任务</b><br/><span class='ex'>r = 0.887，MMRV 0.0066</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-04-RoboSnap/web-simreal-real.mp4" autoplay muted loop playsinline controls></video><figcaption>真机 rollout</figcaption></figure>
+          <figure><video src="2026-11-04-RoboSnap/web-simreal-sim.mp4" autoplay muted loop playsinline controls></video><figcaption>RoboSnap 仿真 rollout</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://robosnap.github.io/#experiment-5">Real-only fine-tuned policy rollouts in real-world and RoboSnap scenes</a>（Scene 04，5× 速）：同一个 real-only π0.5 分别在真机和 Scene 04 的仿真里合 laptop，两边都合上了。比较两边夹爪靠近屏幕、往下压的路线。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>4.2 的 real-only π0.5 在仿真里成功 73.3%，真机是 50.0%：单个任务的绝对值差了 23.3 个点。论文的主张是跨 10 个任务的相关性（r = 0.887，E6），不是单个任务的数值相等。</p>
+        <p>扩展到 DROID：在 scene 10 的 RoboSnap 场景里，录下的轨迹抓起并放好了物体；在 RoLA 场景里失败（视频见 <a href="#exp-3">E3</a>）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">Stage 1–3 at scale</span>
+      <span class="stage-name">DROID-Sim：把 Stage 1–3 自动化跑在 564 个 DROID 场景上</span>
+      <span class="stage-io">DROID 原始数据 → 564 个可追溯回原始 demo 的仿真场景</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>What：</b>每个场景都链接回 DROID 的原始数据：采集地点、success / failure、日期、轨迹文件夹和元数据（App C）。</li>
+        <li><b>自动流水线：</b>每个场景取一帧（通常是某台外置相机的第一帧），VLM 写出物体和支撑面的描述（存成 <code>mask_prompt.txt</code>，不用固定类别表）。然后 Grounding DINO 做文本定位，Florence-2 消解指代歧义，SAM 3 出 mask。</li>
+        <li><b>几何：</b>SAM3D 出粗资产和初始位姿；单目深度给出带 mask 的点云，用 point-to-plane ICP 只优化旋转和平移、尺度不动。注意 §3.1 写的是 VGGT 点图 + 由粗到细的 ICP，App C 的批处理版写的是单目深度。</li>
+        <li><b>耗时：</b>每个场景 12–25 min，5–10 个物体约 17 min，564 个场景平均 21.4 min。精修占 59%，主要花在凸分解上（Fig. 18）。</li>
+        <li><b>GUI（App D）：</b>Gradio 工具，覆盖 prompt / 点击修 mask、视频 mask 传播、多视角选帧、SAM3D 重建、GLB 拼场景、articulated 标注。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-04-RoboSnap/fig17.jpg" alt="Fig. 17：DROID 场景的原图、深度、mask、资产"></div>
+        <figcaption><b>Fig. 17</b>（作者原图）DROID-scale scene construction。四行依次是 Original Image、Depth、Masks、Assets Gen，每列一个 DROID 场景。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>Original Image → Depth：</b>原帧和单目深度，冷色近、暖色远。</li>
+        <li><b>Masks → Assets Gen：</b>按 VLM 描述分出的物体和支撑面，以及生成的 3D 资产，位置和原图对应。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-04-RoboSnap/fig18.jpg" alt="Fig. 18：耗时分布、各 stage 耗时与重试占比、按夹爪分的回放成功率"></div>
+        <figcaption><b>Fig. 18</b>（作者原图）Runtime statistics and gripper-controlled replay results。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左 End-to-end Runtime Distribution：</b>多数场景集中在 10–25 min，长尾一直拖到 90 min 以上，虚线是平均 21.4 min。</li>
+        <li><b>中 Avg. Stage Time：</b>Sim-ready Refinement 59%，Mesh Assets Generation 17%，Background Generation 13%，Object Mask Generation 10%，ICP &amp; Gravity Alignment 1%。<b>Retry Distribution：</b>Mesh Assets 44%，Object Mask 25%，ICP &amp; Gravity 15%，Background 10%，Refinement 6%。论文没说 retry 是怎么触发的。</li>
+        <li><b>右 Replay Success by Gripper：</b>30 个回放 case，Franka Hand 上 73.3% vs RoLA 46.7%，Robotiq 2F-85 上 83.3% vs 40.0%（E3）。</li>
+        <li><b>底 Simulation Quality Variability：</b>10 个场景各跑 10 次。Time to settle 0.120 ± 0.02 s，Falling 0.1026 ± 0.0167，Collision 0.0256 ± 0.0083（E2）。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Scene 04 是作者自己的真机场景，不在 DROID-Sim 里。论文没说它走的是自动流水线还是 GUI。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>分层：物理层 vs 视觉层</td><td>Stage 1–2：laptop 等物体是物理层，黑幕布和房间是 Gaussian 背景</td></tr>
+        <tr><td>VLM 命名 + SAM 3 + SAM 3D</td><td>Stage 1：laptop、can、white bin、mug、wooden shelf、桌面</td></tr>
+        <tr><td>VGGT 点图 + 固定尺度 ICP</td><td>Stage 1：每个 mesh 贴到照片的几何上</td></tr>
+        <tr><td>Articulated（P3-SAM + SAPIEN 关节参数）</td><td>Stage 1：laptop 拆成底座和屏幕、装铰链，"Close the laptop" 才做得了</td></tr>
+        <tr><td>重力对齐 + 机器人底座</td><td>Stage 2：桌面法向转到 +z；Franka 底座按相机–机器人标定放</td></tr>
+        <tr><td>inpaint + world model → Gaussian 背景</td><td>Stage 2：去掉前景和桌面后补全背景；去掉背景层，4.2 从 80.0 掉到 66.7</td></tr>
+        <tr><td>Scene graph（Support / Contact / root）</td><td>Stage 3：桌面是 root（推断）</td></tr>
+        <tr><td>SDF–physics 交替精修</td><td>Stage 3：S⁽⁰⁾ → S*；Table 1 消融</td></tr>
+        <tr><td>分层渲染（深度合成）</td><td>Stage 4：每条 demo 的外置和腕部画面</td></tr>
+        <tr><td>InternDataEngine + cuRobo 生成轨迹</td><td>Stage 4：2,000 条 "Close the laptop"</td></tr>
+        <tr><td>6 类扰动增强</td><td>Stage 4：Fig. 12 的八张图 + 2,000 条增强 demo</td></tr>
+        <tr><td>真机 / 仿真数据混合 co-training（R1–R3）</td><td>E4：R2 下 50.0 → 80.0</td></tr>
+        <tr><td>对真机扰动更鲁棒</td><td>E5：相机移位 23.3 → 70.0，换初始姿态 13.3 → 63.3</td></tr>
+        <tr><td>轨迹回放检验场景保真度</td><td>Stage 5（DROID 扩展）：5/5 vs RoLA 2/5</td></tr>
+        <tr><td>Generative evaluation harness（r、MMRV）</td><td>Stage 5：4.2 仿真 73.3 vs 真机 50.0；10 个任务 r = 0.887</td></tr>
+        <tr><td>DROID-Sim 数据集 + 耗时 + GUI</td><td>Stage 1–3 at scale：564 个场景，平均 21.4 min</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>场景比单图 baseline 稳得多、回放成功更多。在里面生成的数据能提高真机成功率和鲁棒性，sim 成功率也能预测真机</h2>
+  <p>顺序同论文 §4 的五个问题：<a href="#exp-1">E1</a> 像不像（Q1）→ <a href="#exp-2">E2</a> 稳不稳（Q1）→ <a href="#exp-3">E3</a> 能否回放（Q2）→ <a href="#exp-4">E4</a> 生成数据有没有用（Q3）→ <a href="#exp-5">E5</a> 鲁棒性（Q4）→ <a href="#exp-6">E6</a> 能否代替真机评测（Q5）。比的都是质量和成功率，不比耗时；耗时只在 App C 里报告。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>重建出的场景看起来像输入图吗？<span class="exp-src">§4.1 · Fig. 3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/fig3.jpg" alt="Fig. 3：和 RoLA 的 6 个视觉指标，以及 10 个场景的渲染对比"></div>
+      <figcaption><b>Fig. 3</b>（作者原图）上面是 10 个场景的平均，下面三行依次是 Ground Truth、RoLA、Ours。先看 SSIM 到 Gabor-L1 这五列，再看 PSNR 列。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>结构、颜色、纹理更接近输入图；像素级指标基本持平。</b>和 RoLA 比：SSIM 0.4907 vs 0.4521，SIFT-MR 0.1226 vs 0.0664，RGB-EMD 11.4795 vs 28.5806，Gabor-L1 0.000741 vs 0.001817。PSNR 13.25 反而略低于 RoLA 的 13.40，LPIPS 0.4958 vs 0.4996 几乎一样。作者的解释是：RoboSnap 重建了整个交互区，不保留大片原背景，所以 PSNR、LPIPS 只差一点。</dd></div>
+      <div><dt>在故事里</dt><dd>Q1 前半：分层设计没有让画面变"假"。</dd></div>
+      <div><dt>指标</dt><dd>仿真渲染图和原 DROID 帧对比（双三次插值到同一分辨率）：PSNR、SSIM、LPIPS-Alex，SIFT 匹配率，三通道直方图的 Wasserstein 距离（表里叫 RGB-EMD），Gabor 滤波能量的 ℓ1 距离（App A.1.1）。没有成功 / 失败的判定。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>从 DROID-Sim 里挑 10 个场景，每个 2–15 个物体，房间布局和难度各不相同。</li><li>只和 RoLA 比：同样是单帧输入，各用自己的分割和重建流程；在外参相机视角下渲染。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>放进模拟器会不会散架？<span class="exp-src">§4.1 · Table 1 · App A.1.2, Fig. 8</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/tab1.jpg" alt="Table 1：三种 baseline、六种消融和 RoboSnap 的稳定性指标"></div>
+      <figcaption><b>Table 1</b>（作者原表）先看最后一行和上面三个 baseline 的 Collision 列，再看消融里的 Physics only、SDF only 两行。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/fig8.jpg" alt="Fig. 8：物体平均运动随仿真步数的曲线和带落稳时间的消融表"></div>
+      <figcaption><b>Fig. 8</b>（作者原图）左边是场景内物体的平均运动随 IsaacLab 步数的变化，RoboSnap 0.12 s 就落稳，评测跑到 300 步（3 s）。右边是 Table 1 加上一列 Time to settle。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>碰撞和位姿漂移都最低，摔倒率第二低。</b>Collision 0.0256（SAM 3D 0.3590，+FoundationPose 0.1538，RoLA 0.3226）；Mean disp. 0.0474 m（0.3284 / 0.4383 / 0.2713）；Falling 0.1026（0.5640 / 0.5900 / 0.3810）。消融里 Physics only 的 Falling 最低（0.0700），但 Collision 是 0.3561；SDF only 的 Falling 是 0.3893。两个阶段交替，才能把两项都压低。</dd></div>
+      <div><dt>在故事里</dt><dd>Q1 后半：Stage 3 交替精修的直接证据，"simulation-ready" 的定义也来自这里。</dd></div>
+      <div><dt>指标</dt><dd>场景重力对齐后加载进 Isaac，在重力下跑 300 步（每步 0.01 s）。Falling：物体局部 up 轴倾斜超过 45°。Collision / pop-out：相邻采样之间中心位移超过 0.05 m，或向上跳超过 0.03 m。Trans MSE、Mean disp.、Quat MSE 都是相对初始位姿的漂移（App A.1.2）。全部越低越好。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>和 E1 同样的 10 个 DROID 场景；每个场景重复 10 次，场景内标准差见 Fig. 18 底部。</li><li>baseline 的重建结果直接加载、不做精修。"Z-up only"、"w/o refinement" 两行和完整方法的区别，论文正文没有说明。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>录下的 DROID 轨迹，放回重建场景里还能成功吗？<span class="exp-src">§4.2 · Fig. 4 · App A.2, Fig. 18</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/fig4.jpg" alt="Fig. 4：5 个场景的回放 ✓/✗ 表和两个回放例子"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）先看表的 Sum 列，再看下面两组：Result 1 两种方法都成功，Result 2 RoLA 失败、Ours 成功（虚线框是关键接触区域）。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-04-RoboSnap/web-replay-real.mp4" autoplay muted loop playsinline controls></video><figcaption>Ground Truth（真机录像）</figcaption></figure>
+        <figure><video src="2026-11-04-RoboSnap/web-replay-ours.mp4" autoplay muted loop playsinline controls></video><figcaption>RoboSnap · 成功</figcaption></figure>
+        <figure><video src="2026-11-04-RoboSnap/web-replay-rola.mp4" autoplay muted loop playsinline controls></video><figcaption>RoLA · 失败</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://robosnap.github.io/#replay">RoboSnap scenes support real trajectory replay</a>（DROID scene 10）：同一条录下的轨迹放进两种重建里。比较夹爪合拢时物体是否在指尖之间，以及物体最后是否被带到目标位置。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>回放成功率更高。</b>5 个场景里 RoboSnap 5/5，RoLA 2/5。附录另跑了 30 个回放 case：Franka Hand 上 73.3% vs 46.7%，Robotiq 2F-85 上 83.3% vs 40.0%（Fig. 18 右）。</dd></div>
+      <div><dt>在故事里</dt><dd>Q2：不看像素，而看"录下的真实轨迹还能不能抓到东西"，以此检验场景的几何和接触结构。</dd></div>
+      <div><dt>指标</dt><dd>夹爪抓住目标物体并移到目标区域，过程中没有严重碰撞、穿模或接触失败，就算成功（§4.2、A.2）。轨迹只用于评测，不用来优化物体位姿。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>5 个场景取自 E1 的 10 个，挑的是两种方法都能得到稳定、可执行重建的场景。</li><li>只和 RoLA 比（论文说它是给定动作轨迹时也能回放的同类单图方法）；30 个 case 从哪些场景来，论文没写。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>场景里生成的数据，能提高真机 policy 的成功率吗？<span class="exp-src">§4.3 · Table 2 · App A.3, Table 4, 5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/tab2.jpg" alt="Table 2：10 个任务在 Real、R1、R2、R3 下 π0.5 和 π0 的真机成功率"></div>
+      <figcaption><b>Table 2</b>（作者原表）先看最后一行 Average，再看 4.2 这一行（本页的例子）。粗体是每行最好的配比。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/tab5.jpg" alt="Table 5：Real-only、RoboEngine、R2 w/o BG、RoboSnap R2 在 1.2 和 4.2 上的成功率"></div>
+      <figcaption><b>Table 5</b>（作者原表）同样的 R2 配比，只换数据来源：RoboEngine 的 2D 增强，去掉背景层的 RoboSnap，完整 RoboSnap。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/tab4.jpg" alt="Table 4：DP 和 GR00T N1.6 在 1.2 和 4.2 上 Real-only vs R2"></div>
+      <figcaption><b>Table 4</b>（作者原表）另外两个 policy 架构：Diffusion Policy 和 GR00T N1.6。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-04-RoboSnap/web-laptop-fail.mp4" autoplay muted loop playsinline controls></video><figcaption>Real-only · 50% · 失败 case</figcaption></figure>
+        <figure><video src="2026-11-04-RoboSnap/web-laptop-success.mp4" autoplay muted loop playsinline controls></video><figcaption>Co-trained（R2）· 80% · 成功 case</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://robosnap.github.io/#experiment-3">Before / After co-training</a>（5× 速）：左边结束时屏幕还开着；右边夹爪从上方把屏幕压下、合上。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>成功率更高，R2 最好。</b>10 个任务平均：π0.5 32.7% → 41.7%，π0 29.3% → 42.7%。例子 4.2：π0.5 50.0 → 80.0，π0 43.3 → 56.7。完全不用真机数据的 R3 仍有 17.3% / 15.0%。另外两个架构在 4.2 上：DP 53.3 → 76.7，GR00T N1.6 63.3 → 86.7。同样的 R2 配比下，RoboEngine 增强是 53.3，去掉背景层是 66.7，完整 RoboSnap 是 80.0。</dd></div>
+      <div><dt>在故事里</dt><dd>Q3：场景的价值不只在像，而在能当数据基础设施，这也是论文的结论句。</dd></div>
+      <div><dt>指标</dt><dd>任务达到指令要求的完成状态，并在结束时保持稳定，才算成功；部分完成算失败；超出步数预算（2,000 步，长程任务 5,000 步）或因危险动作中止也算失败。每个设置跑 3 批 × 10 次，报均值 ± 标准误（A.3.3）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>4 个真机场景、10 个任务；每个任务 30 条真机 demo，外加 2,000 条生成和 2,000 条增强 demo。</li><li>所有配比的训练步数、batch、初始化、动作空间都相同，固定取 15k 步的 checkpoint（Fig. 11 显示 loss 在 15k 附近已平），配比只改 mini-batch 的来源。</li><li>R2 并不是每个任务都更好：π0.5 的 4.3（23.3 → 16.7）和 3.2（6.7 → 3.3）在 R2 下反而下降；标准误最大到 ±11.5。这是我的观察。</li><li>Table 4、5 只测了 1.2 和 4.2 两个任务。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>换了物体位置、光照、相机、初始姿态，policy 还行吗？<span class="exp-src">§4.4 · Table 3 · App A.4, Fig. 13</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/tab3.jpg" alt="Table 3：Real-only 和 Mix Ratio 2 在六种扰动下的真机成功率，左边是平均下降的柱状图"></div>
+      <figcaption><b>Table 3</b>（作者原表）先看左边柱状图里两条虚线（平均下降 13% vs 8%），再看右表最后一行 Avg. 和 4.2 那一行。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/fig13.jpg" alt="Fig. 13：laptop 场景的原设置和六种扰动"></div>
+      <figcaption><b>Fig. 13</b>（作者原图）就是 Scene 04：Orig. 是原设置，下面依次是 Obj.、BG、Light、Tex.、Cam.、Arm 六种扰动。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>更鲁棒：六种扰动的平均下降从 13% 降到 8%。</b>按 Table 3 验算，这是相对原设置的成功率百分点差。最难的两种扰动：π0.5 的 Real-only 平均成功率 32.7，相机移位后 13.3，换初始姿态后 5.66；R2 平均 41.7，对应为 31.7 和 23.3。例子 4.2：Real-only 50.0 → Cam 23.3、Arm 13.3；R2 80.0 → 70.0、63.3。</dd></div>
+      <div><dt>在故事里</dt><dd>Q4：仿真里便宜的受控扰动（sim-augmented 数据），换来真机上的鲁棒性。</dd></div>
+      <div><dt>指标</dt><dd>真机成功率，成功的定义同 E4；每种条件 30 次。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>六种扰动分别单独施加：Obj. 被操作物体沿固定方向平移约 10 cm；BG 加方块和水果作干扰物；Light 关掉房间灯；Tex. 铺同一块桌布；Cam. 相机移到另一个固定位置；Arm 先把末端开到另一个固定的起始姿态。</li><li>只测 π0.5、R2 配比。</li><li>训练用的 sim-augmented 数据覆盖的正是这 6 类扰动（A.3.1），训练和测试的扰动类型一致。这是我的观察。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-6">
+    <h3><span class="exp-n">E6</span>sim 里测出的成功率，能代替真机评测吗？<span class="exp-src">§4.5 · Fig. 6 · App A.5, Fig. 14, 15</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/fig6.jpg" alt="Fig. 6：10 个任务的真机和仿真成功率与散点图"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）上面是 10 个任务的 Real SR / Sim SR，下面是散点图，横轴真机、纵轴仿真，虚线是对角线。4.2 是最右上那个点（0.50, 0.733）。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/fig14.jpg" alt="Fig. 14：π0 的真机和仿真成功率，以及相关性随 rollout 数的变化"></div>
+      <figcaption><b>Fig. 14</b>（作者原图）左：π0 和 π0.5 的散点放在一起；右：π0.5 的 Pearson r 和 MMRV 随每个任务 rollout 数的变化，阴影是 ±1 标准差。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-04-RoboSnap/web-behavior.jpg" alt="Fig. 15：bread 和 laptop 两个任务的真/仿末端轨迹和关节增量分布"></div>
+      <figcaption><b>Fig. 15</b>（项目页高清版，和论文 Fig. 15 相同）Behavior-space sim-real comparison。下面一组就是 "Close the laptop."。</figcaption>
+    </figure>
+    <p class="eyebrow">怎么读 Fig. 15</p>
+    <ol class="read">
+      <li><b>左图：</b>末端相对起点的位移轨迹，蓝色是真机 rollout，红色是仿真 rollout。laptop 那组里两种颜色的线走向基本一致。</li>
+      <li><b>右图：</b>7 个 Franka 关节每步增量的分布，一个关节一条曲线（J1–J7），真机和仿真的峰值位置和宽度相近。这是定性比较，论文没给数值指标。</li>
+    </ol>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>sim 成功率和真机强相关，任务难易的排序几乎一致。</b>π0.5（10 个任务）r = 0.887，MMRV = 0.0066；π0：r = 0.849，MMRV = 0.0500（Fig. 14）。但单个任务的绝对值可以差很多：4.2 真机 50.0、仿真 73.3；1.2 真机 36.7、仿真 26.7。</dd></div>
+      <div><dt>在故事里</dt><dd>Q5：场景可以当 "generative evaluation harness"，用仿真代替真机评测，为 policy 的自我改进铺路。</dd></div>
+      <div><dt>指标</dt><dd>R、R<sub>S</sub> 是 10 个任务的真机 / 仿真成功率向量。Pearson r 越高越好；MMRV 是平均最大排序违例，来自 SIMPLER，越低越好（§3.3）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>被评的是 E4 里 Real 那一列的 real-only policy，在对应的 Scene 01–04 仿真里跑。</li><li>每个任务 30 次仿真 rollout；A.5 用 20 批统计说明约 30 次后相关性趋稳。</li><li>只评了每个任务的一个 policy（10 个点），没有用多个 checkpoint 去检验"选模型"的能力。这是我的观察。</li></ul></dd></div>
+    </dl>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-04-RoboSnap/web-simreal-real.mp4" autoplay muted loop playsinline controls></video><figcaption>真机 rollout</figcaption></figure>
+        <figure><video src="2026-11-04-RoboSnap/web-simreal-sim.mp4" autoplay muted loop playsinline controls></video><figcaption>RoboSnap 仿真 rollout</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://robosnap.github.io/#experiment-5">RoboSnap scenes can act as a policy evaluation harness</a>（Scene 04，5× 速）：同一个 real-only π0.5 在真机和仿真里各跑一次 "Close the laptop"，两边都成功。</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>输入质量</b>（§6）：单张 RGB 如果严重遮挡、光照极端、材质难辨，重建和生成 demo 的可靠性都会下降。</li>
+    <li><b>只做刚体和 articulated</b>（§6）：可变形物体、颗粒、流体都不在范围内。</li>
+    <li><b>没有物理参数估计</b>（§6）：摩擦和质量取自 VLM 的先验，关节参数从数据集中同类物体检索。精修阶段的 SAPIEN 则用统一的密度 3000 kg/m³、摩擦 0.5 / 5.0（App B.2）。</li>
+    <li><b>验证范围有限</b>（§6）：只在本文的设置和模型（π0、π0.5、DP、GR00T N1.6）上验证过。真机实验全部在作者自己的 4 个场景、10 个任务上。</li>
+    <li><b>依赖闭源服务</b>：物体命名和 scene graph 用 GPT-4 系 VLM / GPT-4V，背景补全用 Gemini-2.5-flash-image，Gaussian 背景用 World Labs Marble（§3.1、App B.1.1）。</li>
+    <li><b>sim 评测只在相关性上成立</b>：单个任务的绝对成功率可以差 23.3 个点（4.2）；回放的 5 个场景是"两种方法都能稳定重建"的子集。</li>
+    <li><b>独立复测差距大</b>（库内交叉核对）：<a href="2026-11-03-WorldMirror.html">WorldMirror</a> 在它自己的 DROID 场景上测 RoboSnap，得到 PSNR 10.30、LPIPS 0.641（它的 Tab. 2），比本文自报的 13.25 / 0.4958 差。两边的场景和视角设置不同，不能直接比。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>分层可以直接搬进 WorldClaw</b>：白盒场景里只把要交互的物体做成带碰撞体的 asset，背景交给 Gaussian 或 world model，只负责渲染。Eq. 3 的深度合成（前景有东西且更近就用前景）就是两层拼图的全部逻辑。去掉背景层，4.2 从 80.0 掉到 66.7（Table 5），说明背景值得保留。</li>
+    <li><b>给 real2sim-anything-indoor 加一个"落地"步骤</b>：从视频摆好物体后，用 scene graph（Support / Contact）加 SDF 的穿模、支撑、接触 loss 和物理沉降，交替修位姿。Table 1 显示只做物理或只做 SDF 都不够（Collision 0.3561 / Falling 0.3893），交替做两项才都低。论文的物理阶段用 SAPIEN；换成 Genesis 是我的建议。</li>
+    <li><b>评测标准可借，agent 能补的地方也清楚</b>：用"录下的轨迹能否回放成功"来检验场景，比像素指标更有区分度（PSNR 13.25 vs 13.40 几乎一样，回放 5/5 vs 2/5）；用 Pearson r + MMRV 衡量 sim 能否代替真机。但 RoboSnap 是固定流水线，出错时只能看各 stage 的 retry 占比（Fig. 18），不知道是哪个物体、哪一步错了，这正是 agentic real-to-sim（如 WorldMirror 的 judge + rewind）要补的。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-04-RoboSnap.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
