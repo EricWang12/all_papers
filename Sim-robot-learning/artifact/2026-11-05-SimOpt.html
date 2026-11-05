@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>SimOpt</title>
+<meta name="description" content="SimOpt：不再手调随机化范围，用几条真机 rollout 更新模拟器参数分布，让 policy 在 sim 和真机行为一致；Franka 开抽屉 20 次全开。">
+<meta name="paper:title" content="Closing the Sim-to-Real Loop: Adapting Simulation Randomization with Real World Experience">
+<meta name="paper:source" content="https://arxiv.org/abs/1810.05687">
+<meta name="paper:venue" content="ICRA 2019">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/1810.05687v4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Sim-robot-learning</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Sim-robot-learning · 归档于 2026-11-05</p>
+  <h1>SimOpt</h1>
+  <p class="full-title">Closing the Sim-to-Real Loop: Adapting Simulation Randomization with Real World Experience</p>
+  <p class="meta">Yevgen Chebotar, Ankur Handa, Viktor Makoviychuk, Miles Macklin, Jan Issac, Nathan Ratliff et al. · NVIDIA, USC, Univ. of Copenhagen, UW · ICRA 2019（项目页）· arXiv 1810.05687v4，2019-03-05</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/1810.05687">arXiv</a><a href="https://arxiv.org/pdf/1810.05687v4">PDF</a>
+    <a href="https://sites.google.com/view/simopt">Project page</a>
+  </p>
+  <p class="filed">归档到 <b>Robot learning in simulation</b>：sim-to-real 的转折点，从盲目随机化走向用少量真机 rollout 调整模拟器参数分布；也服务 Agent-centric real-to-sim，是"用真实 rollout 调模拟器"的历史源头。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>Domain randomization 的参数范围靠人手调：窄了够不到真机，宽了 policy 变保守甚至学不会，而且调完也不知道对不对。</dd></div>
+    <div><dt>Idea</dt><dd>把模拟器参数的分布当成要学的东西：sim 里训 policy → 真机跑 3 条 → 抽 9600 组参数在 sim 里跑同一个 policy → 按观测差距、带 KL 约束更新分布 → 再训。</dd></div>
+    <div><dt>Result</dt><dd>Franka 开抽屉：1 次 SimOpt 后 20 次试验全部打开；Yumi swing-peg-in-hole：2 次 SimOpt 后 20 次试验 90% 成功（§IV-D）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>随机化的范围只能靠猜：猜窄了够不到真实世界，猜宽了 policy 学不会开抽屉</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Franka Panda 开柜子抽屉</b>（Fig. 1 左、Fig. 8 右）：7-DoF 手臂站在柜子前；policy 输入 <span class="ex">10D：7 个关节角 + 把手 3D 位置</span>，输出 <span class="ex">7 个关节速度 + 1 个夹爪指令</span>；模拟器是 NVIDIA Flex，真实的 compliance、damping、friction 都不知道 → 想要：policy 只在 sim 里训练，上真机能抓住把手拉开抽屉，全程夹爪和把手保持垂直。论文先在 sim 里做同一任务的迁移（柜子偏 <span class="ex">15 cm / 22 cm</span>），再上真机。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>Franka + 柜子</span><br/><span class='ex'>物理参数未知</span>"]:::example
+  IN --> A1["<b>窄分布 DR</b><br/>人设 σ ≈ 2 cm"]
+  A1 --> AX["覆盖不到偏移的柜子<br/><span class='ex'>目标偏 15 / 22 cm</span>"]:::gap
+  IN --> B1["<b>宽分布 DR</b><br/>人设 σ = 10 cm"]
+  B1 --> BX["够到把手，拉不开<br/><span class='ex'>Fig. 5 未过开抽屉线</span>"]:::gap
+  IN --> C1["<b>手调 sim 直接上真机</b><br/>SimOpt iteration 0"]
+  C1 --> CX["夹爪歪，一指顶把手<br/><span class='ex'>手指被撑开，Fig. 8</span>"]:::gap
+  IN --> D1["<b>轨迹回放式 system ID</b><br/>把 sim 设成真实状态"]
+  D1 --> DX["内部状态观测不到<br/><span class='ex'>App. A，无数字</span>"]:::gap
+  </pre></div>
+  <p class="note">依据：第 2 条是实测（§IV-C、Fig. 5）。第 1 条是 §IV-C 的论证（要覆盖 15–22 cm，σ 至少 10 cm），论文没有单独跑窄分布迁到目标的曲线。第 3 条是 §IV-D2 的描述，没报成功率。第 4 条是 App. A 的论证，举的是绳子的弯曲状态，没有对比数字。</p>
+  <p class="crux"><b>根本问题：</b>随机化分布是人猜的，真机的反馈回不到模拟器。　<b>这篇的切入点：</b>不复制现实，只用真机 rollout 的部分观测迭代更新分布，让 policy 在 sim 和真机里的行为变像。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Domain randomization</b><br><span class="muted">Tobin、CAD2RL、James、OpenAI 灵巧手、Peng；先辨识再随机化：Tan 2018、Lowrey、Antonova</span></td><td>sim 训的 policy 直接上真机</td><td>在人设定的参数分布上训练（Eq. 1）</td><td>分布靠专家手调，不看真机结果 → 本文用真机 rollout 自动更新分布</td></tr>
+      <tr><td><b>轨迹式 system ID</b><br><span class="muted">Tan 2016 [30]、Zhu 2018 [31]</span></td><td>把模拟器参数校准到真机</td><td>把 sim 设到真实状态、执行真实动作，再比差异</td><td>要能读写全状态，[31] 还要估真实 reward → 本文只用部分观测 + 闭环 rollout，真机不算 reward</td></tr>
+      <tr><td><b>Adaptive EPOpt</b><br><span class="muted">Rajeswaran et al. [34]，作者说的最近邻</span></td><td>模型集合上的鲁棒 policy，用目标域数据调模型分布</td><td>risk-sensitive 目标 + 粒子滤波 Bayesian 更新</td><td>只在 sim 里验证 → 本文 risk-neutral 平均目标、KL 约束迭代更新，并上两台真机</td></tr>
+      <tr><td><b>Grounded simulation</b><br><span class="muted">Farchy 2013 [32]、Hanna &amp; Stone 2017 [33]</span></td><td>用真实数据把模拟器"接地"</td><td>[32] 由人挑参数；[33] 额外拟合真机 forward 和 sim inverse dynamics</td><td>要人参与或多拟合两个模型 → 本文只靠采样参数和算差距，全自动</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Model-based RL</b><br><span class="muted">PILCO [13]、[14]</span></td><td>用少量真机数据学 policy</td><td>从真机 rollout 拟合概率 dynamics 模型</td><td>模型从数据学起 → 本文把物理引擎当带参数的模型，先验现成</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §II Related Work、§III-A、App. A，未另行检索。§II 还提到 UP-OSI [23] 等工作，但没说和本文的差别，这里略去。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>不复制现实：让同一个 policy 在 sim 和真机里的行为变像，闭环更新随机化分布</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-SimOpt/fig1.jpg" alt="四格：真机 Franka 开抽屉，并行 sim 抽屉，真机 Yumi 甩 peg，并行 sim Yumi"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）论文的两个真机任务，各配一张并行 sim。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左两格：</b>我们的例子。真机 Franka 和柜子，以及 Flex 里并行的许多副本。</li>
+    <li><b>右两格：</b>第二个任务 swing-peg-in-hole。peg 挂在软绳上，甩进 45 度的洞，放到 <a href="#exp-3">E3</a> 讲。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-SimOpt/fig3.jpg" alt="SimOpt 流程：RL 用 sim distribution 训出 policy，policy 同时进 Simulation 和 Reality，两边的观测进 D，D 的结果回到 SimOpt 更新分布"></div>
+    <figcaption><b>Fig. 3</b>（作者原图）整个方法就这一张图。论文的编号没有 Fig. 2。</figcaption>
+  </figure>
+  <p class="eyebrow">图里的符号</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>白话</th><th>开抽屉例子里</th></tr>
+      <tr><td><i>ξ</i></td><td>一组模拟器物理参数，抽一次得一组</td><td><span class="ex">26 个数</span>：关节 compliance / damping、夹爪、动作缩放、抽屉 joint、把手摩擦（Table I，26 是我数的）</td></tr>
+      <tr><td><i>p<sub>φ</sub>(ξ)</i>，sim distribution</td><td>这组参数的概率分布，也就是 SimOpt 要学的东西</td><td>一个多维高斯</td></tr>
+      <tr><td><i>φ</i> = (<i>μ</i>, <i>Σ</i>)</td><td>这个高斯的中心和宽度（含参数之间的相关）</td><td>把手摩擦的中心从 <span class="ex">0.001</span> 变到 <span class="ex">2.13</span>（Table I）</td></tr>
+      <tr><td><i>π<sub>θ</sub></i></td><td>RL 训出的 policy，下标是网络权重</td><td>10D 观测 → 7 个关节速度 + 夹爪</td></tr>
+      <tr><td><i>τ<sup>ob</sup><sub>real</sub></i></td><td>真机跑 policy 记下的观测轨迹，只含看得到的量</td><td>3 条 rollout 的关节角 + DART 跟踪的把手位置</td></tr>
+      <tr><td><i>τ<sup>ob</sup><sub>ξ</sub></i></td><td>用这组参数的模拟器跑同一个 policy 得到的观测轨迹</td><td>每组参数一条，同样的 10 维观测</td></tr>
+      <tr><td><i>D</i>(·, ·)</td><td>两条观测轨迹差多远，一个数</td><td>加权 L1 + L2（Eq. 4）</td></tr>
+    </table>
+  </div>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左上 "RL" ← "sim distribution"：</b>RL 拿到当前的参数分布，在上面训 policy。</li>
+    <li><b>中间 policy（<i>π<sub>θ</sub></i>）分两路：</b>同一个 policy 往下进 "Simulation"，往右进 "Reality"。虚线 "Training" 只连 Simulation：真机只执行，不训练。</li>
+    <li><b>底部差距框（<i>D</i>）：</b>两边的观测轨迹汇到一起，比较有多不像。</li>
+    <li><b>右侧虚线回到 "SimOpt"：</b>差距变成每组参数的代价，SimOpt 更新分布，回到左上。这条线就是标题里的 closing the loop。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat media-row">
+      <figure><video src="2026-11-05-SimOpt/web-drawer-iter0.mp4" autoplay muted loop playsinline controls></video><figcaption>SimOpt iteration 0</figcaption></figure>
+      <figure><video src="2026-11-05-SimOpt/web-drawer-iter1.mp4" autoplay muted loop playsinline controls></video><figcaption>SimOpt iteration 1</figcaption></figure>
+    </div>
+    <figcaption><b>项目页</b> <a href="https://www.youtube.com/watch?v=nilcJY5Kdt8">作者视频</a>（截取 123–149 s，3 倍速，无声）：同一个任务更新一次分布前后。看夹爪：左边接近把手时是歪的，右边和把手垂直。左边也把抽屉拉开了一段，所以"之前"不是彻底失败。</figcaption>
+  </figure>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/>保守的初始分布<br/><span class='ex'>Table I 的 μ_init</span>"]:::example --> L["<b>闭环</b><br/>训练 → 真机 → 更新<br/><span class='ex'>1 轮 · 3 条 rollout</span>"]
+  L --> O["<b>Output</b><br/>新分布 + 新 policy<br/><span class='ex'>真机 20 次全开</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>4 个 stage，两层循环</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-SimOpt/alg1.jpg" alt="Algorithm 1 SimOpt framework，共 10 行"></div>
+    <figcaption><b>Algorithm 1</b>（作者原图）一轮 SimOpt 的全部步骤。符号见上表；<i>ε</i> 是每次更新允许分布移动多远，<i>c(ξ)</i> 是这组参数的差距。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>第 1–2 行：</b>人给初始分布和移动步长；差距函数的权重也是人设的（Table IV）。</li>
+    <li><b>第 4–5 行：</b>按当前分布建环境，RL 训 policy → <a href="#stage-1">Stage 1</a>。</li>
+    <li><b>第 6 行：</b>policy 上真机 → <a href="#stage-2">Stage 2</a>。</li>
+    <li><b>第 7–9 行：</b>抽参数、sim 里跑同一个 policy、算差距 → <a href="#stage-3">Stage 3</a>。</li>
+    <li><b>第 10 行：</b>更新分布 → <a href="#stage-4">Stage 4</a>。算法只写一遍，实际在同一批真机 rollout 上把第 7–10 行重复多次（§IV-D）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>初始分布</b><br/><span class='ex'>Table I 的 μ_init</span>"]:::example --> S1
+  S1["<b>1 · RL in sim</b><br/><span class='ex'>PPO 200 iter ≈ 22 min</span>"] --> S2["<b>2 · Real rollouts</b><br/><span class='ex'>3 条 · DART 跟把手</span>"]
+  S2 --> S3["<b>3 · Sim rollouts + D</b><br/><span class='ex'>9600 组 ξ，各算差距</span>"]
+  S3 --> S4["<b>4 · Update distribution</b><br/><span class='ex'>REPS · KL ≤ 1.0</span>"]:::win
+  S4 -->|内循环 ×20| S3
+  S4 -->|外循环：下一轮| S1
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；两层循环的预算和 warm start 见 <a href="#stage-all">闭环本身</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">RL on the current distribution</span>
+      <span class="stage-io">当前参数分布 → 在这个分布上训好的 policy</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>先要有一个在当前分布上能用的 policy，才有"行为"可以和真机比。</li>
+        <li><b>分布变世界：</b>引擎本身是确定的；每抽一组参数就是一个不同的世界，合起来成了随机动力学（§III-A）。</li>
+        <li><b>目标：</b>在所有这些世界上最大化平均 reward（Eq. 1），这一步和普通 domain randomization 相同。</li>
+        <li><b>初始分布要保守：</b>从容易学的窄分布起步，不追求一开始就覆盖真机（§IV）。</li>
+        <li><b>算力：</b>GPU 模拟器 NVIDIA Flex + 并行 PPO，64 块 GPU，每块 150 个 agent（§IV-D）。Table IV 的 PPO 写 400 个 agent，Table III 写 100，和这个数的关系论文没解释。</li>
+        <li><b>Reward 只在 sim 里算：</b>把手和末端的距离、角度对齐、抽屉开度、两指都在把手上（§IV-A）；sim 有全状态，真机不用测。</li>
+        <li><b>网络：</b>§IV-C 的 sim 实验用 2 层、每层 64 单元的全连接网络；真机实验的网络没单独写。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>抽参数</b><br/><span class='ex'>副本各不相同</span>"] --> b["<b>并行 PPO</b><br/><span class='ex'>Flex · 64 GPU</span>"]
+  b --> c["<b>policy</b><br/><span class='ex'>10D → 7 + 1 维动作</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>起点是 Table I 的初始均值：把手摩擦 <span class="ex">0.001</span>、抽屉 joint damping <span class="ex">2.0</span>。训 <span class="ex">200 RL iterations，约 22 分钟</span>（§IV-D2）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Real rollouts, partial observations</span>
+      <span class="stage-io">policy → 几条真机观测轨迹（不训练，不算 reward）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>这是整个循环里唯一碰真机的步骤，最贵，所以次数压到最少。</li>
+        <li><b>只执行：</b>真机不做 RL，也不需要 reward instrumentation（§I）。</li>
+        <li><b>观测：</b>关节角 + DART（在 depth 图上跟踪物体的 3D 铰接模型）给的把手 3D 位置（§IV-D）。</li>
+        <li><b>初始化：</b>DART 还用来设定 sim 里柜子的位置（§IV-D），所以需要物体的 3D 模型。</li>
+        <li><b>部分观测就够：</b>不用估全状态，比如绳子的直径和 compliance（§IV-A）。</li>
+        <li><b>解耦：</b>算差距用的观测可以和 policy 的输入不同（§III-B）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>policy 上真机</b><br/><span class='ex'>Franka，只执行</span>"] --> b["<b>DART 跟踪</b><br/><span class='ex'>depth → 把手 3D</span>"]
+  b --> c["<b>观测轨迹</b><br/><span class='ex'>3 条</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>iteration 0 的 policy 够到把手、开始拉，但夹爪没有保持垂直，一根手指从下方顶把手太用力；手指夹持力有限，于是被撑开（§IV-D2）。记下 <span class="ex">3 条 rollout</span>，这个"歪"就写在关节角和把手轨迹里（我的理解）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Sample parameters, measure the discrepancy</span>
+      <span class="stage-io">当前分布 + policy + 真机轨迹 → 每组参数一个差距</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>要知道哪组参数能让 sim 里的 policy 表现得和真机一样；模拟器不可微，只能采样试。</li>
+        <li><b>采样：</b>从当前分布抽 9600 组参数，每组在 sim 里跑同一个 policy，453 timesteps（Table IV）。</li>
+        <li><b>差距：</b>逐时间步比较观测，加权 L1 + L2（Eq. 4）。</li>
+        <li><b>时间错位：</b>先做 Gaussian filter，标准差 5 timesteps、截断 4（Table IV）。</li>
+        <li><b>闭环不回放：</b>sim 里跑 policy，不是把真实状态写进 sim，也不是开环重放真实动作（App. A）。</li>
+        <li><b>可替换：</b>L1 / L2 不适用时可换别的差距函数，或训一个分辨真假观测的 discriminator（§III-C，未实验）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-SimOpt/eq4.jpg" alt="Eq. 4：差距等于加权 L1 求和加加权 L2 平方求和"></div>
+        <figcaption><b>Eq. 4</b>（作者原图）差距函数。</figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>开抽屉例子里（Table IV）</th></tr>
+          <tr><td><i>o<sub>i,ξ</sub></i>、<i>o<sub>i,real</sub></i></td><td>第 i 步 sim 和真机的观测</td><td>关节角 + 把手位置</td></tr>
+          <tr><td><i>W</i></td><td>每个观测维度有多重要</td><td>关节角 <span class="ex">0.5</span>，抽屉位置 <span class="ex">1.0</span></td></tr>
+          <tr><td><i>w<sub>ℓ1</sub></i>、<i>w<sub>ℓ2</sub></i></td><td>绝对差一项、平方差一项各占多少</td><td><span class="ex">0.5</span>、<span class="ex">1.0</span></td></tr>
+          <tr><td><i>T</i></td><td>轨迹最后一步</td><td>论文没单列；见下方推断</td></tr>
+        </table>
+      </div>
+      <p class="note">我的推断：453 = 3 × 151，也就是每组参数比完 3 条 rollout（Table IV 的 Timesteps per batch 是 151）；9600 = 64 × 150，也就是所有 GPU 上的 agent 各算一组。论文都没这样写。</p>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>抽 9600 组参数</b><br/><span class='ex'>从当前高斯</span>"] --> b["<b>闭环跑 policy</b><br/><span class='ex'>453 timesteps</span>"]
+  b --> c["<b>算差距</b><br/><span class='ex'>每组一个数</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>哪组参数让 sim 里也出现"夹爪歪、手指顶把手"，它的差距就小。闭环的价值在 App. A 的 sim 实验：把柜子的 X 位置从差距里拿掉，闭环 policy 的关节轨迹仍随场景变化，而关节轨迹还在差距里，所以分布仍能更新。原文 "still leads to meaningful simulation parameter updates compared to the open-loop execution"，没给数字。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">KL-constrained distribution update (REPS)</span>
+      <span class="stage-io">参数样本和差距 → 下一轮的参数分布</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>理想目标（Eq. 2）要为每个候选分布都重训 policy 再上真机，太贵。</li>
+        <li><b>近似：</b>固定旧分布上训好的 policy，只在旧分布附近找新分布（Eq. 3）。</li>
+        <li><b>为什么要 KL 约束：</b>policy 只在旧分布上训过，走太远就出了它的 trust region（§III-B）。</li>
+        <li><b>优化器：</b>REPS，基于采样、不用梯度、自带 KL 上限，模拟器当黑盒（§III-C）。论文没展开内部细节；通常是差距小的样本权重大，再拟合新高斯（这句是我的说明）。</li>
+        <li><b>完整协方差：</b>学的是 full covariance，所以能发现参数之间的相关（§IV-D，<a href="#exp-3">E3</a>）。</li>
+        <li><b>省真机：</b>同一批 rollout 上跑多步更新；开抽屉 20 步（Table IV）。</li>
+        <li><b>为什么不用 CMA-ES：</b>项目页 FAQ 说 REPS 相当于加了 KL 约束，更保守；理论上两者都可以。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-SimOpt/eq3.jpg" alt="Eq. 3：最小化新分布下的期望差距，约束新旧分布 KL 散度不超过 epsilon"></div>
+        <figcaption><b>Eq. 3</b>（作者原图）每次更新解的问题。</figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>开抽屉例子里</th></tr>
+          <tr><td><i>φ<sub>i+1</sub></i></td><td>要解的量：下一轮高斯的中心和宽度</td><td>Table I 的 <i>μ<sub>final</sub></i> 是最后的中心</td></tr>
+          <tr><td><i>π<sub>θ,p<sub>φ<sub>i</sub></sub></sub></i></td><td>在旧分布上训好的 policy，这一步不动</td><td>iteration 0 的 policy</td></tr>
+          <tr><td><i>D<sub>KL</sub></i>(新 ‖ 旧)</td><td>新旧分布相差多远</td><td>—</td></tr>
+          <tr><td><i>ε</i></td><td>允许相差的上限</td><td>KL-threshold <span class="ex">1.0</span>（Table IV）</td></tr>
+        </table>
+      </div>
+      <p>读法：找一个新分布，从它抽的模拟器跑旧 policy 时，和真机观测的平均差距最小，但不能离旧分布太远。</p>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>样本 + 差距</b><br/><span class='ex'>9600 对</span>"] --> b["<b>REPS</b><br/><span class='ex'>KL ≤ 1.0</span>"]
+  b --> c["<b>新中心和宽度</b><br/><span class='ex'>重复 20 步</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-SimOpt/tab1.jpg" alt="Table I：开抽屉任务的初始均值、初始方差、最终均值"></div>
+        <figcaption><b>Table I</b>（作者原图）开抽屉：学了哪些参数，各变了多少。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张表</p>
+      <ol class="read">
+        <li><b>三列：</b>初始中心、初始宽度（协方差对角线）、最终中心。最终宽度没列出。</li>
+        <li><b>Robot properties：</b>Joint action scaling 从全部 <span class="ex">0.26</span> 分散到 <span class="ex">0.19…0.35</span>，每个关节的动作幅度不再一样。</li>
+        <li><b>Cabinet properties：</b>把手摩擦 <span class="ex">0.001 → 2.13</span>，抽屉 joint damping <span class="ex">2.0 → 0.81</span>。</li>
+        <li><b>单位：</b>论文没给。compliance 是负数，我猜是对数尺度（推断）。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>更新后的中心见 Table I 的 <i>μ<sub>final</sub></i>，用新分布重训的 policy 上真机时夹爪保持垂直。这些值只是"让行为变像"的参数，不等于测到的真实摩擦（项目页 FAQ，见 <a href="#limits">Limits</a>）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿全程</span>
+      <span class="stage-name">闭环本身：两层循环和它的预算</span>
+      <span class="stage-io">重复 Stage 1–4，直到 policy 在目标上成功</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>内循环：</b>同一批真机 rollout、同一个 policy，反复 Stage 3–4。</li>
+        <li><b>外循环：</b>用新分布重训，再上真机；重复到 policy 在目标场景开始成功为止（§IV-C）。</li>
+        <li><b>Warm start：</b>sim 实验里用上一轮的权重初始化 policy，第一轮之后 PPO 从 200 降到 10 iterations（§IV-C）。真机抽屉实验仍写每轮 200 iterations（§IV-D2）。</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>每轮预算</th><th>开抽屉（Franka）</th><th>Swing-peg（Yumi）</th></tr>
+          <tr><td>RL</td><td><span class="ex">200 iterations ≈ 22 min</span></td><td>100 iterations ≈ 7 min</td></tr>
+          <tr><td>真机 rollout</td><td><span class="ex">3</span></td><td>3</td></tr>
+          <tr><td>分布更新步数</td><td><span class="ex">20</span></td><td>3</td></tr>
+          <tr><td>每步采样</td><td><span class="ex">9600</span></td><td>9600</td></tr>
+          <tr><td>成功所需 SimOpt 次数</td><td><span class="ex">1</span></td><td>2</td></tr>
+        </table>
+      </div>
+      <p class="note">来源：§IV-D、Fig. 8、Table III、Table IV。表是我按文字整理的。REPS 更新本身耗时论文没报告。</p>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>真机开抽屉只转了一圈：训练 → 3 条 rollout → 20 步更新 → 重训 → 评测 20 次。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>手调分布太窄或太宽都不行</td><td>Problem、<a href="#exp-1">E1</a>：σ 2 cm 能开，10 cm 拉不开</td></tr>
+        <tr><td>模拟器参数分布是学习对象</td><td>Stage 1、Stage 4：Table I 的 26 个参数</td></tr>
+        <tr><td>保守初始分布</td><td>Stage 1、<a href="#exp-2">E2</a>：Fig. 6 最左的高斯</td></tr>
+        <tr><td>真机只要部分观测，reward 只在 sim</td><td>Stage 1、Stage 2：关节角 + 把手位置</td></tr>
+        <tr><td>差距函数 D</td><td>Stage 3：Eq. 4 和它的权重</td></tr>
+        <tr><td>闭环 rollout 优于开环回放</td><td>Stage 3：柜子 X 位置被藏起来时</td></tr>
+        <tr><td>KL 约束 + REPS，模拟器当黑盒</td><td>Stage 4：Eq. 3</td></tr>
+        <tr><td>同批 rollout 多步更新、warm start</td><td>闭环本身：20 步、200 → 10</td></tr>
+        <tr><td>软体和协方差结构</td><td>开抽屉演示不了，换到第二个任务：<a href="#exp-3">E3</a></td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>宽分布学不会的，保守分布加几次更新学得会；真机只用了 3 到 6 条 rollout</h2>
+  <p>顺序同 §IV 的四个问题：<a href="#exp-1">E1</a> 把分布调宽行不行 → <a href="#exp-2">E2</a> SimOpt 能否把分布推到目标 → <a href="#exp-3">E3</a> 软绳任务上真机 → <a href="#exp-4">E4</a> 开抽屉上真机。比的是任务能否完成和要多少真机次数，不比耗时；真机上没有 DR 对照。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>把随机化调宽，能不能一劳永逸？<span class="exp-src">§IV-C</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-SimOpt/fig5.jpg" alt="Fig. 5：三种方差下 reward 随 iteration 变化，虚线是开抽屉所需 reward"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）先看 200 iteration 处：只有紫线（σ² = 0.0007）在虚线 "Opening drawer" 上方。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-SimOpt/fig4.jpg" alt="Fig. 4：并行 Yumi 场景，peg、绳子和 peg box 尺寸差异极大"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）swing-peg 的宽分布：peg、绳子和 peg box 的尺寸差得很远。论文说 peg 比洞大或绳子太短的实例无解。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>分布越宽，policy 越保守。</b>只有 σ² = 7e-4（论文称 2 cm）能开抽屉；σ² = 0.001 和 0.01（10 cm）够到把手但拉不开。读图：最后约 −60 对 −67，虚线约 −63。三个轴都随机时，只有 2 cm 能收敛，否则连把手都够不到。</dd></div>
+      <div><dt>在故事里</dt><dd>回答问题 1、2：调大范围这条路走不通，所以需要 SimOpt。Fig. 4 补上另一半：宽分布还会造出无解的场景。</dd></div>
+      <div><dt>指标</dt><dd>训练 reward 曲线。差距看着小，是因为 reward 主要来自 reaching（§IV-C）。虚线的含义和阴影的定义论文没写，seed 数也没写。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>sim，Franka 在柜子前，只随机柜子的 X 坐标，其余参数不变</li><li>2 层 64 单元网络，PPO 200 iterations</li><li>σ² = 7e-4 按公式是 2.6 cm，文中写 2 cm</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>保守分布能被推到偏了 15 / 22 cm 的柜子吗？<span class="exp-src">§IV-C</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-SimOpt/fig6.jpg" alt="Fig. 6：柜子位置的高斯从左向右移动并变窄，共五个"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）五个高斯从左到右是更新过程。黑虚线是起点约 −0.05，蓝虚线是目标约 0.17，差约 22 cm（读图）。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-SimOpt/fig7.jpg" alt="Fig. 7：四格 sim 画面，抽屉从关闭到拉开"></div>
+      <figcaption><b>Fig. 7</b>（作者原图）目标场景里各轮 policy 的表现：前两格抽屉没开，第三格开了一部分，第四格拉开。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><video src="2026-11-05-SimOpt/web-dist-update.mp4" autoplay muted loop playsinline controls></video></div>
+      <figcaption><b>项目页</b> <a href="https://www.youtube.com/watch?v=nilcJY5Kdt8">作者视频</a>（截取 51–77 s，无声）：Fig. 6 和 Fig. 7 合在一起。看高亮的高斯移动，同时看左上小窗 "Target scene performance" 里 policy 的变化。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>窄分布可以走到宽分布够不着的地方。</b>偏 15 cm 用 3 轮，偏 22 cm 用 5 轮。朴素 DR 要 σ ≥ 10 cm 才覆盖得到，而 E1 说 10 cm 学不会。分布边移动边收窄（Fig. 6）。</dd></div>
+      <div><dt>在故事里</dt><dd>回答问题 2、3：真机之前，先在能看到答案的 sim 里证明分布确实往对的方向走。读图：最后的中心约 0.15，没到 0.17，policy 也成功了，说明不需要完全对上（我的推断）。</dd></div>
+      <div><dt>指标</dt><dd>目标场景里 policy 能否开始打开抽屉。定性判断，没有成功率。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>同一 sim 里柜子偏移的场景充当"真机"，提供 rollout</li><li>对照是 E1 的 DR 曲线，不是同一设定下的直接比较</li><li>Fig. 7 caption 说第四轮解决，文字说 22 cm 要 5 轮；论文没说 Fig. 7 是哪个偏移</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>软绳这种难建模的动力学能迁到真机吗？<span class="exp-src">§IV-D1</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-SimOpt/fig8.jpg" alt="Fig. 8：左三格 Yumi 甩 peg 的三轮结果，右两格 Franka 开抽屉前后"></div>
+      <figcaption><b>Fig. 8</b>（作者原图）先看左三格：peg 从洞外到入洞。右两格属于 <a href="#exp-4">E4</a>。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-05-SimOpt/web-peg-iter0.mp4" autoplay muted loop playsinline controls></video><figcaption>iteration 0</figcaption></figure>
+        <figure><video src="2026-11-05-SimOpt/web-peg-iter1.mp4" autoplay muted loop playsinline controls></video><figcaption>iteration 1</figcaption></figure>
+        <figure><video src="2026-11-05-SimOpt/web-peg-iter2.mp4" autoplay muted loop playsinline controls></video><figcaption>iteration 2</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://www.youtube.com/watch?v=nilcJY5Kdt8">作者视频</a>（截取 86–114 s，无声）：Fig. 8 左三格的动态版。看 peg 落点和洞的距离。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-SimOpt/fig9.jpg" alt="Fig. 9：四张协方差热图，从只有对角线到出现非对角结构"></div>
+      <figcaption><b>Fig. 9</b>（作者原图）从左到右：初始协方差，然后 3 次更新。初始只有对角线，之后左上块出现结构。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-SimOpt/tab2.jpg" alt="Table II：swing-peg 任务的参数初值和终值"></div>
+      <figcaption><b>Table II</b>（作者原图）先看 Rope properties 的两个 damping 和 Joint action scaling。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>2 次 SimOpt 后，20 次试验 90% 入洞。</b>iteration 0 错过洞；iteration 1 很近但角度不对；iteration 2 入洞。Rope bending damping <span class="ex">0.01 → 0.49</span>，Joint action scaling <span class="ex">0.5 → 0.25…0.44</span>。Fig. 9 左上块显示 joint compliance 和 damping 相关：compliance 调过头可以用 damping 补偿。</dd></div>
+      <div><dt>在故事里</dt><dd>回答问题 3、4：换机器人，换成软体。真机只用 6 条 rollout（2 轮 × 3，我算的，不含 20 次评测）。</dd></div>
+      <div><dt>指标</dt><dd>peg 进洞，20 次试验中的比例。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>7-DoF ABB Yumi，peg 挂软绳，洞成 45 度；观测 7 个关节角 + peg 3D 位置</li><li>每轮 100 RL iterations ≈ 7 min，3 条真机 rollout，3 步更新 × 9600 样本</li><li>没有 DR 或 EPOpt 的真机对照，iteration 0、1 的成功率没报告</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>接触丰富的铰接任务能迁到真机吗？<span class="exp-src">§IV-D2</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-SimOpt/fig8-drawer.jpg" alt="Fig. 8 右两格：左边夹爪倾斜顶住把手，右边夹爪垂直抓住把手"></div>
+      <figcaption><b>Fig. 8 右</b>（作者原图裁切）左格是更新前，夹爪歪着，手指被顶开；右格是更新一次后，夹爪和把手垂直。参数变化见 <a href="#stage-4">Table I</a>，动态版见 <a href="#l1">Level 1 的视频</a>。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>1 次 SimOpt 后，20 次试验全部打开</b>，全程夹爪垂直于把手。更新前能够到把手、开始拉，但一指顶把手，手指被撑开。</dd></div>
+      <div><dt>在故事里</dt><dd>回答问题 3、4，也是最直接的证据：<span class="ex">3 条真机 rollout</span> 改变了真机行为（3 是我按"1 轮 × 3"算的，不含 20 次评测）。</dd></div>
+      <div><dt>指标</dt><dd>原文 "can open the drawer at all times keeping the gripper orthogonal to the handle"，20 次试验。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>7-DoF Franka Panda，10D 观测，7 个关节速度 + 夹爪指令</li><li>每轮 200 RL iterations ≈ 22 min，3 条真机 rollout，20 步更新 × 9600 样本</li><li>iteration 0 没报成功率，只有定性描述；视频里它也把抽屉拉开了一段</li><li>20 次试验的初始条件是否变化，论文没说</li></ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>作者（§V）：</b>只学单峰高斯；多峰分布和更复杂的生成模型留到以后。</li>
+    <li><b>作者（§V）：</b>还没接入 vision 和 touch，无论作为 policy 观测还是随机化因素。</li>
+    <li><b>作者（项目页 FAQ）：</b>学到的 friction、damping 不保证物理正确，"our algorithm can learn to cheat"，换任务可能失效；建议加外部先验。</li>
+    <li><b>作者（项目页 FAQ）：</b>初始协方差仍要人设，只是"保守"比"够宽"容易；协方差可能塌缩，要加一个下限。</li>
+    <li><b>论文没做：</b>真机上没有和 DR、EPOpt 的对照；更新前的真机成功率没有报告。</li>
+    <li><b>我的推断：</b>每轮都要把半成品 policy 放上真机，还要能复位场景、跟踪物体（DART 要 3D 模型），论文没讨论这部分的安全和成本。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For r2s-lite</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>mass / friction 是假设值：</b>SimOpt 正是调这类参数的办法（Table I），但它要当前 policy 的新 rollout。r2s-lite 只有一条录像、开环回放，而 App. A 的 sim 实验里开环不如闭环，所以我们能做的更接近 [30] 式的拟合（推断）；拟合出的值只能标 fitted，不能标 measured。</li>
+    <li><b>没有 sim-to-real 证据：</b>这篇给了最小协议：sim 里训 → 真机 3 条 → 更新 → 20 次评测报成功率。DROID 录像给不了新 rollout，要在自己能操作的真机上做，比如 SO-101 抽屉（推断）。</li>
+    <li><b>DROID 相机偏约 20 cm：</b>SimOpt 假设观测可信（DART 跟踪）。把错相机下的轨迹喂给差距函数，优化会用摩擦之类的参数去解释相机误差，和 FAQ 说的 cheat 同一机理（推断）。先修相机，再调物理。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Sim-robot-learning/2026-11-05-SimOpt.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>

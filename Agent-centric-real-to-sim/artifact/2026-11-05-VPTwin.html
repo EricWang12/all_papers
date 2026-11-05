@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>VPTwin</title>
+<meta name="description" content="GPT-6 写近似 Isaac Sim twin，10 条随机 rollout 当 video predictor 的上下文；planner 要 sim 和预测视频都通过才上真机。">
+<meta name="paper:title" content="VPTwin: Real-Sim-Real Video Prediction for Robotic Manipulation Planning">
+<meta name="paper:source" content="https://arxiv.org/abs/2609.33104">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2609.33104v1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-05</p>
+  <h1>VPTwin</h1>
+  <p class="full-title">VPTwin: Real-Sim-Real Video Prediction for Robotic Manipulation Planning</p>
+  <p class="meta">Zhenghao Xiao, Minting Pan, Nantian He, Dongzhan Zhou, Yunbo Wang† · CMU, Shanghai AI Lab, SJTU · arXiv 2609.33104v1，2026-09-27</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2609.33104">arXiv</a><a href="https://arxiv.org/pdf/2609.33104v1">PDF</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：VLM 从真实 demo 写出可执行的 Isaac Sim twin，再用 twin 锚定 video prediction；第二相关 Robotic harness（VLM 提案、VLM 判决的 planner）。论文没有项目页，代码待公开（App G）。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>只看历史帧和动作的 video predictor 长程会丢手臂、吞物体；只在 sim 里判的 planner 又被接触和摩擦的 sim-real gap 骗过。</dd></div>
+    <div><dt>Idea</dt><dd>GPT-6 Astra 写一个近似 Isaac Sim twin，同一段动作跑 10 组随机物理，把这 10 段 sim 视频当 predictor 的上下文；planner 要 sim 和预测视频都通过才上真机。</dd></div>
+    <div><dt>Result</dt><dd>full-episode PSNR 25.64 → 28.96 dB（VLM-authored，Table 1）；真机抽屉 5/5 vs SIMPACT 2/5，Grasp Cup 3/7 vs 2/7，critic precision 1.00 vs 0.67 / 0.33（Table 2）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>只看帧和动作的预测器会丢手臂吞物体；只看 sim 的判决会放过真机上抓不到的动作</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Open and Close Drawer</b>（六个任务之一，两个真机任务之一）：白色抽屉固定在桌面中心 slot，前面一个黄色把手；双臂 ALOHA（AgileX Piper），一个固定第三视角相机。输入 <span class="ex">真实首帧 I₀ + 14-D 关节动作</span>，视频 <span class="ex">128×128，15 Hz</span> → 想要：(1) 候选动作下"真实画面会变成什么样"的预测视频；(2) 一条把抽屉拉开再推回的 14-D 轨迹，通不过检查就不上真机。<br>抽屉上 VPTwin 没拒绝过任何 plan，所以"拒绝"这条路由同一张桌上的 <span class="ex">Grasp Cup</span> 补上。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>抽屉 I₀</span><br/><span class='ex'>+ 14-D 动作</span>"]:::example
+  IN --> A1["<b>Action-only 预测</b><br/>IWS：历史帧 + 动作"]
+  A1 --> AX["抽屉右半消失<br/><span class='ex'>PSNR 23.26 dB</span>"]:::gap
+  IN --> B1["<b>Sim-only planner</b><br/>SIMPACT：只看 seed-0"]
+  B1 --> BX["没抓到把手，sim 却放行<br/><span class='ex'>2/5，precision 0.67</span>"]:::gap
+  IN --> C1["<b>Open-loop VLA</b><br/>π0.5 直接出动作"]
+  C1 --> CX["全部失败<br/><span class='ex'>0/5</span>"]:::gap
+  IN --> D1["<b>Success-only 预测</b><br/>只见过成功演示"]
+  D1 --> DX["失败动作下抽屉消失<br/><span class='ex'>PSNR 20.25 dB</span>"]:::gap
+  </pre></div>
+  <p class="note">数字：23.26 是 VLM-authored 抽屉家族的均值（Table 14）；2/5、0/5、0.67 来自 Table 2；20.25 是失败 episode 从首帧起的全程分（Table 3）。"坏在哪"：第 1、4 条是 Fig. 3、Fig. 5 的标注；第 2 条的现象来自 Fig. 4 的一次 trial，"放行"来自 §4.3 的 false acceptance；第 3 条论文只报告结果，没分析原因。</p>
+  <p class="crux"><b>根本问题：</b>历史帧和动作解不出摩擦、质量这类未观测量；sim 有物理却有 gap；演示数据里又没有失败。　<b>这篇的切入点：</b>不去把 twin 估准，只要一个近似 twin，把它在同一动作下的多条 rollout 当 predictor 的上下文，再让 sim 和预测视频同时把关。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Action-conditioned video prediction</b><br><span class="muted">UniPi、AVDC、iVideoGPT、IRASim、Ctrl-World、DreamDojo、IWS</span></td><td>把视频预测当视觉 world model</td><td>从演示数据学"动作 → 未来帧"</td><td>历史帧和动作解不出未观测物理 → 本文再喂 sim rollouts（本文就属于这一族，架构沿用 IWS）</td></tr>
+      <tr><td><b>Planning inside digital twins</b><br><span class="muted">Prompting-with-the-Future、SIMPACT</span></td><td>为操作任务选轨迹或符号计划</td><td>全程在 twin 里优化和判断</td><td>判决只看 sim，gap 漏过去 → 本文加一道真实域预测视频的判决</td></tr>
+      <tr><td><b>Sim-guided video</b><br><span class="muted">ReBot、RoboTransfer、CRAFT、AnchorDream、RealWonder</span></td><td>可控地合成机器人视频</td><td>sim 回放，或用 sim 的几何 / 运动先验引导 diffusion</td><td>不用"同一动作的多条随机 rollout" → 本文把它们当多假设物理先验</td></tr>
+      <tr><td><b>Residual dynamics</b><br><span class="muted">PGRD</span></td><td>sim 和真实的动力学差异</td><td>在模拟轨迹上学残差修正</td><td>修正 sim 轨迹本身 → 本文不改 sim，由 predictor 在 rollout 集合和真实帧之间协调</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Real-to-sim 重建</b><br><span class="muted">URDFormer、Holodeck、Articulate-Anything、RoboSnap、SceneSmith；coding agent：Articraft、Neoworld-pro</span></td><td>视觉 → 可交互的仿真资产和场景</td><td>重建 rigid / soft / articulated 资产，LLM agent 写 URDF</td><td>追几何和运动学保真、物理给单点估计 → 本文让 VLM 给参数分布，twin 只为产 rollout 服务</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §1、§2 Related Work、§4.1；未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>近似 twin 产出 sim 视频 → predictor 把它变成真实域未来 → sim 和预测视频一起否决动作</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-VPTwin/fig1.jpg" alt="Fig. 1：A Real-to-Sim，B VPTwin-Core，C 分阶段规划三行"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）三行就是全文：A 造 twin 和 rollout 库，B 训练并运行 predictor，C 用它规划。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>A 左 "Real Demonstrations / Recorded 14-D Actions"：</b>真实演示和录下的双臂关节动作。抽屉例子：一条开合抽屉的 teleop 录像。</li>
+    <li><b>A 中 "VLM Authoring"：</b>VLM 写三样东西：Assets、Physical Parameter Ranges、Task Success Criteria。注意是 ranges，不是单值。</li>
+    <li><b>A 中 "Isaac Sim Rollout"：</b>用录下的动作跑 twin，VLM 看结果，失败的 rollout 被过滤掉（Stage 2）。</li>
+    <li><b>A 右 "Randomized Context Bank"：</b>si(0)…si(9) 是同一动作、不同位姿 / 质量 / 摩擦的 10 段 sim 视频。论文把这种视频叫 <i>dest</i>。红框 si(2) 看起来失败了，也保留："Seeds 1–9 are kept"。</li>
+    <li><b>B：</b>观测历史 + 14-D 动作 + 时间对齐的 rollout 库 → VPTwin-Core → 自回归地出真实域未来帧（Stage 4）。</li>
+    <li><b>C：</b>PROPOSE → ACTION-IK → Isaac Rollout → VPTwin-Core Future → VLM JUDGE；没过走红线 REFINE（最多 3 轮），过了走绿线进下一 substage，全部过了才上真机（Stage 5）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>抽屉 demo + I₀</span>"] --> M["<b>Twin ×10 → VPTwin-Core</b><br/><span class='ex'>PSNR 23.26 → 27.48 dB</span>"]:::win
+  M --> O["<b>sim 和视频都过才执行</b><br/><span class='ex'>真机 5/5</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage：1–4 离线准备，5 在线规划</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-VPTwin/fig8.jpg" alt="Fig. 8：VLM 场景编写、回放和成功过滤、随机 rollout 和配对数据"></div>
+    <figcaption><b>Fig. 8</b>（作者原图，App B.3）Fig. 1A 的放大版，对应 Stage 1–2。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>A "VLM Scene Authoring"：</b>Real Demonstrations 和 Table Size（20 cm slots）进 Parse（Objects + slots），再进 Author（Assets + parameters），出 Overlay USDA 和 Parameter ranges（"VLM estimates ±"）。</li>
+    <li><b>B "Replay and Success filtering"：</b>Recorded 14-D actions 在 seed 0 上跑，"VLM episode check" 按文字 Success criteria 判，分成 Failed Set 和 277 retained episodes。</li>
+    <li><b>C "Randomized Rollouts and Paired Training Data"：</b>retained 的 episode 跑 seed 0 + seed 1–9，对齐到 15 FPS、128×128，配成 Real RGB + sim RGB + 14-D actions。右下角灰字：Uncover / place-cube 不在通过集里。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Twin authoring</b><br/><span class='ex'>抽屉 USD，travel 15.5 cm</span>"] --> S2["<b>2 · Filter + rollouts</b><br/><span class='ex'>86 个抽屉 episode × 10</span>"]
+  S2 --> S3["<b>3 · Failure synthesis</b><br/><span class='ex'>43 never-open</span><br/><span class='ex'>43 fail-close</span>"]
+  S2 --> S4["<b>4 · VPTwin-Core</b><br/><span class='ex'>PSNR 23.26 → 27.48</span>"]
+  S3 --> S4
+  S4 --> S5["<b>5 · Staged planner</b><br/><span class='ex'>6 substages，真机 5/5</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。twin 到底和真实 episode 对上了什么、比只做 video prediction 多给了什么，见 <a href="#stage-all">横跨 stage 的账</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Twin authoring</span>
+      <span class="stage-io">真实 stills + 桌面尺寸 → USD 资产 + 参数范围 + 文字 success</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>手写每个任务的 twin 太贵；未观测物理量又估不准，所以写范围，不写点估计（§3.1）。</li>
+        <li><b>How：</b>GPT-6 Astra 调两次（App B.3）：Parse 输出 <code>scene_parse.json</code>，Author 写 Python，本地执行出 USD。</li>
+        <li><b>输入：</b>0% 布局图 + 20/40/60/70/80/100% 的第三视角 stills；prompt 给出桌面尺寸和 5 点 20 cm 网格。</li>
+        <li><b>Parse 的字段（App G）：</b>每个物体的 <code>parts.motion</code>（stays_put、translates_in_plane、lifts_off…）、<code>softbody</code>（none、thin_shell、folded_pack）、<code>relations</code>（on、covered_by、inside…），每张图的 <code>visible</code> 和 <code>present</code>。</li>
+        <li><b>粒度：</b>一次 prompt 收 24 张布局图（Image 01..24）。论文说 "examines 24 initial-layout variants"，VLM 集用其中 14 个（5 wipe、5 绿杯 grasp、3 pickup、1 drawer）。所以资产按物体共用，不是每条 episode 各写一个（我的推断；摘要写的是 "from a real demonstration episode"）。</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>twin 的内容</th><th>谁写</th><th>来源</th></tr>
+          <tr><td>物体、遮挡、部件运动、软体类型</td><td>GPT-6 Astra（Parse）</td><td>§3.1、App G</td></tr>
+          <tr><td>初始位置：5 个 slot 里选 1 个，host 换算成米</td><td>GPT-6 Astra</td><td>App B.3</td></tr>
+          <tr><td>几何、collision、质量、摩擦、articulation、采样范围</td><td>GPT-6 Astra（Author）</td><td>App B.3、Table 7</td></tr>
+          <tr><td>抽屉改成 fixed-base + prismatic joint；cloth 和 towel 改成 PhysX surface deformable</td><td>coding agent（Cursor Grok 4.6）</td><td>§3.1、App B.3</td></tr>
+          <tr><td>任务文字和 success 段落，每个 task family 一份</td><td>GPT-6 Astra</td><td>App B.3、Table 9</td></tr>
+          <tr><td>桌面 mesh、相机标定、机器人几何</td><td>人给定，VLM 版同样需要</td><td>App B.1</td></tr>
+          <tr><td>回放用的 14-D 动作</td><td>录制的，不改</td><td>§3.1</td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>对照组 measured-catalog：</b>548 条 episode、6 个 family，物体几何由人核对；但质量、摩擦和范围由 coding agent 给，"not physically measured"（App B.1）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-VPTwin/fig7.jpg" alt="Fig. 7：真机平台照片和桌面俯视尺寸图"></div>
+        <figcaption><b>Fig. 7</b>（作者原图，App A）A 真机台面；B 俯视：120 × 60 cm 桌面，5 个 slot 为 center 和四向 20 cm。VLM 只在这 5 个点里选；物体压住红点就算到位，放置误差未测（App A.2）。</figcaption>
+      </figure>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-VPTwin/tab7-drawer.jpg" alt="Table 7 抽屉部分：VLM 给的尺寸、travel、effort、质量、摩擦及范围"></div>
+        <figcaption><b>Table 7</b>（作者原图，只截抽屉段）中列 Suggested，右列 Suggested range。尺寸和 travel 是视觉估计，effort、质量、摩擦是 VLM 的猜测范围。</figcaption>
+      </figure>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>Stills + 网格</b><br/><span class='ex'>0…100%，5 个 slot</span>"] --> b["<b>Parse</b><br/><span class='ex'>抽屉 + 把手，slot = center</span>"]
+  b --> c["<b>Author</b><br/><span class='ex'>Python → USD + 范围</span>"]
+  c --> d["<b>Coding agent</b><br/><span class='ex'>fixed-base + prismatic</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>VLM 写出 <span class="ex">20 × 20 × 7.3 cm，cavity 6.0 cm，travel 15.5 cm</span>（人核对的版本是 20 × 20 × 7 cm，travel 15 cm，Table 5）；物理给范围：<span class="ex">static effort 1.0–3.5 N，质量 200–700 g，friction 0.45–1.05</span>（Table 7）。抽屉占 center slot。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Success filter + randomized rollouts</span>
+      <span class="stage-io">资产 + 录制动作 → 277 条 episode，各配 10 段对齐的 sim 视频</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>只让演得通的 twin 当 prior；又不让 predictor 绑死一个物理设定。</li>
+        <li><b>Filter：</b>录制动作在 seed 0 上回放，VLM 看 seed-0 的 0/50/100% stills，对照 Table 9 的文字判定；grasp 再看 60/70/75/80%（App B.3）。</li>
+        <li><b>留下 277 条：</b>wipe 78、grasp 32、pickup 81、drawer 86（由 Table 8 三列相加）。这不是通过率：Remove Cloth、Place Cube 整个 family 不在 VLM 集里，布局也只用 14 / 24，论文没报告 filter 的通过率。</li>
+        <li><b>Randomize：</b>seed 1–9 动作不变，物体沿一个方向平移 1–5 mm，参数在 Table 7 范围内均匀采样，部分几何尺寸也变（App B.2）；桌、相机、灯、机器人不变。</li>
+        <li><b>对齐：</b>15 Hz、128×128，真实 RGB、10 段 sim RGB、14-D 动作用同一时间索引（Fig. 8C、App D.3）。</li>
+        <li><b>保留"假失败"：</b>seed 1–9 就算看起来失败了也留着（Fig. 1A 红字），这是 E5 实验的来源。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>Seed 0 回放</b><br/><span class='ex'>录制的 14-D 动作</span>"] --> b["<b>VLM episode check</b><br/><span class='ex'>0 / 50 / 100% stills</span>"]
+  b -->|fail| x["<b>Failed Set</b>"]:::gap
+  b -->|pass| c["<b>Seeds 1–9</b><br/><span class='ex'>friction、质量、1–5 mm</span>"]
+  c --> d["<b>配对数据</b><br/><span class='ex'>real + 10 段 sim + 动作</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>VLM 按 "<span class="ex">visible opening … returns the drawer front to its closed position</span>"（Table 9）判 seed 0 的三张图；<span class="ex">86</span> 条抽屉 episode 留下（70 / 8 / 8 分 train / val / test，Table 8），每条再跑 9 组抽屉参数。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Counterfactual failure synthesis</span>
+      <span class="stage-io">成功 episode → 扰动动作 → 118 条 sim 失败 episode</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>真实数据集里没有失败视频（App C），predictor 容易把有毛病的动作也画成成功。</li>
+        <li><b>数量：</b>118 = 32 grasp + 43 drawer never-open + 43 drawer fail-close（App C）。</li>
+        <li><b>从哪改：</b>grasp 和 never-open 从第一次开爪前 5 帧开始；fail-close 从松手后 5 帧开始。</li>
+        <li><b>怎么改：</b>笛卡尔位移方向有偏，幅度乘 U(0.75, 1.25)，再叠 U(2, 6) cm 的 wandering；夹爪指令反转 / 保持开 / 保持闭 / 周期切换，概率 0.25 / 0.20 / 0.20 / 0.35；最后 clip 到 URDF 限位。</li>
+        <li><b>贴标签看物体轨迹，不看扰动大小：</b>grasp 成功 = 抬起 ≥ 5 cm、回桌面、直立、末 8 帧稳定；drawer 成功 = 拉开 ≥ 8 cm 再合到 3 cm 内。这里是数值判定，不是 VLM。</li>
+        <li><b>监督：</b>seed-0 的 sim 画面当伪观测目标；seed 1–10 当 conditioning，seed 0 不进条件（App C）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>成功动作</b><br/><span class='ex'>开合抽屉</span>"] --> b["<b>扰动关键阶段</b><br/><span class='ex'>夹爪 toggle、偏移</span>"]
+  b --> c["<b>Isaac 回放</b><br/><span class='ex'>seed 0 + seeds 1–10</span>"]
+  c --> d["<b>按物体轨迹贴标</b><br/><span class='ex'>开度 &lt; 8 cm = never-open</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>86 条抽屉 episode 各派生一条失败：<span class="ex">43 条 never-open</span>（抽屉没拉开），<span class="ex">43 条 fail-close</span>（拉开了但没合上）。训练时目标画面是 sim 渲染，所以 Fig. 5 的 GT 行是 Simulation。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">VPTwin-Core</span>
+      <span class="stage-io">真实历史帧 + 动作窗口 + 10 段 sim 窗口 → 下一帧真实域预测</span>
+    </summary>
+    <div class="stage-body">
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-VPTwin/fig2.jpg" alt="Fig. 2：Stage 1 重建、Stage 2 带 sim 条件的预测、自回归推理"></div>
+        <figcaption><b>Fig. 2</b>（作者原图）两阶段训练和逐帧自回归推理。</figcaption>
+      </figure>
+      <p class="eyebrow">图里的符号</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>在抽屉例子里</th></tr>
+          <tr><td>r<sub>i,t</sub></td><td>第 i 条 episode 在 t 时刻的相机帧</td><td>128×128 的抽屉画面</td></tr>
+          <tr><td>A<sub>i,t</sub></td><td>从 t 起一段时间窗的 14-D 关节动作</td><td>10 步双臂动作</td></tr>
+          <tr><td>H</td><td>时间窗长度</td><td>10 帧</td></tr>
+          <tr><td>s<sub>i</sub><sup>(k)</sup>[t:t+H]</td><td>第 k 条 sim rollout（dest）的同一时间窗</td><td>第 k 组抽屉参数下的 10 帧</td></tr>
+          <tr><td>E，D</td><td>逐帧 encoder；把 latent 还原成图的 consistency decoder</td><td>训练完第一阶段就冻结</td></tr>
+          <tr><td>B<sub>i,t</sub><sup>(k)</sup></td><td>这段 sim 窗口经 E 编码后的 latent</td><td>10 段，每条 rollout 一段</td></tr>
+          <tr><td>C<sub>i,t</sub></td><td>10 段 latent 按 channel 拼成的 sim 条件</td><td>成功 episode 用 seed 0–9，失败用 seed 1–10</td></tr>
+          <tr><td>Z<sub>i,t</sub><sup>h</sup></td><td>真实窗口的加噪 latent：前 H−1 格是轻噪历史，末格待预测</td><td>前 9 帧 + 1 个待预测位</td></tr>
+          <tr><td>σ<sub>h</sub>，σ<sub>ℓ</sub></td><td>末格的输入噪声和目标噪声</td><td>推理时 999 → 0 一步</td></tr>
+          <tr><td>z<sub>i,t</sub><sup>ℓ</sup>，ẑ<sub>i,t</sub><sup>ℓ</sup></td><td>窗口末帧的目标 latent 和预测 latent</td><td>第 10 帧</td></tr>
+          <tr><td>F<sub>ψ</sub></td><td>唯一要训练的 3D U-Net 动力学模型</td><td>只更新它</td></tr>
+          <tr><td>L<sub>dyn</sub></td><td>预测 latent 和目标 latent 的均方误差</td><td>实际只监督末帧（App D.4）</td></tr>
+        </table>
+      </div>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左上 "Stage 1: observation reconstruction"：</b>先训练 encoder 和 decoder（E、D）把一帧重建回来，然后冻结。失败训练时也重建 seed-0 sim 帧（App D.2）。</li>
+        <li><b>中上 "Simulation conditions"：</b>四种情况。成功：目标是真实 RGB，条件 seed 0–9。失败：目标是 seed-0 RGB，条件 seed 1–10。Baseline：没有 sim 条件（C）。VPTwin：有。</li>
+        <li><b>下左 "Observation" 和 "Time-aligned dest windows"：</b>真实历史和 sim 窗口都过同一个 E；sim 窗口拼成 sim 条件（C），再和真实历史的加噪 latent（Z）在 channel 上拼成一个输入。</li>
+        <li><b>下中 "init_conv" 和 "3D U-Net"：</b>sim 只在第一层卷积进入；动作窗口（A）通过 "Action FiLM" 调制中间特征。</li>
+        <li><b>下右：</b>预测的末帧 latent 由 D 解码成画面；损失 L<sub>dyn</sub> 只更新 U-Net。</li>
+        <li><b>右上 "Autoregressive inference"：</b>"One frame per step, then repeat"：每步出一帧，窗口滑动。</li>
+      </ol>
+      <ul class="tight">
+        <li><b>关键：</b>sim 只是输入条件，不是目标。成功 episode 的目标仍是真实帧，所以模型学的是"看着 sim 猜真实"。</li>
+        <li><b>Baseline 的公平性：</b>Table 1 写 IWS，Table 14 写 "action-only VPTwin"：同优化器、batch、步数、冻结的 autoencoder、split、动作窗，只去掉 C（App D.1）。</li>
+        <li><b>训练：</b>AdamW，lr 8×10⁻⁵，batch 1，每阶段 1,000,005 步，FP32；每个 task family 单独训一个模型，5 个训练 seed（App D.1）。</li>
+        <li><b>推理：</b>新一格标准高斯，F<sub>ψ</sub> 一步去噪（999 → 0），D 三步解码（999 → 666 → 333 → 0）（App D.5）。</li>
+      </ul>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>只给 I₀ 和动作时，抽屉右半消失（Fig. 3 "Right Side Lost"）；加上 10 段 sim 视频，抽屉家族 PSNR <span class="ex">23.26 → 27.48 dB</span>（VLM-authored，Table 14）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Staged Real-Sim-Real planner</span>
+      <span class="stage-io">I₀ + 训练集演示 → 一条完整 14-D 轨迹，或拒绝执行</span>
+    </summary>
+    <div class="stage-body">
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-VPTwin/fig1-c.jpg" alt="Fig. 1C：PROPOSE、ACTION-IK、Isaac Rollout、VPTwin-Core Future、VLM JUDGE 循环"></div>
+        <figcaption><b>Fig. 1C</b>（作者原图，截出）红线 REFINE 回到 PROPOSE，绿线把已提交的预测帧交给下一 substage，右边才是真机。</figcaption>
+      </figure>
+      <ul class="tight">
+        <li><b>Why：</b>整段技能一次搜索会累积错误；模仿 demo 的结构，把技能切成 6 段逐段验。</li>
+        <li><b>缓存（每个 task family 一次）：</b>VLM 读训练集 teleop stills，每条 21 帧（0%、5%…100%），grasp 5 条、drawer 3 条。第一遍写 motion note（路径规则、爪子时序、接触），第二遍切成 J = 6 个 substage，每段有允许的 primitive 和本地 success 测试（App E）。</li>
+        <li><b>Reconstruct：</b>从 I₀ 认 task family 和 slot，只做一次；论文没提测试时重写资产。</li>
+        <li><b>Propose：</b>看当前图、对应 slot 的 21 帧 teleop 条、一帧 seed-0 Isaac 画面，写一段符号动作；米制数字来自 slot，第一段之后来自 Isaac 状态。</li>
+        <li><b>Action-IK：</b>Piper DH 逆运动学 + 2 cm 线性插值。</li>
+        <li><b>Judge：</b>看预测 stills（0/20/40/60/80/100%）和 seed-0 Isaac（0/50/100%），不看 teleop。"A physics miss in Isaac … fails the substage even if the prediction looks successful"，两者都要过。</li>
+        <li><b>Refine：</b>用失败的预测和 Isaac stills、裁到本段的 teleop、失败历史改写动作；初次 + 最多 3 轮。</li>
+        <li><b>Commit：</b>末帧预测图 + seed-0 模拟器状态交给下一段；任何一段 4 次都没过，直接终止，不上硬件。</li>
+        <li><b>执行：</b>6 段全过后，整条轨迹一次发给真机（Algorithm 1）。Fig. 1C 的 "Closed-Loop" 指规划环，真机执行时没有反馈（我的读法；论文把 "closed-loop online adaptation" 列为未来工作）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  P["<b>Propose</b><br/><span class='ex'>一段符号动作</span>"] --> K["<b>Action-IK</b><br/><span class='ex'>14-D，2 cm 插值</span>"]
+  K --> R["<b>Isaac + VPTwin-Core</b><br/><span class='ex'>seeds 0–9 → 预测视频</span>"]
+  R --> J["<b>Judge</b><br/>sim 和视频都要过"]
+  J -->|没过| F["<b>Refine ≤ 3 轮</b><br/>失败 stills 回给 VLM"]:::gap
+  F -->|改写动作| K
+  J -->|都过| C["<b>Commit</b><br/><span class='ex'>末帧 + seed-0 状态</span>"]:::win
+  C --> N["<b>6 段全过</b><br/><span class='ex'>整条轨迹上真机</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>抽屉 5 次 trial 全部通过 6 段检查，上真机 <span class="ex">5/5</span>。论文没有列出这 6 段的名字；Fig. 4 的列 Approach、Grasp、Pull Open、Close、Withdraw 是任务阶段。<br>换成 <span class="ex">Grasp Cup</span>：7 次里 4 次被拒绝。评估时被拒绝的 plan 也拿去执行（每段取 VLM 排得最接近成功的候选），4 次全部失败，所以 recall 和 precision 都是 1.00（App E）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all" open>
+    <summary>
+      <span class="stage-n">横跨 stage</span>
+      <span class="stage-name">twin 的账：验证了什么，多给了什么</span>
+      <span class="stage-io">它和真实 episode 对上了哪些，哪些没对；比只做 video prediction 多出什么</span>
+    </summary>
+    <div class="stage-body">
+      <p class="eyebrow">twin 和 episode 之间的所有检查</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>检查</th><th>比的是什么</th><th>谁判</th><th>结果</th></tr>
+          <tr><td>初始放置</td><td>0% 图 vs 5 点网格，出离散 slot</td><td>VLM</td><td>放置误差未测（App A.2）</td></tr>
+          <tr><td>成功过滤</td><td>seed-0 sim stills vs family 级文字 criterion</td><td>VLM</td><td>留 277 条（App B.3）</td></tr>
+          <tr><td>catalog 版</td><td>seed-0 回放由人接受，几何由人核对</td><td>人</td><td>548 条（App B.1）</td></tr>
+          <tr><td>失败标签</td><td>sim 物体轨迹 vs 阈值（5 cm、8 cm、3 cm）</td><td>代码</td><td>118 条（App C）</td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>这是任务结局层面的语义检查。</b>按论文描述，check 的输入是 sim stills 和文字，不含该 episode 的真实帧。</li>
+        <li><span class="gap">论文没有报告：</span>sim 帧和真实帧的逐帧比较、物体位姿或轨迹误差、接触时刻对比、质量或摩擦的辨识。</li>
+        <li>App A.2 自己说：sim 的放置扰动 "are not measured bounds on real-world placement error"。</li>
+      </ul>
+      <p class="eyebrow">比只做 video prediction 多给的四样</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>twin 的用途</th><th>在哪</th><th>证据</th><th>隔离了吗</th></tr>
+          <tr><td>sim 视频当 predictor 的上下文</td><td>Stage 4</td><td>+2.99 / +3.32 dB（Table 1）</td><td><span class="win">隔离</span>：同架构只去掉 C</td></tr>
+          <tr><td>失败样本：真实数据没有的监督</td><td>Stage 3</td><td>抽屉全程 +0.97 dB（Table 3）</td><td><span class="win">隔离</span>，但 GT 也是 sim</td></tr>
+          <tr><td>物理否决：sim 没过就算预测好看也不行</td><td>Stage 5</td><td>混在 Table 2 的整体结果里</td><td><span class="gap">没隔离</span></td></tr>
+          <tr><td>状态来源：第一段之后的米制坐标来自 Isaac</td><td>Stage 5</td><td>无单独结果</td><td><span class="gap">没隔离</span></td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>规划上的缺口（我的推断）：</b>论文没跑"只用视频判决"和"同一 planner 去掉视频判决"，所以 twin 和视频各自对 Table 2 贡献多少，不知道。</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>VLM 写可执行 twin</td><td>Stage 1：抽屉 USD，travel 15.5 cm，slot = center</td></tr>
+        <tr><td>Coding agent 修物理</td><td>Stage 1：抽屉改成 fixed-base + prismatic joint</td></tr>
+        <tr><td>参数分布，不是点估计</td><td>Stage 1–2：static effort 1.0–3.5 N，seed 1–9 采样</td></tr>
+        <tr><td>VLM success filtering</td><td>Stage 2：seed-0 三张图对照文字，86 条抽屉 episode 留下</td></tr>
+        <tr><td>时间对齐的 rollout 库</td><td>Stage 2、4：10 段 sim 视频和真实帧同索引</td></tr>
+        <tr><td>Counterfactual failure 共训</td><td>Stage 3：43 never-open + 43 fail-close，E3</td></tr>
+        <tr><td>VPTwin-Core</td><td>Stage 4：抽屉 PSNR 23.26 → 27.48 dB</td></tr>
+        <tr><td>Motion note 和 substage</td><td>Stage 5：3 条抽屉 teleop → 6 段</td></tr>
+        <tr><td>Dual-domain Judge 和 Refine</td><td>Stage 5：抽屉 5/5；Grasp Cup 4 次拒绝，执行后全败</td></tr>
+        <tr><td>对 sim-real 结局不一致的鲁棒性</td><td>E5：抽屉用失败 sim 上下文仍 +4.08 dB</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>视频质量稳定提升，真机假阳性归零；但样本小，增益大多一条 rollout 就拿到</h2>
+  <p>顺序同论文：<a href="#exp-1">E1</a> sim 上下文让长视频预测更好吗 → <a href="#exp-2">E2</a> 真机规划更成功吗 → <a href="#exp-3">E3</a> 合成失败有用吗 → <a href="#exp-4">E4</a> 要几条 rollout → <a href="#exp-5">E5</a> sim 结局错了怎么办。E1、E3–E5 比视频质量，E2 比真机成功率和 critic 准确率；论文不比时间。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>sim 上下文让长程视频预测更好吗？<span class="exp-src">§4.2 · Table 1 · Fig. 3 · Table 14</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/tab1.jpg" alt="Table 1：两种 twin 设置下 IWS 和 VPTwin 的七项视频指标"></div>
+      <figcaption><b>Table 1</b>（作者原图）先看 PSNR 列：25.58 → 28.57，25.64 → 28.96。两个设置的 family 和 episode 不同，上下两块不能互比。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/fig3.jpg" alt="Fig. 3：六个任务在 0%、50%、100% 的 GT、Baseline、VPTwin-Core 画面"></div>
+      <figcaption><b>Fig. 3</b>（作者原图）每格三行 GT / Baseline / Ours，三列 0% / 50% / 100%。看 50% 列：baseline 常丢掉手臂（Arm Missing）；抽屉 "Right Side Lost"；Grasp Cup 到 100% 连杯子都没了。</figcaption>
+    </figure>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>Family</th><th>Catalog PSNR</th><th>Δ</th><th>n</th><th>VLM PSNR</th><th>Δ</th><th>n</th></tr>
+        <tr><td>Open and Close Drawer</td><td>22.48 → 26.56</td><td>+4.08</td><td>10</td><td>23.26 → 27.48</td><td>+4.22</td><td>8</td></tr>
+        <tr><td>Grasp Cup</td><td>23.54 → 28.26</td><td>+4.72</td><td>13</td><td>24.22 → 27.91</td><td>+3.69</td><td>3</td></tr>
+        <tr><td>Wipe Table</td><td>26.25 → 28.93</td><td>+2.68</td><td>10</td><td>24.47 → 28.91</td><td>+4.44</td><td>8</td></tr>
+        <tr><td>Place Cube into Drawer</td><td>23.82 → 27.37</td><td>+3.55</td><td>6</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>Remove Cloth</td><td>26.68 → 28.20</td><td>+1.52</td><td>5</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>Pickup Cup and Cloth</td><td>30.73 → 32.11</td><td>+1.38</td><td>10</td><td>30.60 → 31.56</td><td>+0.96</td><td>8</td></tr>
+      </table>
+    </div>
+    <p class="note">由 Table 14 的 PSNR 列整理（原表过小），baseline → ours，Δ 是我算的，n 是测试 episode 数。Fig. 3 上的 ΔPSNR（抽屉 +7.26）大于这里的 family 均值，应是所示单条 episode（我的推断）。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>同架构加上 sim 条件，family 平均后的七项指标都更好。</b>PSNR +2.99 / +3.32 dB，LPIPS 0.329 → 0.284、0.310 → 0.259。增益最大的是抽屉和杯子，最小的是盖布的 Pickup。逐 family 并非全胜：catalog 的 Pickup 和 Remove Cloth 的 FVD 变差（1689.7 → 1700.6，1633.7 → 1748.7），抽屉的 FID 略差（299.0 → 300.9）。</dd></div>
+      <div><dt>在故事里</dt><dd>回答 "twin 比只做 video prediction 多给了什么" 的主证据。</dd></div>
+      <div><dt>指标</dt><dd>MSE、PSNR、SSIM、UIQI、LPIPS、FID、FVD，128×128 整条测试 episode；先对 5 个训练 seed 取平均，再对 family 取 mean ± std。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>测试集 54 / 27 条 held-out episode（Table 8）；VLM 版 Grasp Cup 只有 3 条。</li>
+        <li>唯一 baseline 是同架构的 action-only 模型，没比 Cosmos 这类其他 world model。</li>
+        <li>sim rollout 由测试 episode 自己的录制动作和 slot 驱动。</li>
+        <li>VLM 版的测试集只含 seed-0 通过 filter 的 episode，twin 演砸的情况不在分数里（我的推断）。</li>
+        <li>"physical hallucination" 没有直接计数，只有这些图像指标和 Fig. 3 的圈注。</li>
+        <li>Fig. 3 里 baseline 丢手臂，而 sim 视频本身就画出了手臂：增益中多少来自机器人运动学、多少来自接触物理，论文没拆（我的推断，见 E5）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>真机上规划更成功、判决更可靠吗？<span class="exp-src">§4.3 · Table 2 · Fig. 4 · App E</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/tab2.jpg" alt="Table 2：π0.5、SIMPACT、VPTwin 在两个真机任务的成功率和 critic 指标"></div>
+      <figcaption><b>Table 2</b>（作者原图）先看 Success，再看 Precision：SIMPACT 的 Recall 也是 1.00，差别全在 Precision。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/fig4.jpg" alt="Fig. 4：抽屉和杯子任务上人类演示、SIMPACT、VPTwin 的分阶段真机画面"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）行是 Human Demo / SIMPACT / VPTwin，列是任务阶段。抽屉看 Grasp 和 Pull Open 列（Handle Missed、Drawer Not Opened）；杯子看 Lift 列（Cup Not Lifted）。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>成功率更高，假阳性归零。</b>Grasp Cup 3/7 vs SIMPACT 2/7 vs π0.5 0/7；抽屉 5/5 vs 2/5 vs 0/5。SIMPACT 有 5 次 false acceptance（grasp 4、drawer 1），precision 0.33 / 0.67；VPTwin 都是 1.00。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑 "sim-only 判决不够，要加真实域视频判决"。</dd></div>
+      <div><dt>指标</dt><dd>Success = 真机成功次数。Precision = 被接受的 plan 里真成功的比例；Recall = 真成功的 plan 里被接受的比例。为了算这些，被拒绝的 plan 也拿去执行。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>Grasp Cup 7 次：center、center、far、near、near、left、right。抽屉 5 次：同一居中布局的不同照片（App A.3）。</li>
+        <li>每次从 I₀ 开始，执行提交好的整条 14-D 轨迹。</li>
+        <li>SIMPACT：10 个整段 plan，最多 3 轮整段修改，只看 seed-0 sim stills；没有 teleop 引导，没有视频（App E）。两边都拿到 I₀、slot 米制坐标、指尖初始位置、primitive schema 和整段 success 文本。</li>
+        <li>VPTwin 比 SIMPACT 多三样：teleop motion note、6 段切分、视频判决。没有消融把它们分开，所以成功率的提升不能全归给视频（我的推断）。</li>
+        <li>抽屉上 VPTwin 没拒绝过 plan，precision 1.00 不考验否决能力；全部拒绝证据是 Grasp Cup 的 4 次（由 Table 2 和 App E 推出）。</li>
+        <li>论文没说 π0.5 是否在这些演示上训练过，只说 open-loop。</li>
+        <li>12 次 trial，无置信区间；论文没报告单次规划的时间或 VLM 调用数。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>合成失败能让 predictor 画出失败吗？<span class="exp-src">§4.4 · Table 3 · Fig. 5 · Table 15</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/tab3.jpg" alt="Table 3：失败 episode 上 Failmix 和 Success-only 的 PSNR"></div>
+      <figcaption><b>Table 3</b>（作者原图）先看右侧 Full-episode 的抽屉行：21.22 vs 20.25，20.76 vs 19.90。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/fig5.jpg" alt="Fig. 5：抽屉两种失败下 sim GT、Success-only、Failmix 的画面"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）A 没合上，B 没拉开。看 100% 列：Success-only 抽屉消失（Drawer Disappears），Failmix 保住 "Remains Open" / "Stays Closed"。注意 GT 行是 Simulation。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>抽屉上更忠实，杯子上几乎不变。</b>抽屉全程 +0.97 dB（首帧起）、+0.86 dB（扰动帧起），30 帧前缀只有 +0.07、+0.29；Grasp Cup 全程 +0.08–0.09 dB。SSIM 同向（Table 15）。</dd></div>
+      <div><dt>在故事里</dt><dd>planner 的 predictor 必须敢画失败，否则视频判决形同虚设。planner 用的就是这个 Failmix 模型（App D.7）。</dd></div>
+      <div><dt>指标</dt><dd>对 seed-0 模拟失败视频的 PSNR，30 帧前缀和全程两种；GT 是 sim，不是真实失败。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>Failmix：118 条真实成功 + 118 条 sim 失败，平衡采样；Success-only：277 条成功。</li>
+        <li>测试 11 对：3 grasp、8 drawer（App D.7）。</li>
+        <li>没有真实失败视频当 GT；没报告 Failmix 在真实成功 episode 上是否变差；没用 Success-only 模型跑规划，所以它对 E2 的贡献未知（我的推断）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>要多少条 rollout？<span class="exp-src">§4.4 · Fig. 6(a,b) · Table 11 · Table 4</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/fig6-ab.jpg" alt="Fig. 6 a、b：PSNR 随不同 rollout 条数 k 的变化"></div>
+      <figcaption><b>Fig. 6(a,b)</b>（作者原图，截出）横轴是不同 rollout 的条数 k（循环填满 10 个槽），k = 0 全零。k = 0 到 1 陡升，之后基本是平线。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/tab11.jpg" alt="Table 11：k = 0、1、5、10 下的全部指标"></div>
+      <figcaption><b>Table 11</b>（作者原图）看 PSNR 行：16.71 / 28.36 / 28.51 / 28.57。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/tab4.jpg" alt="Table 4：3 条训练和 10 条训练在测试都给 3 条时的 PSNR"></div>
+      <figcaption><b>Table 4</b>（作者原图）测试都只给 seed 0–2：10 条训练的 mean 28.69 vs 3 条训练的 27.82，六个任务全赢。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>测试时一条 rollout 就够，训练时多条有用。</b>catalog 16.71 → 28.36 → 28.57 dB（k = 0 / 1 / 10），VLM 16.78 → 28.84 → 28.96 dB。训练用 10 条比 3 条高 0.87 dB（Table 4）。</dd></div>
+      <div><dt>在故事里</dt><dd>论文用 Table 4 守住 "multi-hypothesis" 的设计；但测试时的"多假设"几乎没带来增益。</dd></div>
+      <div><dt>指标</dt><dd>全测试集 PSNR；k ∈ {1,3,5,7,9} 平均 3 个评测 seed，k = 0 用 1 个，k = 10 复用完整结果（App F）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>k = 0 是"带 sim 训练的模型喂全零"，16.71 dB 远低于 action-only 的 25.58 dB：它说明模型依赖 sim，不代表 sim 的价值。sim 的价值看 E1。</li>
+        <li>seed 之间只差毫米级放置和物理参数，接触之前的画面很可能几乎一样，这可能是平线的原因（我的推断）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>sim 结局和真实相反时，预测会被带偏吗？<span class="exp-src">§4.4 · Fig. 6(c,d) · Tables 12–13</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-VPTwin/fig6-cd.jpg" alt="Fig. 6 c、d：只给失败 sim 上下文时相对 baseline 的 PSNR 增益"></div>
+      <figcaption><b>Fig. 6(c,d)</b>（作者原图，截出，颜色同 E4 的图）真实成功的 episode，故意只给失败的 sim rollout。纵轴是相对 action-only 的 ΔPSNR；空心点 n ≤ 2。</figcaption>
+    </figure>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>Family</th><th>Catalog Δ（k=1）</th><th>n</th><th>VLM Δ（k=1）</th><th>n</th></tr>
+        <tr><td>Open and Close Drawer</td><td>+4.08</td><td>7</td><td>+2.91</td><td>3</td></tr>
+        <tr><td>Grasp Cup</td><td>+3.16</td><td>5</td><td>−0.27</td><td>1</td></tr>
+        <tr><td>Place Cube into Drawer</td><td>+3.00</td><td>4</td><td>—</td><td>—</td></tr>
+        <tr><td>Pickup Cup and Cloth</td><td>+0.40</td><td>6</td><td>−0.81</td><td>5</td></tr>
+        <tr><td>Remove Cloth</td><td>−0.26</td><td>5</td><td>—</td><td>—</td></tr>
+        <tr><td>Wipe Table</td><td>−2.62</td><td>9</td><td>−1.14</td><td>6</td></tr>
+      </table>
+    </div>
+    <p class="note">由 Table 12、13 的 PSNR 行整理。§4.4 正文把 Grasp Cup 写成 3.1 dB，表里是 +3.16。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>刚体和抽屉上，错的结局也没带偏；布类上有害。</b>catalog 抽屉 +4.08、Grasp Cup +3.16、Place Cube +3.00；Wipe Table −2.62。</dd></div>
+      <div><dt>在故事里</dt><dd>论文的解释：失败的 sim 仍提供几何和空间线索。这回应了 "twin 不准怎么办"。</dd></div>
+      <div><dt>指标</dt><dd>concat − baseline 的 PSNR 差，同一批 episode；n 是 k = 1 时的 episode 数，即至少有一条失败 rollout 的 episode。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>catalog 的抽屉在这里的增益（+4.08，n = 7）和用全部 rollout 的 E1 增益（+4.08，n = 10）同量级，只是 episode 集不同。结局错了增益却还在，说明 PSNR 增益主要来自几何和运动学，不是物理结局（我的推断）。</li>
+        <li>缺一个关键对照：只渲染机器人、不含物体和物理的 sim 上下文（我的推断）。</li>
+        <li>失败 rollout 并不少见：catalog 的 n 对比 Table 10，Wipe 9/10、抽屉 7/10、Remove Cloth 5/5 的测试 episode 至少有一条。论文称 pipeline "suppresses such simulation false negatives"，但没给比率；seed 1–9 的失败怎么判定也没写。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <p class="eyebrow">论文自己说的（§5）</p>
+  <ul class="tight">
+    <li>twin 编写假定相机外参已标定，且按任务重建；open-world twin 是未来工作。</li>
+    <li>合成失败覆盖不了真实世界没建模的全部动力学。</li>
+    <li>更大的多阶段任务集和 closed-loop online adaptation 还没做。</li>
+  </ul>
+  <p class="eyebrow">我的推断</p>
+  <ul class="tight">
+    <li>twin 从未和真实帧逐帧比对；物理范围从未验证是否覆盖真值。</li>
+    <li>planner 的提升没拆开：twin、视频判决、teleop 引导、substage 切分混在一起（E2）。</li>
+    <li>"减少 physical hallucination" 没有直接度量；PSNR 也可能主要反映手臂和背景（E5）。</li>
+    <li>设定很窄：一个固定相机、一张桌、5 个 slot、128×128、每个 family 单独训练；每个 family 用 35–103 条同任务训练演示（Table 8）。</li>
+    <li>成本未报告：planner 最多 6 段 × 4 个候选，每个候选 10 条 rollout + 预测 + VLM 判决，耗时未知。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>assumed 的质量和摩擦：</b>r2s-lite 也是假设值。VPTwin 不辨识，改成 VLM 给范围、10 个 seed 一起跑。可借的是用范围代替单值，看 verdict 在 seed 间稳不稳；但它没证明范围覆盖真值，Table 11 里测试时 k = 1 已接近 k = 10。</li>
+    <li><b>twin 验证：</b>它只让 VLM 拿 seed-0 stills 对照文字，比我们的 mask match 和 path 比对松得多。我们的两个弱点它都帮不上：相机固定且已标定，不碰 DROID 约 20 cm 的相机误差；success 文本也由 VLM 写，同样可能把物体角色写错（后一半是我的推断，论文没评估）。</li>
+    <li><b>sim-to-real 证据：</b>我们还没有。Table 2 的做法可以直接抄：被拒绝的 plan 也上真机，报告 critic 的 precision 和 recall。把我们的 replay 当 predictor 上下文则需要同相机、同任务的大量 episode，我们是一条 episode 一个场景，不能直接搬。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-05-VPTwin.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>

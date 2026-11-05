@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>PolaRiS</title>
+<meta name="description" content="用 2–5 分钟视频建 Isaac Sim 评测场景，再把 policy co-finetune 1k 步；5 policy × 6 环境上逐环境 r 均值 0.90，不调只有 0.30。">
+<meta name="paper:title" content="PolaRiS: Scalable Real-to-Sim Evaluations for Generalist Robot Policies">
+<meta name="paper:source" content="https://arxiv.org/abs/2512.16881">
+<meta name="paper:venue" content="RSS 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2512.16881v2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-05</p>
+  <h1>PolaRiS</h1>
+  <p class="full-title">PolaRiS: Scalable Real-to-Sim Evaluations for Generalist Robot Policies</p>
+  <p class="meta">Arhan Jain*, Mingtong Zhang*, Kanav Arora, William Chen, Marcel Torne, Muhammad Zubair Irshad et al. · UW, Princeton, UC Berkeley, Stanford, TRI, USC, Cornell, Physical Intelligence · RSS 2026，arXiv 2512.16881v2（2025-12-30）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2512.16881">arXiv</a><a href="https://arxiv.org/pdf/2512.16881v2">PDF</a>
+    <a href="https://polaris-evals.github.io/">Project page</a><a href="https://github.com/arhanjain/PolaRiS/tree/main">Code</a><a href="https://huggingface.co/datasets/owhan/PolaRiS-Hub">Hub</a><a href="https://polaris-evals.github.io/compose-environments/">Scene GUI</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：从真实场景的短视频扫描建出仿真评测环境，平台和我们一样是 DROID。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>通用 VLA 要在很多场景里评，真机太慢；现成的仿真分和真机分对不上，SIMPLER 这类方法又给不了 wrist 相机图像。</dd></div>
+    <div><dt>Idea</dt><dd>2–5 分钟视频 → 2DGS + mesh 的 Isaac Sim 场景；再用别的场景里 326 条 sim 示范把每个 policy co-finetune 1k 步，补上剩下的视觉差。</dd></div>
+    <div><dt>Result</dt><dd>5 个 policy × 6 个环境：逐环境 Pearson r 的均值 0.90、MMRV 0.03（Fig. 7）；不 co-finetune 只有 0.30（Fig. 10）。每个 r 只有 5 个点，背后共 600 次真机、1,500 次仿真 rollout（总数是我乘出来的）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>真机评一圈要几百次 rollout，而便宜的替代分数和真机对不上</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Food Bussing（UW）</b>：DROID 平台（Franka + 两台 ZED，一台在 wrist）。指令 <span class="ex">Put all the foods in the bowl</span>，4 步 rubric（Table 1）。5 个 policy 各跑 20 次真机，进度分是 <span class="ex">PaliGemma 0.30 · π0 0.35 · π0 (100k) 0.50 · π0.5 0.70 · π0-FAST 0.875</span> → 想要：不碰真机就得到一组分数，排序和差距都跟这五个数一致。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>5 个 policy</span><br/><span class='ex'>Food Bussing</span>"]:::example
+  IN --> A1["<b>Action MSE</b><br/>离线算动作误差<br/>不跑 rollout"]
+  A1 --> AX["和闭环能力无关<br/><span class='ex'>r −0.55 · MMRV 0.40</span>"]:::gap
+  IN --> B1["<b>LIBERO-Score</b><br/>finetune Libero-90<br/>90 任务 × 50 次"]
+  B1 --> BX["分数饱和<br/><span class='ex'>四个挤在 0.86–0.92</span><br/><span class='ex'>真机 0.35–0.875</span>"]:::gap
+  IN --> C1["<b>Ctrl-World</b><br/>video model 里 rollout<br/>人来打分"]
+  C1 --> CX["接触时幻觉，排错<br/><span class='ex'>r 0.53 · MMRV 0.22</span>"]:::gap
+  IN --> D1["<b>SIMPLER 类</b><br/>green-screen<br/>贴真实背景像素"]
+  D1 --> DX["相机一动就贴不了<br/><span class='ex'>没有 wrist 图，跑不了</span>"]:::gap
+  </pre></div>
+  <p class="note">r 和 MMRV 是 6 个环境的平均（Fig. 7），不是本例单独的数。LIBERO 那行是本例的 10k checkpoint 分数，来自项目页数据文件，第五个 PaliGemma 是 0.56；§5.2 的原话是"nearly all"落在 90–95%。"坏在哪"：LIBERO 饱和、Ctrl-World 幻觉是 §5.2 的结论；SIMPLER 出自 §2、§5.1，论文没有实际跑它；MSE 为什么差是我的推断，论文只说它相关性低。</p>
+  <figure class="paper-fig">
+    <div class="mat media-row">
+      <figure><video src="2026-11-05-PolaRiS/web-food-real.mp4" autoplay muted loop playsinline controls></video><figcaption>真机</figcaption></figure>
+      <figure><video src="2026-11-05-PolaRiS/web-food-sim.mp4" autoplay muted loop playsinline controls></video><figcaption>PolaRiS</figcaption></figure>
+      <figure><video src="2026-11-05-PolaRiS/web-food-ctrl.mp4" autoplay muted loop playsinline controls></video><figcaption>Ctrl-World</figcaption></figure>
+    </div>
+    <figcaption><b>项目页</b> <a href="https://polaris-evals.github.io/#results">Evaluation Videos</a>：π0.5 在 Food Bussing 上的三段样例，每段左边外部相机、右边 wrist 相机。看 Ctrl-World 的 wrist 画面：物体的形状和颜色逐帧在变，这就是 §5.2 说的 hallucination。三段是各自的 rollout，不是逐帧对齐。</figcaption>
+  </figure>
+  <p class="crux"><b>根本问题：</b>这些分数要么不闭环，要么场景离真机太远，要么喂不了 wrist 相机。　<b>这篇的切入点：</b>直接重建真实场景让 VLA 闭环跑，再用一小段 co-finetune 处理剩下的视觉差。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Real-to-sim 评测（贴背景）</b><br><span class="muted">SIMPLER、RobotArena ∞</span></td><td>在仿真里评真机 policy</td><td>green-screen 把真实背景像素贴进仿真</td><td>只能固定相机 → 本文全 3D 重建，能渲 wrist 视角</td></tr>
+      <tr><td><b>手工仿真 benchmark</b><br><span class="muted">LIBERO、RoboCasa、RLBench、CALVIN</span></td><td>可复现地比较算法</td><td>人工搭场景和任务</td><td>视觉物理离真机远、搭建费人 → 本文扫描真实场景，不到 1 小时一个</td></tr>
+      <tr><td><b>Video model 评测</b><br><span class="muted">Ctrl-World、Veo 模拟器、Quevedo et al.</span></td><td>用生成模型代替仿真</td><td>action-conditioned 视频 rollout</td><td>开放模型接触时幻觉 → 本文用物理引擎算接触，神经渲染只管外观</td></tr>
+      <tr><td><b>Splat 仿真评测（窄任务）</b><br><span class="muted">GSWorld、Zhang et al. [49]</span></td><td>用 Gaussian splat 环境评 policy</td><td>重建环境，训练和评测同环境</td><td>只评单任务、见过的环境 → 本文评 generalist，环境没见过</td></tr>
+      <tr><td><b>真机 benchmark</b><br><span class="muted">RoboArena、AutoEval</span></td><td>拿到真实分数</td><td>分布式真机评测，或自动化真机</td><td>慢、要硬件 → 本文不替代它，用 RoboArena 分数当外部对照</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Splat 增强训练</b><br><span class="muted">SplatSim、X-Sim、Real2Render2Real、Real-is-Sim、DRAWER</span></td><td>给 policy 造训练数据或环境</td><td>重建场景，在里面训练或渲染数据</td><td>目标是训练 → 本文目标是评测，sim 数据只用来校准</td></tr>
+      <tr><td><b>导航和驾驶的重建评测</b><br><span class="muted">EmbodiedSplat、GaussGym、UniSim</span></td><td>在重建场景里评导航、驾驶 policy</td><td>神经重建当闭环模拟器</td><td>几乎不碰物体 → 操作要接触，对物理和外观要求更高</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2 Related Work 和 §5.1 Comparisons，未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>扫一遍真实场景建成 Isaac Sim 环境，把 policy 调到能在 sim 里跑，再到没见过的场景打分</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-PolaRiS/fig1.jpg" alt="PolaRiS 总览四格：建环境工具、co-training 数据、评测环境的相关性散点、环境共享 Hub"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）四件交付物：工具、sim 数据集、评测环境、Hub。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左 "1. Tools"：</b>"Short video of real scene" → "PolaRiS Scene Builder" → "Simulated Evaluation Environment"，就是 Stage 1–4。</li>
+    <li><b>中 "2. Simulation Dataset"：</b>"Short Sim Data Cotraining" 把 "Generalist Policy" 变成 "PolaRiS-ready Policy"，就是 Stage 5。注意被打分的是右边这个调过的版本。</li>
+    <li><b>右上 "3. Evaluation"：</b>每个符号是一个 policy 在一个环境的分数，这里只是示意，真实数据见 <a href="#exp-1">Fig. 6</a>。</li>
+    <li><b>右下 "4. Hub"：</b><code>owhan/PolaRiS-Hub</code>，共享新环境。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-PolaRiS/web-teaser.jpg" alt="项目页 teaser：Real-to-Sim、Off Domain Sim Cotraining Data、Zeroshot Sim Evaluations、Sim-Real Correlations"></div>
+    <figcaption><b>项目页</b> <a href="https://polaris-evals.github.io/">首页 teaser</a>：中间黄框用的正是我们的例子，"Put all the food into the bowl"，π1/π2/π3 在同一场景里被自动打分，右下排出名次。"Off Domain" 指 co-training 数据来自别的场景。</figcaption>
+  </figure>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>2–5 分钟扫描</span><br/><span class='ex'>+ 5 个 policy</span>"]:::example --> M["<b>场景 + 调过的 policy</b><br/><span class='ex'>USD + 1k 步 co-finetune</span>"]
+  M --> O["<b>Output</b><br/><span class='ex'>每个 policy 一个分</span><br/><span class='ex'>0.025 … 0.58</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>6 个 stage：4 个建场景，1 个调 policy，1 个打分</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-PolaRiS/fig2.jpg" alt="环境创建流程：环境扫描到 splat 和 collision mesh，物体扫描到生成资产，机器人 URDF 和 splat，合成高保真画面"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）建场景的四步，对应 Stage 1–4。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>上排 "Environment Scan" → "Gaussian Splats" + "Collision Mesh"：</b>Stage 1。一段视频出两份东西：看的 splat，碰的蓝色 mesh。</li>
+    <li><b>左下 "Object Scan" → "3D Asset Generation"：</b>Stage 3。物体单独拍，TRELLIS 生成。</li>
+    <li><b>中 "Robot URDF" + "Robot Splats"：</b>Stage 2。机器人有运动学，也有真实外观。</li>
+    <li><b>右 "High-Fidelity Render with Articulated Splats"：</b>Stage 4 合成的结果，桌上的棋盘格就是定尺度的 ChArUco board。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · 扫描重建</b><br/><span class='ex'>桌面 splat + mesh</span>"] --> S4
+  S2["<b>2 · 机器人 splat</b><br/><span class='ex'>Franka，只做一次</span>"] --> S4
+  S3["<b>3 · 物体生成</b><br/><span class='ex'>黄碗 + 食物</span>"] --> S4
+  S4["<b>4 · 组装场景</b><br/><span class='ex'>USD + 4 步 rubric</span>"] --> S6
+  D["<b>另外 15 个场景</b><br/><span class='ex'>326 条 sim 示范</span>"] --> S5
+  S5["<b>5 · Co-finetune</b><br/><span class='ex'>每个 policy 1k 步</span>"]:::win --> S6
+  S6["<b>6 · 打分和比较</b><br/><span class='ex'>sim 50 次 · 真机 20 次</span>"] --> O["<b>Output</b><br/><span class='ex'>本例 r 0.81</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；Stage 5 改变了结论的含义，见 <a href="#stage-all">co-finetuning 对结论的影响</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Environment Creation via Reconstruction</span>
+      <span class="stage-io">2–5 分钟单目视频 → 看的 splat + 碰的 mesh，导入 Isaac Sim</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>只有整个场景是 3D 的，才能渲任意视角和 wrist 相机（§4.1 末）。</li>
+        <li><b>拍摄：</b>背景和机器人分两段录，手持慢移防模糊；采集约 5–10 分钟。</li>
+        <li><b>尺度：</b>场景里放 ChArUco board，定方向和公制尺度。</li>
+        <li><b>位姿：</b>COLMAP 估每帧相机；用 board 测到的那部分帧做 model aligner，全部对齐到 board 坐标系（App B.1）。</li>
+        <li><b>外观：</b>训练 2DGS，photometric loss 加 depth、normal 两个正则（App A.1）。</li>
+        <li><b>几何：</b>光栅化 splat + 体素深度融合 → TSDF → marching cubes → mesh → Isaac Sim。</li>
+        <li><b>耗时：</b>全自动，RTX 4090 上一般 30 分钟内（§4.1）。</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>大白话</th><th>例子里</th></tr>
+          <tr><td>一个 splat（中心 μ、朝向 R、盘面大小 S、颜色 c、不透明度 α）</td><td>空间里一片带颜色的小圆盘</td><td>黄碗边缘的一小片黄色</td></tr>
+          <tr><td>D</td><td>场景里全部小圆盘，负责"看"</td><td>整张桌面和背景</td></tr>
+          <tr><td>M</td><td>从 D 提取的 mesh，负责"碰"</td><td>机械手碰到的桌面</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>视频 + ChArUco</b><br/><span class='ex'>2–5 分钟</span>"] --> b["<b>COLMAP + 2DGS</b><br/>位姿、splat D"]
+  b --> c["<b>TSDF → mesh M</b><br/>进 Isaac Sim"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-05-PolaRiS/web-scan.mp4" autoplay muted loop playsinline controls></video><figcaption>Environment scan（前 20 s）</figcaption></figure>
+          <figure><video src="2026-11-05-PolaRiS/web-recon.mp4" autoplay muted loop playsinline controls></video><figcaption>Neural reconstruction</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://polaris-evals.github.io/">The PolaRiS Pipeline</a>：手机绕着厨房慢慢扫，右边是在重建结果里移动视角。这是厨房灶台场景，不是 Food Bussing。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>扫描 Food Bussing 的黑色台面 → 一份 splat、一份 collision mesh。论文没给这个场景单独的耗时。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Automatic Articulation</span>
+      <span class="stage-io">机器人视频 + URDF → 随关节运动的 robot splat</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>环境是静止的，机器人要动，还要保持照片级外观，否则 policy 看到的手臂是假的。</li>
+        <li><b>绑定：</b>把一部分 splat 绑到每个 link 上。</li>
+        <li><b>运动：</b>正运动学给出每个 link 的刚体变换，同时变换它那组 splat 的位置和协方差（§4.1）。</li>
+        <li><b>渲染：</b>所有 link 的 splat 合在一起，走同一条 2DGS 渲染。</li>
+        <li><b>复用：</b>一个机器人系统只做一次。</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>大白话</th><th>例子里</th></tr>
+          <tr><td>q</td><td>此刻所有关节的角度</td><td>Franka 7 个关节</td></tr>
+          <tr><td>G<sub>ℓ</sub></td><td>绑在第 ℓ 个 link 上的那组小圆盘</td><td>前臂外壳的 splat</td></tr>
+          <tr><td>T<sub>ℓ</sub>(q)</td><td>这个 link 现在的位置和朝向</td><td>q 变了它就跟着动</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>robot splat</b><br/><span class='ex'>按 link 分组</span>"] --> b["<b>正运动学</b><br/><span class='ex'>关节角 → link 位姿</span>"]
+  b --> c["<b>变换后渲染</b><br/>和场景一起出图"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Franka 的 robot splat 已经做好，Food Bussing 直接复用，wrist 相机跟着 link 走。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Object Creation with Generative Models</span>
+      <span class="stage-io">物体的多视角照片 → 带纹理的 mesh</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>从场景里抠 watertight 资产又慢又要深度硬件（§4.1）。</li>
+        <li><b>How：</b>普通相机多视角 → SAM2 分割 → TRELLIS 得到 structured latent。</li>
+        <li><b>输出：</b>latent 解码成 splat（外观）和无纹理 mesh（几何），再把外观 bake 到 mesh 上。</li>
+        <li><b>替换性：</b>PolaRiS 不绑定这个方法；看不到的面由模型补全。</li>
+        <li><b>没有的证据：</b>论文没有量化生成物体的尺寸或形状误差。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>多视角照片</b><br/><span class='ex'>黄碗</span>"] --> b["<b>SAM2 + TRELLIS</b><br/>分割、生成"]
+  b --> c["<b>textured mesh</b><br/>可碰撞、可渲染"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>黄碗和几样食物玩具各拍一组，生成 mesh。<a href="#stage-6">Fig. 5</a> 第二列能看出 sim 里的物体比真机略"假"。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Composing simulated evaluation scenes</span>
+      <span class="stage-io">环境 + 机器人 + 物体 → USD 评测场景 + 任务判据</span>
+    </summary>
+    <div class="stage-body">
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-PolaRiS/fig3.jpg" alt="Scene composition GUI：紫色场景 mesh、半透明 DROID 机器人、左侧资产和指令、右侧位姿属性"></div>
+        <figcaption><b>Fig. 3</b>（作者原图）Scene Composition GUI，这里摆的是灶台场景。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>"Upload Assets to Configurator"：</b>上传环境和物体。</li>
+        <li><b>"Arrange Environment Assets"：</b>手动摆物体的位置、朝向、缩放（右栏 Properties）。</li>
+        <li><b>"Robot Model for Scale"：</b>Load DROID 载入半透明机器人当尺度参照。</li>
+        <li><b>"Define Language Instruction" / "Specify &amp; Save Initial Scene Conditions"：</b>人写任务指令，存初始状态。</li>
+      </ol>
+      <ul class="tight">
+        <li><b>物理：</b>Isaac Sim 默认接触参数，机械臂用厂家默认值，物体质量由用户估计（§4.1）。</li>
+        <li><b>判据：</b>用户自己定义成功条件，比如某物体在某容器内。</li>
+        <li><b>时间：</b>GUI 一般不到 5 分钟（Fig. 3）；人工共不到 20 分钟，总墙钟不到 1 小时（§4.1）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-05-PolaRiS/web-gui.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://polaris-evals.github.io/compose-environments/">Compose Environments</a>：GUI 的操作录屏，看摆放和导出的过程。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>把黄碗和食物摆上台面，写入 <span class="ex">Put all the foods in the bowl</span>，存初始状态，导出 USD。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Simulation data co-training</span>
+      <span class="stage-io">原 policy + 别处的 326 条 sim 示范 + DROID 数据 → PolaRiS-ready policy</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>§4.2 承认重建好的环境 out-of-the-box 相关性不稳，怀疑是光照、物体间阴影这类细微差异；不调时 r 只有 0.30（Fig. 10）。</li>
+        <li><b>数据：</b>Quest 2 VR 遥操作，沿用 DROID 的采集代码，转成 DROID 的 RLDS 格式（App C.2）。</li>
+        <li><b>规模：</b>15 个场景、18 条指令、326 条轨迹、56,041 timesteps（Table 4；§5.1 写"around 350"）。</li>
+        <li><b>隔离：</b>这 15 个场景和 6 个测试场景不共用场景和物体（§5.1）。</li>
+        <li><b>配比：</b>每个 batch 90% 真 DROID + 10% sim（App C.2）。</li>
+        <li><b>步数：</b>1k 步，batch 128，peak LR 5×10⁻⁵，warmup 1,000（§5.1、Table 2）。</li>
+        <li><b>有多轻（我算的）：</b>1k × 128 × 10% = 12,800 个 sim 样本，约为 56,041 的 23%；1k 步等于 warmup 长度，按 Table 2 字面看学习率刚爬到峰值就停了。</li>
+        <li><b>动作空间：</b>全部用 joint position，理由见 <a href="#exp-7">E7</a>。</li>
+        <li><b>耗时：</b>几百步一般不到 25 分钟（§4.2），GPU 未写。</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>大白话</th><th>例子里</th></tr>
+          <tr><td>θ → θ′</td><td>policy 的权重，更新前和更新后</td><td>π0.5 原版 → 调过的副本</td></tr>
+          <tr><td>D<sub>pre</sub></td><td>policy 原本的训练数据</td><td>真 DROID 数据，占 90%</td></tr>
+          <tr><td>D<sub>S</sub></td><td>新收的仿真示范</td><td>326 条，占 10%</td></tr>
+          <tr><td>λ</td><td>batch 里仿真数据的比例</td><td>0.1</td></tr>
+          <tr><td>L<sub>BC</sub></td><td>behavior cloning loss：模仿示范动作的误差</td><td>各 policy 自己的训练 loss</td></tr>
+          <tr><td>η</td><td>学习率</td><td>peak 5×10⁻⁵</td></tr>
+        </table>
+      </div>
+      <p>更新式（§4.2）就一句话：从"90% 真 + 10% 仿真"的混合数据里抽 batch，按 BC loss 走一步，θ′ ← θ − η∇L<sub>BC</sub>。</p>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-PolaRiS/fig4.jpg" alt="15 个 co-training 仿真场景的渲染图"></div>
+        <figcaption><b>Fig. 4</b>（作者原图）15 个 co-training 场景，都是用 Stage 1–4 建的。</figcaption>
+      </figure>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-05-PolaRiS/web-cotrain.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> Co-Training Samples：一条 sim 示范，左外部相机、右 wrist，和真 DROID 同样的两路输入。</figcaption>
+      </figure>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>sim 示范</b><br/><span class='ex'>15 场景 326 条</span>"] --> b["<b>混入 DROID</b><br/><span class='ex'>10% : 90%</span>"]
+  b --> c["<b>1k 步 BC</b><br/><span class='ex'>5 个 policy 各一次</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>这 326 条里没有 Food Bussing 的场景和物体。π0.5 调 1k 步后，第一次进这个场景就是评测本身。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">Zero-shot evaluation and scoring</span>
+      <span class="stage-io">调过的 policy + 没见过的场景 → sim 分，再和真机分算 r、MMRV</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>仿真：</b>每个 policy 每个任务 50 次 rollout，用特权状态按 rubric 自动打分（§5.1、App C.1）。</li>
+        <li><b>真机：</b>每个 policy 每个环境 20 次，人按同一 rubric 打分；论文没说是否盲评。</li>
+        <li><b>分数：</b>分步进度，不是二值成功；每个任务归一到 0–1（App C.1）。</li>
+        <li><b>初始状态：</b>App C.2 说 checkpoint 分析的 50 次用"same initial conditions"；真机 20 次怎么摆放、是否和 sim 对齐，没写。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-PolaRiS/fig5.jpg" alt="三个环境的真机和 PolaRiS 仿真画面上下对照"></div>
+        <figcaption><b>Fig. 5</b>（作者原图）上排真机、下排 sim。第二列是 Food Bussing（黄碗，按 Table 4 的样例图判断）。</figcaption>
+      </figure>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-PolaRiS/tab1.jpg" alt="六个任务的指令和分步 rubric"></div>
+        <figcaption><b>Table 1</b>（作者原图）第一行就是本例：reach → lift → 放第一个 → 放第二个。</figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>大白话</th><th>例子里</th></tr>
+          <tr><td>N</td><td>参与比较的 policy 数</td><td>5</td></tr>
+          <tr><td>R<sub>i</sub></td><td>policy i 的真机分</td><td>π0.5：0.70</td></tr>
+          <tr><td>R<sub>S,i</sub></td><td>policy i 的 sim 分</td><td>π0.5：0.58</td></tr>
+          <tr><td>Pearson r</td><td>两列分数线性相关的程度，1 最好</td><td>0.81</td></tr>
+          <tr><td>MMRV</td><td>对每个 policy，找 sim 排错的对手里真机差距最大的那个，再对 N 取平均；0 最好</td><td>0.07</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>sim 50 次</b><br/><span class='ex'>特权状态打分</span>"] --> c["<b>r · MMRV</b><br/><span class='ex'>5 对分数</span>"]
+  b["<b>真机 20 次</b><br/><span class='ex'>人按 rubric 打分</span>"] --> c
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <div class="table-wrap">
+          <table class="grid">
+            <tr><th>Policy</th><th>真机</th><th>PolaRiS</th><th>LIBERO 10k</th></tr>
+            <tr><td>PaliGemma-binning</td><td>0.30</td><td>0.025</td><td>0.556</td></tr>
+            <tr><td>π0</td><td>0.35</td><td>0.365</td><td>0.860</td></tr>
+            <tr><td>π0 (100k)</td><td>0.50</td><td>0.39</td><td>0.877</td></tr>
+            <tr><td>π0.5</td><td>0.70</td><td>0.58</td><td>0.919</td></tr>
+            <tr><td>π0-FAST</td><td>0.875</td><td>0.53</td><td>0.894</td></tr>
+          </table>
+        </div>
+        <p>数字来自项目页 <code>main_correlation_data.json</code>，论文只有散点。只有一对排错：π0.5 和 π0-FAST，真机差 0.175。所以 MMRV = (0.175 + 0.175) / 5 = 0.07，r = 0.81，和 Fig. 13 的 Food Bussing 一致，也是 6 个环境里最差的 r。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿全程</span>
+      <span class="stage-name">Co-finetuning 对结论的影响</span>
+      <span class="stage-io">结论不是"这个 policy 在 sim 里的分预测它的真机分"，而是"调过的副本的 sim 分预测原版的真机分"</span>
+    </summary>
+    <div class="stage-body">
+      <div class="flow"><pre>
+flowchart TD
+  P["<b>原 checkpoint</b><br/><span class='ex'>pi05_droid_jointpos</span>"]:::example
+  P --> R["<b>真机 20 次</b><br/><span class='ex'>0.70</span>"]
+  P --> C["<b>Co-finetune 1k 步</b><br/>90% DROID + 10% sim"]:::win
+  C --> Q["<b>调过的副本</b><br/><span class='ex'>pi05_constrain-1k</span>"]
+  Q --> S["<b>仿真 50 次</b><br/><span class='ex'>0.58</span>"]
+  R --> K["<b>Pearson r</b><br/>两边不是同一组权重"]:::gap
+  S --> K
+  </pre></div>
+      <p class="note">"真机跑原版"是我的推断，论文没有明说。依据：§5.1 写的是 finetune 之后"run 50 rollouts per task in simulation"；Fig. 11 拿约 14 个步数 × 5 个 seed × 5 个 policy 的 checkpoint 对比，不可能都上真机；项目页脚本的默认列表里 sim 叫 <code>pi05_constrain-1k</code>，real 叫 <code>pi05_joint_pos</code>。</p>
+      <ul class="tight">
+        <li><b>这一步决定成败：</b>不调 r 0.30、MMRV 0.29，调过 r 0.86、MMRV 0.07（Fig. 10）。</li>
+        <li><b>"zero-shot"的意思：</b>目标场景不用再收数据、不用再调，不是 policy 没动过。</li>
+        <li><b>"out of the box"有两种用法：</b>§1 说 evaluations "out of the box" r = 0.9，这是调过之后；§4.2 说环境 "out-of-the-box" 相关性不可靠，这是调之前。</li>
+        <li><b>作者的解释：</b>sim 数据只对齐视觉，不教任务。证据是 OOD 数据和目标场景数据效果相当（<a href="#exp-5">E5</a>）。</li>
+        <li><b>没有直接证据的部分：</b>论文没报每个 policy 调前调后的分数，也没测副本的真机分，所以"副本保留了原版的相对能力"只能由相关性本身间接支持。</li>
+        <li><b>门槛（我的推断）：</b>要有权重、训练代码和 DROID 数据才能调，黑盒 policy 评不了。"policy-agnostic" 只在 openpi 的 5 个 checkpoint 上试过。</li>
+        <li><b>步数是敏感旋钮：</b>r 在 1k 附近最高，到 8k–10k 掉到约 0.63（<a href="#exp-6">E6</a>）。论文没提用独立的真机数据选 1k。</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>短视频 → 2DGS + mesh</td><td>Stage 1：扫描 Food Bussing 台面</td></tr>
+        <tr><td>ChArUco 定尺度</td><td>Stage 1：board 放进场景，COLMAP 对齐到它</td></tr>
+        <tr><td>Articulated robot splat</td><td>Stage 2：复用 Franka，wrist 相机跟着动</td></tr>
+        <tr><td>TRELLIS 生成物体</td><td>Stage 3：黄碗和食物</td></tr>
+        <tr><td>Scene GUI + 手写判据</td><td>Stage 4：写指令、存初始状态、导出 USD</td></tr>
+        <tr><td>Co-training 补视觉差</td><td>Stage 5：326 条别处的示范，90/10，1k 步</td></tr>
+        <tr><td>Unseen 环境评测</td><td>Stage 5–6：这些示范里没有本例的场景</td></tr>
+        <tr><td>分步进度分</td><td>Stage 6：4 步 rubric</td></tr>
+        <tr><td>Pearson r 和 MMRV</td><td>Stage 6：本例 r 0.81、MMRV 0.07，只错一对</td></tr>
+        <tr><td>视觉差大于物理差</td><td><a href="#exp-7">E7</a>：论文没说那 3 个任务是哪些</td></tr>
+        <tr><td>Hub 共享环境</td><td>Fig. 1 右下：场景发布后别人调过的 policy 可直接评</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>平均排序很准，但 r = 0.90 是"5 个点的相关再取平均"，而且全靠 co-finetune</h2>
+  <p>比的是评测分数和真机分数的相关性，不是 policy 的成功率。顺序同论文：<a href="#exp-1">E1</a> 和现有评测比 → <a href="#exp-2">E2</a> 逐环境 → <a href="#exp-3">E3</a> 对外部 benchmark → <a href="#exp-4">E4</a> 外观要多真 → <a href="#exp-5">E5</a> 要什么 sim 数据 → <a href="#exp-6">E6</a> 调多少步 → <a href="#exp-7">E7</a> 视觉差还是物理差。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>PolaRiS 的分数比现有评测更贴近真机吗？<span class="exp-src">§5.2 · Fig. 6, 7</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/fig6.jpg" alt="Sim 分对真机分的散点：紫色 PolaRiS 分散在对角线上方，铜色 LIBERO 挤在右侧"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）形状 = policy，颜色 = 环境。紫色是 PolaRiS，铜色是 LIBERO 10k。紫点沿对角线方向散开，但大多在对角线上方，也就是 sim 分低于真机分。铜点挤在右边，中间那列是 PaliGemma。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/fig7.jpg" alt="各方法 Pearson r 和 MMRV 的柱状图"></div>
+      <figcaption><b>Fig. 7</b>（作者原图）左 r 越高越好，右 MMRV 越低越好。先比紫色和 LIBERO 10k。</figcaption>
+    </figure>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>数字</th><th>它到底是什么</th><th>来源</th></tr>
+        <tr><td><b>r 0.90 · MMRV 0.03</b></td><td>6 个环境各算一次 r 再平均，每个 r 只有 5 个点</td><td>Fig. 7；Fig. 13 的六个值平均也是 0.90 和 0.03</td></tr>
+        <tr><td>r 0.86 ± 0.03 · MMRV 0.07 ± 0.02</td><td>同样的 OOD 设置，带误差棒的版本</td><td>Fig. 10；± 取自项目页 <code>data_mix_metrics.json</code></td></tr>
+        <tr><td>r 0.75</td><td>30 个（policy, 环境）格子合起来算一次</td><td>项目页 <code>main_correlation_data.json</code>，论文未报</td></tr>
+        <tr><td>r 0.96 · MMRV 0.00</td><td>每个 policy 先对 6 个环境取平均，5 个点算一次</td><td>我用项目页数据算的，论文未报</td></tr>
+        <tr><td>r 0.98 · MMRV 0.00</td><td>对 RoboArena，4 个点</td><td>Fig. 8</td></tr>
+      </table>
+    </div>
+    <p class="note">这张表是我按论文和项目页的数字整理的。论文没有解释 0.90 和 0.86 的差别，也没说 0.90 是单个 seed 还是别的。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>相关性更高。</b>PolaRiS r 0.90 / MMRV 0.03，LIBERO 10k 0.70 / 0.04，Ctrl-World 0.53 / 0.22，MSE −0.55 / 0.40（Train）和 −0.53 / 0.40（Val）。</dd></div>
+      <div><dt>在故事里</dt><dd>回答问题 (1) 和 (3)：能在 unseen 环境里评，而且强过现有工具。</dd></div>
+      <div><dt>指标</dt><dd>Pearson r 和 MMRV（§3），分数是 0–1 的进度分。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>6 对真机 / 仿真环境：UW 3 个，Princeton 3 个，都是刚体物体。</li>
+        <li>5 个 policy：§5.1 列 π0、π0-FAST、PaliGemma-binning、π0.5；Fig. 6 和 Table 3 还多一个 π0 (100k)，论文没解释 100k 的含义。</li>
+        <li>每个 policy 每个环境 20 次真机、50 次仿真。总数 5 × 6 × 20 = <b>600 次真机</b>，5 × 6 × 50 = <b>1,500 次仿真</b>（论文没印总数）。</li>
+        <li>LIBERO：Libero-90 finetune 50k 步，90 任务 × 50 次 = 4,500 次 / policy，取 1k、10k、50k 三个 checkpoint；Fig. 6 只画最好的 10k，约 10 倍算力，这些都偏向 LIBERO。</li>
+        <li>Ctrl-World：rollout 由人打分，次数未写。MSE：train / val 动作误差。SIMPLER：没跑，因为不支持 wrist 相机。</li>
+      </ul></dd></div>
+      <div><dt>我的核算</dt><dd><ul class="tight">
+        <li><b>和最好的 LIBERO 差距没那么大：</b>MMRV 0.03 对 0.04。LIBERO 10k 的五个平均分顺序也和真机完全一致。</li>
+        <li><b>领先主要靠一个 policy：</b>去掉 PaliGemma 后逐环境平均 r 是 0.86 对 0.83，全部格子合算反而 0.65 对 0.79。</li>
+        <li><b>但 LIBERO 不稳：</b>换 1k、50k checkpoint，MMRV 就是 0.19、0.15；它也给不出分环境的分数。</li>
+        <li><b>绝对分偏低：</b>30 格里 25 格 sim 低于真机，平均 0.32 对 0.50。只能看排序，不能当成功率读。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>结论在单个环境里也成立吗？<span class="exp-src">§5.2 · Fig. 13</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/fig13.jpg" alt="六个环境各自的 Pearson r 和 MMRV 柱状图"></div>
+      <figcaption><b>Fig. 13</b>（作者原图）柱子从左到右和图例同序：Block Stacking、Food Bussing、Move Latte Cup、Organize Tools、Pan Cleaning、Tape Into Container。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>每个环境的排序都不错。</b>r 从 0.81（Food Bussing）到 0.99（Pan Cleaning），MMRV 最大 0.07。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑"能评具体部署场景"这个卖点，手工 benchmark 做不到。</dd></div>
+      <div><dt>指标</dt><dd>每个环境 5 个 policy，一次 r、一次 MMRV，没有误差棒。</dd></div>
+      <div><dt>怎么评测</dt><dd>同 E1。</dd></div>
+      <div><dt>我的核算</dt><dd><ul class="tight">
+        <li><b>5 个点的 r 区间很宽：</b>r 0.81 的 Fisher 95% 区间约 [−0.25, 0.99]，只是粗算。</li>
+        <li><b>场景特异的信号不多：</b>用其他 5 个环境的 sim 平均分预测第 6 个环境的真机排序，r 均值 0.85；用本环境 sim 分是 0.90。</li>
+        <li><b>分不出环境难度：</b>6 个环境的 sim 均分和真机均分，r 约 0.00。信号主要是"哪个 policy 更强"，不是"这个场景更难"。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>和独立的真机 benchmark 对得上吗？<span class="exp-src">§5.2 · Fig. 8</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/fig8.jpg" alt="PolaRiS 分对 RoboArena 分的散点，四个点，r 0.98，MMRV 0.00"></div>
+      <figcaption><b>Fig. 8</b>（作者原图）一共 4 个点。π0 (100k) 不在图里。这里菱形是 π0-FAST，和 Fig. 6 的图例不同。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>排序完全一致。</b>r 0.98，MMRV 0.00，4 个 policy。</dd></div>
+      <div><dt>在故事里</dt><dd>外部证据：真机分不是作者自己的 6 个场景专属。</dd></div>
+      <div><dt>指标</dt><dd>RoboArena 报告的 average progress score。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>论文自己强调：仿真只覆盖 RoboArena 能力的一小部分，不含非刚体和复杂接触。</li>
+        <li>4 个点的 r 0.98，Fisher 95% 区间约 [0.33, 1.00]（我算的，粗略）；PaliGemma 一个点拉开了约一半跨度。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>外观要多真？<span class="exp-src">§5.3 · Fig. 9, Table 5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/fig9.jpg" alt="四种渲染的 Pearson r 和 MMRV 柱状图"></div>
+      <figcaption><b>Fig. 9</b>（作者原图）co-train 和评测都换成对应的渲染方式。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/tab5.jpg" alt="同一场景的四种渲染：Splat、Raytraced、Untextured Environment、Untextured Everything"></div>
+      <figcaption><b>Table 5</b>（作者原图）四种渲染，看画面是 Food Bussing 的黑色台面。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>Splat 最好，但外观不是唯一因素。</b>Splat 0.87 / 0.03，Raytraced 0.86 / 0.06，Untextured Env 0.77 / 0.10，All Untextured 0.72 / 0.12。</dd></div>
+      <div><dt>在故事里</dt><dd>说明 co-training 能吸收一部分视觉差，高保真渲染仍有收益。</dd></div>
+      <div><dt>指标</dt><dd>同上。Fig. 9 没有误差棒，Splat 和 Raytraced 的 r 只差 0.01，MMRV 差 0.03。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>都用 OOD 数据，只换渲染（App C.3）。Raytraced 把 2DGS mesh 的顶点色 bake 成纹理（App B.2）。</li>
+        <li>这里 Splat 是 0.87，和 Fig. 7 的 0.90 不同，论文没解释；环境数也没写。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>Sim 数据必须来自目标场景吗？<span class="exp-src">§5.3 · Fig. 10, Table 4</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/fig10.jpg" alt="四种数据组合的 Pearson r 和 MMRV 柱状图，带误差棒"></div>
+      <figcaption><b>Fig. 10</b>（作者原图）先比紫色和浅黄：同样的场景，调和不调。图例的 "OOD Zeroshot" 就是正文的 no-cotrain。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/tab4.jpg" alt="In-Domain、Near-Domain、OOD 三种数据的环境数、指令数、轨迹数、时间步"></div>
+      <figcaption><b>Table 4</b>（作者原图）OOD 是 15 个场景；另两列加上 3 个目标环境。In-Domain 的样例就是本例的 "Put all the foods in the bowl"。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>不调不行，但不需要目标场景的数据。</b>OOD 0.86 / 0.07，no-cotrain 0.30 / 0.29，Near-domain 0.86 / 0.04，In-domain 0.82 / 0.06。</dd></div>
+      <div><dt>在故事里</dt><dd>这是"新环境不用收数据、不用再调"的依据，也是这篇扩展性的来源。</dd></div>
+      <div><dt>指标</dt><dd>同上，图上有误差棒；数值和 Fig. 11 在 1k 步、0 步的点吻合，所以应是 5 个 seed 的结果（我的推断）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>OOD：15 个外部场景。Near-domain：再加 3 个目标环境里非目标任务的数据。In-domain：再加目标任务的数据。</li>
+        <li>论文只提 3 个目标环境，没写是哪 3 个，也没写这张图是否只在这 3 个上算。</li>
+        <li>论文说 near-domain 比 in-domain 略好，可能是后者过拟合快；这只是"possibly"。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-6">
+    <h3><span class="exp-n">E6</span>要调多少步？<span class="exp-src">§5.3 · Fig. 11</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/fig11.jpg" alt="训练步数对 Pearson r 和 MMRV 的曲线，1k 步附近最好，之后下降"></div>
+      <figcaption><b>Fig. 11</b>（作者原图）紫线 r，橙线 MMRV，阴影是 5 个 finetuning seed 的波动。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>有一个窗口，调过头会变差。</b>读图约值：0 步 r 0.29，500 步 0.70，1k 步 0.85，4k 步 0.83，8k–10k 步 0.63；MMRV 1k 步约 0.07，8k 步约 0.16。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑"很小的代价"：1k 步够了，不用每个环境再调。</dd></div>
+      <div><dt>指标</dt><dd>每个 checkpoint 50 次 rollout，同样的初始状态（App C.2），对 5 个 seed 取均值和方差。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>所有 policy 各跑 5 次，每次 10k 步。</li>
+        <li>注意（我的推断）：1k 这个默认值和报告的 r 看的是同一份真机分，论文没提 hold-out。曲线在 1k–4k 比较平，这个风险不算大，但主表 0.90 确实高于这里的 0.85。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-7">
+    <h3><span class="exp-n">E7</span>差距来自视觉还是物理？<span class="exp-src">App D.1, C.2 · Fig. 12</span></h3>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>观测</th><th>动力学</th><th>结果</th></tr>
+        <tr><td>真实图像</td><td>仿真</td><td>没有掉分</td></tr>
+        <tr><td>仿真渲染</td><td>真实</td><td>掉约 25%</td></tr>
+      </table>
+    </div>
+    <p class="note">这个小表是我按 App D.1 的文字整理的，论文没有表格。</p>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PolaRiS/fig12.jpg" alt="开环回放的关节误差：joint velocity 误差逐步增大，joint position 误差很小"></div>
+      <figcaption><b>Fig. 12</b>（作者原图）开环回放的关节误差。左 joint velocity 涨到约 0.6 rad，右 joint position 除开头外基本在 0.1 rad 以内。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>视觉差是主因，这也是 co-training 针对视觉的理由。</b>sim 动力学配真图不掉分，sim 图配真动力学掉约 25%（3 个任务）。joint position 比 velocity 更容易在仿真里跟住。</dd></div>
+      <div><dt>在故事里</dt><dd>§4.2 用它解释为什么补救手段是 co-training，而不是调物理。</dd></div>
+      <div><dt>指标</dt><dd>任务表现；论文没说 25% 是绝对还是相对，也没给 rollout 次数。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>真机和仿真逐步交换：15 Hz，每步一边执行、另一边跟随关节位置。</li>
+        <li>只用了 π0-FAST DROID joint position 一个 policy，3 个任务没有具名。证据比正文的语气窄。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <p class="eyebrow">论文自己说的</p>
+  <ul class="tight">
+    <li>只评刚体任务；非刚体、软体和复杂接触还做不了，"does not entirely replace real-world evaluation"（§5.2）。</li>
+    <li>Splat 渲染还有视觉差，未来可试 diffusion 渲染（§6）。</li>
+    <li>System identification 比较简单：默认接触参数、用户估质量（§4.1、§6）。</li>
+    <li>未来想把 world model 和物理仿真混合，覆盖更复杂的物体（§6）。</li>
+  </ul>
+  <p class="eyebrow">我的推断</p>
+  <ul class="tight">
+    <li>样本小：5 个 policy、1 个平台、都来自 openpi，r 的不确定性论文没有报告。</li>
+    <li>评的是调过的副本，不是黑盒 policy，见 <a href="#stage-all">co-finetuning 对结论的影响</a>。</li>
+    <li>"不到 1 小时"只算建一个场景；326 条 VR 遥操作的人力和 rollout 算力论文没报。</li>
+    <li>Rollout 数有疑点：3 个 Princeton 任务的 15 个 sim 分全是 1/30 的倍数，而 50 次 × 3 步的平均可以落在任何 1/150 的倍数上，这不像巧合；Pan Cleaning 的 π0 (100k) 真机分是 11/26，20 次凑不出来。这些格子实际次数可能少于 20 和 50，或者分数另有算法。依据只是项目页数据的分母。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>Sim-to-real 证据的模板：</b>r2s-lite 现在只回放，没有这类证据。这篇的做法可以直接抄：同一批 DROID policy 配对跑真机和仿真、分步 rubric、逐环境报 r 和 MMRV。但要让 policy 在我们的场景里闭环跑，还要有真机分；Isaac 渲染的 GPT mesh 大概率也要过一次 co-finetune：不调 r 只有 0.30，调过之后连无纹理场景也有 0.72（Fig. 9）。</li>
+    <li><b>Mass 和 friction：</b>PolaRiS 同样用默认值和估计值，E7 里 sim 动力学不掉分。但那是闭环 VLA、1 个 policy、3 个任务；回放不看图，视觉差影响不到动作，失败只能来自几何和物理，所以这不能说明假定值够用。Fig. 12 只印证了一点：我们的 worker 用 joint position target 回放是对的。</li>
+    <li><b>相机和物体角色，这篇没有解法：</b>它到现场重新扫描、放 ChArUco，完全不读 DROID 录下的相机位姿，所以 20 cm 的误差它碰不到。任务指令和成功判据由人在 GUI 里写，所以"take the lid off"被当成"put into receiver"这种错也不会出现。我们只有录好的 episode，这两件事还得自己解决。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-05-PolaRiS.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>

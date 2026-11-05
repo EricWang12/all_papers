@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>PhysTwin</title>
+<meta name="description" content="PhysTwin：用 3 路 RGB-D 视频里的一次手部交互，把可变形物体拟合成 spring-mass + Gaussian 的实时 twin；先 zero-order 搜拓扑和全局参数，再 first-order 调每根弹簧。">
+<meta name="paper:title" content="PhysTwin: Physics-Informed Reconstruction and Simulation of Deformable Objects from Videos">
+<meta name="paper:source" content="https://arxiv.org/abs/2503.17973">
+<meta name="paper:venue" content="ICCV 2025">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2503.17973v1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-05</p>
+  <h1>PhysTwin</h1>
+  <p class="full-title">PhysTwin: Physics-Informed Reconstruction and Simulation of Deformable Objects from Videos</p>
+  <p class="meta">Hanxiao Jiang, Hao-Yu Hsu, Kaifeng Zhang, Hsin-Ni Yu, Shenlong Wang, Yunzhu Li · Columbia University, UIUC · ICCV 2025（arXiv 2503.17973v1，2025-03-23）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2503.17973">arXiv</a><a href="https://arxiv.org/pdf/2503.17973v1">PDF</a>
+    <a href="https://jianghanxiao.github.io/phystwin-web/">Project page</a><a href="https://github.com/Jianghanxiao/PhysTwin">Code</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：把可变形物体的视频变成可仿真的 digital twin（这篇本身没有 agent）；第二相关 Sim-robot-learning（Warp 上的可微 spring-mass 模拟器）。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>3 路 RGB-D 视频里只有一次手部交互，却要得到一个几何完整、外观真实、能接新动作的可变形物体 twin；物体看不全，部分物理参数还不可微。</dd></div>
+    <div><dt>Idea</dt><dd>spring-mass 管物理，TRELLIS 补几何，Gaussian 管渲染；先用 CMA-ES（zero-order）搜拓扑和少量全局参数，再用可微模拟器（first-order）调每根弹簧的刚度和 collision 参数，最后只用第一帧拟合 Gaussian。</dd></div>
+    <div><dt>Result</dt><dd>Future Prediction 的 IoU 72.5% vs GS-Dynamics 49.8%、Spring-Gaus 46.4%（Table 1）；没见过的动作上 Chamfer 0.013 vs GS-Dynamics 0.029（Table 2）。机器人应用只有定性 demo。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>一段视频只露出物体的一部分和一种动作，却要反推整个物体的物理</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>毛绒树懒</b>（Fig. 2、Fig. 8 和 Supp. C 的例子）：桌上一只 sloth toy，3 台 <span class="ex">RealSense-D455</span> RGB-D 相机，一只手提起它的一条肢体（项目页叫 Single lift sloth，<span class="ex">85 帧 · 2.83 s · 30 FPS</span>）→ 想要：一个 twin，能 ① 重放这段动作，② 预测最后 30% 的帧，③ 换成<span class="ex">双手拉伸</span>这种没见过的动作也能仿真，④ 用键盘实时玩。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>例子输入</b><br/><span class='ex'>3 路 RGB-D</span><br/><span class='ex'>单手提树懒</span>"]:::example
+  IN --> A1["<b>Dynamic NeRF / 3DGS</b><br/>拟合看到的每一帧"]
+  A1 --> AX["没有物理<br/>接不了新动作<br/><span class='ex'>论文没跑这组</span>"]:::gap
+  IN --> B1["<b>Spring-Gaus</b><br/>spring-mass + Gaussian<br/>论文给它补了手和 shape"]
+  B1 --> BX["物理模型常常崩<br/><span class='ex'>Future IoU 46.4</span><br/><span class='ex'>新动作未评测</span>"]:::gap
+  IN --> C1["<b>GS-Dynamics</b><br/>GNN 学 dynamics<br/>只有这一段视频"]
+  C1 --> CX["预测趋于不动<br/><span class='ex'>Future IoU 49.8</span><br/><span class='ex'>新动作 IoU 63.4</span>"]:::gap
+  </pre></div>
+  <p class="note">数字是 22 个场景的均值（Table 1、Table 2），论文没有单独报树懒。第 1 条出自 §1、§2 的论述，论文没做实验；第 2、3 条的现象出自 Fig. 3 的 caption："GS-Dynamics tends to remain static, while Spring-Gauss frequently causes the physical model to crash"。Spring-Gaus 的数字只算成功的 case（§5.1）。</p>
+  <figure class="paper-fig">
+    <div class="mat media-row">
+      <figure><video src="2026-11-05-PhysTwin/web-cmp-gsdynamics.mp4" autoplay muted loop playsinline controls></video><figcaption>GS-Dynamics</figcaption></figure>
+      <figure><video src="2026-11-05-PhysTwin/web-cmp-springgaus.mp4" autoplay muted loop playsinline controls></video><figcaption>Spring-Gaus</figcaption></figure>
+      <figure><video src="2026-11-05-PhysTwin/web-cmp-phystwin.mp4" autoplay muted loop playsinline controls></video><figcaption>PhysTwin</figcaption></figure>
+    </div>
+    <figcaption><b>项目页</b> <a href="https://jianghanxiao.github.io/phystwin-web/#verify">Comparison with Prior Work</a>：同一只树懒的 double_stretch 视频，三种方法都用这段视频本身建模（不是单手到双手的迁移）。比：手抬起时胳膊有没有跟上；Spring-Gaus 的表面是否还完整。</figcaption>
+  </figure>
+  <p class="crux"><b>根本问题：</b>几何看不全、弹簧有上万根、拓扑和接触又不可微，一次交互既不够训练网络，也没法直接梯度下降。　<b>这篇的切入点：</b>物理用显式模型不用学；几何和运动借基础模型补；优化拆成低维 zero-order 和高维 first-order 两步。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Spring-Gaus</b><br><span class="muted">Zhong et al., ECCV 2024（论文称最接近）</span></td><td>从视频重建弹性物体并仿真</td><td>3D spring-mass + Gaussians，物体主要靠重力和碰撞变形</td><td>过度正则、违反动量和重力、要 dense 视角、没有 action 输入 → 本文 3 视角 + shape prior + control points</td></tr>
+      <tr><td><b>Learned dynamics</b><br><span class="muted">GS-Dynamics、GNS、MeshGraphNets、RoboCraft、RoboCook</span></td><td>学物体在动作下怎么动</td><td>图网络从数据学 dynamics；GS-Dynamics 从真实视频的 Gaussian track 学</td><td>要大量样本、局限在特定环境 → 本文不学网络，一次交互拟合</td></tr>
+      <tr><td><b>视频系统辨识</b><br><span class="muted">PAC-NeRF、NeuPhysics、Virtual Elastic Objects、PhysDreamer；手填参数的 PhysGaussian、PIE-NeRF、VR-GS</span></td><td>把物理放进 NeRF / SDF / Gaussian 表示</td><td>可微仿真估参数，或手工指定参数</td><td>限于合成数据、有限运动或 dense 视角，手填的和实物对不上 → 本文在真实 sparse 视频上估每根弹簧</td></tr>
+      <tr><td><b>预扫描 + 可微仿真</b><br><span class="muted">DiffPD、ADD、DiSECt、gradSim、RISP</span></td><td>静态物体的物理参数辨识</td><td>可微物理对齐干净的观测</td><td>要预扫描形状和干净点云 → 本文用 TRELLIS 补全，只看局部 depth</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Dynamic NeRF / 3DGS</b><br><span class="muted">D-NeRF、Deformable 3D-GS、Dynamic 3D-GS、4D-GS</span></td><td>动态场景的新视角合成</td><td>deformation field，或逐帧移动 Gaussian</td><td>只重现看过的运动，不能按动作预测 → 本文 Gaussian 只当渲染层，运动由模拟器算</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §1、§2 Related Works、§5.1 Baselines、Supp. C，未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>把造 twin 写成反问题：调模型参数，直到仿真和视频对上</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-PhysTwin/fig1.jpg" alt="PhysTwin 总览：左边输入视频，中间 track 和键盘实时仿真，右边遥操作和机器人规划"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）三个相机视角的 sparse 视频 → 可仿真的 twin → 实时交互和机器人应用。图里是蓝色 zebra 玩偶，和树懒走同一流程。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左 "Input Video"：</b>时间轴 t 向下，两只手拉玩偶的四肢。这就是输入；我们的例子换成单手提树懒。</li>
+    <li><b>"PhysTwin"：</b>彩色点是物体上被跟踪的点，红点是手部 control points，红绿两条线是两只手走过的路径。这些就是 Stage 1 的产物。</li>
+    <li><b>"Simulation"：</b>Left Hand / Right Hand 的方向键直接移动两只虚拟手，玩偶实时跟着变形（"Real-Time Physical Simulation &amp; Rendering"），对应 Stage 6。</li>
+    <li><b>"Applications in Robotics"：</b>上面 Teleoperation 配 "Digital Twin Overlay"，下面 Model-Based Robot Planning 拉绳子。论文里这两项都只有定性展示，见 <a href="#exp-3">E3</a>。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>3 路 RGB-D</span><br/><span class='ex'>单手提树懒</span>"]:::example --> M["<b>Inverse modeling</b><br/>仿真 ↔ 视频<br/><span class='ex'>几何 · 物理 · 外观</span>"]
+  M --> O["<b>PhysTwin</b><br/><span class='ex'>双手拉也能仿真</span>"]:::win
+  </pre></div>
+  <h3 style="margin-top:1.5rem">它到底要什么输入</h3>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>输入</th><th>具体是什么</th><th>依据</th></tr>
+      <tr><td><b>3 路 RGB-D 视频</b></td><td>3 台 RealSense-D455，每段 1–10 s，含单手或双手的提、拉、推、挤</td><td>§5.1</td></tr>
+      <tr><td><b>相机内外参</b></td><td>论文没提，但 3 路 depth 必须进同一坐标系；官方数据每个 case 自带 <code>calibrate.pkl</code> 和 <code>metadata.json</code></td><td>代码 README</td></tr>
+      <tr><td><b>动作 = 视频里的手</b></td><td>手的 3D 点就是动作 a<sub>t</sub>，不要力或触觉传感器</td><td>§4.2.1、§5.1</td></tr>
+      <tr><td><b>物体类别词</b></td><td>论文没提；代码把 <code>sloth.hand</code> 这样的词作为 Grounded-SAM2 的 text prompt</td><td>代码 <code>process_data.py</code></td></tr>
+      <tr><td><b>现成模型</b></td><td>Grounded-SAM2、CoTracker3、TRELLIS、super-resolution 模型、SuperGlue，全部直接用，不重新训练</td><td>§4.2.1、Supp. A</td></tr>
+      <tr><td><span class="win">不需要</span></td><td>预扫描 mesh、dense 视角、材料标注、成批训练数据（只要一次交互）</td><td>§1、§2</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>6 个 stage：准备两步、物理两步、外观一步、使用一步</h2>
+  <p class="note">论文的 "stage" 有两层：§4.2 的 two-stage 指物理和几何 / 外观；§4.2.1 里的 first / second stage 又指 zero-order / first-order。本页统一编号 1–6。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-PhysTwin/fig2.jpg" alt="PhysTwin 框架：观测经重建和跟踪得到 pseudo track，PhysTwin 表示经仿真渲染，三项 cost 反向优化"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）核心表示是 geometry、topology、physical parameters 和 Gaussian kernels。图里就是树懒，这里是双手的那段视频。</figcaption>
+  </figure>
+  <p class="eyebrow">符号表</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>白话</th><th>树懒例子里</th></tr>
+      <tr><td>O<sub>t,i</sub> = (I, D)</td><td>相机 i 在时刻 t 拍到的 RGB 图和 depth 图</td><td>3 路里的一帧</td></tr>
+      <tr><td>X<sub>t</sub> / X̂<sub>t</sub></td><td>观测到的局部点云 / 模拟器算出的完整状态</td><td>看得到的毛绒表面 / 所有质点</td></tr>
+      <tr><td>x<sup>t</sup><sub>i</sub> / x̂<sup>t</sup><sub>i</sub></td><td>第 i 个点的观测位置 / 预测位置</td><td>track 上的一个点</td></tr>
+      <tr><td>G = (V, E)</td><td>一张图：质点和连接它们的弹簧</td><td>树懒内部的弹簧网</td></tr>
+      <tr><td>G<sub>0</sub></td><td>"canonical" 的几何和拓扑，实际取第一帧</td><td>手刚碰到时的树懒</td></tr>
+      <tr><td>k<sub>ij</sub>, l<sub>ij</sub></td><td>弹簧的硬度、自然长度</td><td>每根弹簧各一个硬度</td></tr>
+      <tr><td>γ, δ</td><td>两个点相对运动的阻尼（dashpot）、整体减速的阻尼（drag）</td><td>让弹簧不一直抖</td></tr>
+      <tr><td>α</td><td>全部物理参数：stiffness、collision、damping、手和物体的连接方式。§4.2.2 又用 α 指 opacity，两者无关</td><td>要反推的物理</td></tr>
+      <tr><td>a<sub>t</sub></td><td>时刻 t 的动作，就是 control points 的位置</td><td>手的点云</td></tr>
+      <tr><td>θ</td><td>全部 Gaussian 的外观参数</td><td>毛绒的颜色和表面</td></tr>
+      <tr><td>f<sub>α,G₀</sub> / g<sub>θ</sub></td><td>模拟器走一步 / 把状态画成图</td><td>—</td></tr>
+    </table>
+  </div>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左上 "Observation"：</b>3 个相机围着桌子，3 路 depth 融成彩色点云，就是全部输入。</li>
+    <li><b>蓝箭头 "Reconstruction / Tracking" → "Pseudo Track"：</b>彩虹点是物体上被跟踪的 3D 点，红点是手的 control points。"Pseudo" 指它是 CoTracker3 的预测，不是真值。</li>
+    <li><b>左下 "PhysTwin" 框：</b>这是要求的四样东西。放大圈里黑点是质点、绿色弹簧是 Topology，带 * 的红点是 Control Point，虚线弹簧把它接到物体；另外是 Geometry、Stiffness、Contact、Gaussians。</li>
+    <li><b>中间两支箭头：</b>蓝实线 "Simulation Rendering" 是前向，红虚线 "Optimization" 是反向。</li>
+    <li><b>右侧 C = C<sub>geometry</sub> + C<sub>motion</sub> + C<sub>render</sub>：</b>第一项比形状，第二项比点的位置，第三项比图像。caption 写明：只有 rendering loss 优化 Gaussians，geometry 和 motion loss 才动 geometry、topology 和物理。<b>图像误差不回传到物理。</b></li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>Input</b><br/><span class='ex'>3 路 RGB-D + 标定</span>"]:::example
+  IN --> S1["<b>1 · Perception</b><br/><span class='ex'>3D track + 手的点</span>"]
+  IN --> S2["<b>2 · Shape prior</b><br/><span class='ex'>TRELLIS 补全树懒</span>"]
+  S1 --> S3["<b>3 · Zero-order</b><br/><span class='ex'>CMA-ES：拓扑 + 全局值</span>"]:::win
+  S2 --> S3
+  S3 --> S4["<b>4 · First-order</b><br/><span class='ex'>每根弹簧 + collision</span>"]:::win
+  S4 --> S5["<b>5 · Appearance</b><br/><span class='ex'>第一帧拟合 Gaussian</span>"]
+  S5 --> S6["<b>6 · Use</b><br/><span class='ex'>双手拉、键盘、规划</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；模型方程和总目标见 <a href="#stage-all">贯穿全程的模型和 cost</a>。</p>
+  <h3 style="margin-top:1.5rem">什么在哪一步优化</h3>
+  <p class="note">依据一列写"代码"的内容，论文没有写，来自官方代码（main@81c7187，<code>cma_optimize_warp.py</code>、<code>trainer_warp.py</code>）；当前代码不一定等于论文当时的版本。</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>变量</th><th>3 · Zero-order</th><th>4 · First-order</th><th>依据</th></tr>
+      <tr><td><b>物体弹簧的拓扑</b><br><span class="muted">连接半径、最大邻居数</span></td><td><span class="win">搜</span></td><td>冻结</td><td>论文 §4.2.1</td></tr>
+      <tr><td><b>手和物体的连接</b><br><span class="muted">control 半径、最大邻居数</span></td><td><span class="win">搜</span></td><td>冻结</td><td>论文 §4.2.1</td></tr>
+      <tr><td><b>Spring stiffness</b></td><td><span class="win">搜 1 个全局值</span><br><span class="muted">homogeneous</span></td><td><span class="win">每根弹簧 1 个</span><br><span class="muted">tens of thousands</span></td><td>论文 §1、§4.2.1</td></tr>
+      <tr><td><b>Collision 参数</b><br><span class="muted">物体-外部、物体-物体的弹性和摩擦</span></td><td><span class="win">搜</span></td><td><span class="win">再调</span></td><td>论文 §1、§4.2.1；分项来自代码</td></tr>
+      <tr><td><b>Collision 距离</b></td><td><span class="win">搜</span></td><td>冻结</td><td>代码；论文没点名</td></tr>
+      <tr><td><b>阻尼 γ、δ</b></td><td><span class="win">搜</span></td><td>冻结</td><td>代码；论文只说属于 α</td></tr>
+      <tr><td><b>质点质量 m<sub>i</sub></b></td><td colspan="2"><span class="gap">不优化</span>：代码里每个质点都是 1</td><td>代码；论文没说</td></tr>
+      <tr><td><b>完整几何</b></td><td colspan="2">Stage 2 已定，论文说之后优化 "the remaining parameters"</td><td>论文 §4.2.1</td></tr>
+      <tr><td><b>Gaussians θ</b></td><td colspan="2">不参与，Stage 5 才优化</td><td>论文 §4.2.2</td></tr>
+    </table>
+  </div>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th></th><th>3 · Zero-order</th><th>4 · First-order</th><th>5 · Appearance</th></tr>
+      <tr><td><b>方法</b></td><td>CMA-ES，采样，不要梯度</td><td>自建可微 spring-mass 模拟器，梯度下降</td><td>Gaussian 优化</td></tr>
+      <tr><td><b>Cost</b></td><td>C<sub>geometry</sub> + C<sub>motion</sub>（Eq. 3）</td><td>同左</td><td>C<sub>render</sub> = L1 + D-SSIM（Eq. 4）</td></tr>
+      <tr><td><b>用哪些帧</b></td><td>训练帧</td><td>训练帧</td><td>只用 t = 0</td></tr>
+      <tr><td><b>维度</b></td><td>12 维（代码）</td><td>上万根弹簧（论文）+ 4 个 collision 值（代码）</td><td>全部 Gaussian</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿全程</span>
+      <span class="stage-name">Spring-mass 模型和总目标</span>
+      <span class="stage-io">所有 stage 共用的模型 f 和 cost C</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>受力（Eq. 1）：</b>质点 i 的合力 = 相连弹簧的力 + 这些弹簧的阻尼力 + 外力。</li>
+        <li><b>弹簧力：</b>F<sup>spring</sup><sub>i,j</sub> = k<sub>ij</sub>(‖x<sub>j</sub> − x<sub>i</sub>‖ − l<sub>ij</sub>) · (x<sub>j</sub> − x<sub>i</sub>) / ‖x<sub>j</sub> − x<sub>i</sub>‖。比自然长度长就往回拉。</li>
+        <li><b>阻尼力：</b>F<sup>dashpot</sup><sub>i,j</sub> = −γ(v<sub>i</sub> − v<sub>j</sub>)。消耗能量，防止振荡。</li>
+        <li><b>外力：</b>重力、碰撞、用户交互。碰撞用 impulse-based 处理，两个质点很近时触发，物体与碰撞体、物体自身都算。</li>
+        <li><b>积分：</b>v<sup>t+1</sup> = δ(v<sup>t</sup> + Δt·F/m)，x<sup>t+1</sup> = x<sup>t</sup> + Δt·v<sup>t+1</sup>。论文称 explicit Euler。代码 dt = 5e-5，每个 30 FPS 视频帧 667 个子步。</li>
+        <li><b>总目标（Eq. 2）：</b>调 α、G<sub>0</sub>、θ，让所有时刻、所有相机的预测观测和真实观测的差 C 最小，约束是状态必须由模拟器一步步算出来。</li>
+        <li><b>C<sub>geometry</sub>：</b>单向 Chamfer 距离：观测到的点要落在模拟的物体上，反过来不要求。原因应该是背面没有观测（我的推断）。</li>
+        <li><b>C<sub>motion</sub>：</b>预测点 x̂ 和 3D track x 的误差。</li>
+        <li><b>代码多一项：</b>权重 0.01 的 acceleration 项，论文的 cost 里没有写。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>动作 a_t</b><br/><span class='ex'>手的点移动</span>"] --> b["<b>模拟器 f</b><br/>弹簧 + 碰撞 + 积分"]
+  b --> c["<b>状态 X̂_t+1</b><br/><span class='ex'>树懒的肢体被提起</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>手的 control points 按视频移动，通过弹簧拉动物体点；树懒的其余部分靠弹簧传力、靠重力下垂、靠碰撞留在桌面上。这三件事都由同一个模拟器算，所以换一个动作不用重新学（<a href="#stage-6">Stage 6</a>）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Perception</span>
+      <span class="stage-io">3 路 RGB-D → 局部点云 X_t、3D pseudo track、手的 control points</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>depth 只给每帧的局部点云，没有点和点的对应，也没有"动作"。</li>
+        <li><b>点云：</b>每帧 depth → 局部 3D 点云 X<sub>t</sub>。</li>
+        <li><b>物体 track：</b>CoTracker3 在图像上跟踪，再用 depth 反投影到 3D，作 pseudo-GT。论文自己称它为 noisy。</li>
+        <li><b>手：</b>Grounded-SAM2 分出手的 mask → CoTracker3 跟踪 → 抬到 3D → farthest-point sampling，得到 control points。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Grounded-SAM2</b><br/><span class='ex'>树懒 mask · 手 mask</span>"] --> b["<b>CoTracker3</b><br/>2D track"]
+  b --> c["<b>depth 反投影</b><br/><span class='ex'>3D track + 手的点</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-05-PhysTwin/web-sloth-single-track.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://jianghanxiao.github.io/phystwin-web/#verify">Visualization of Results · Tracking · Single lift sloth</a>：左是真实视频，右是 PhysTwin 的结果。彩虹色标出同一批物体点，红点是手的 control points。这里显示的是优化后的 track，不是 Stage 1 的原始 pseudo track，但两者形式一样。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>85 帧 × 3 路 → 树懒物体点的 3D track，以及一小团跟着手走的 control points。按 7:3 切分，前约 59 帧用来拟合，后约 26 帧留作 future（我的换算：代码取前 70% 帧做训练）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Generative Shape Prior</span>
+      <span class="stage-io">第一帧 RGB → 和第一帧观测对齐的完整 mesh</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>3 个视角看不到背面和被手挡住的部分，而弹簧要长在整个物体上。</li>
+        <li><b>生成：</b>Grounded-SAM2 取前景 → super-resolution 放大 → TRELLIS 从单张图生成完整 mesh。</li>
+        <li><b>问题：</b>生成的 mesh 大致像，但 scale、pose 和形变都和观测有差。</li>
+        <li><b>粗旋转：</b>球面上均匀放虚拟相机渲染 mesh，SuperGlue 和真实图做匹配，取匹配最多的视角。</li>
+        <li><b>精旋转：</b>对匹配点跑 PnP。</li>
+        <li><b>尺度：</b>PnP 之后匹配点都在过相机原点的同一条线上，所以平移和尺度合并成只优化尺度。</li>
+        <li><b>非刚性：</b>as-rigid-as-possible 把 mesh 变形到观测的姿态。</li>
+        <li><b>收尾：</b>ray-casting 对齐，让观测点既不被 mesh 挡住，也不挡住 mesh。</li>
+        <li><b>例外：</b>代码的配置里 cloth 和 package 的 case 关掉了 shape prior，只有 rope 和玩偶类开着（<code>data_config.csv</code>）；论文没提这一点。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>TRELLIS</b><br/><span class='ex'>单图 → 树懒 mesh</span>"] --> b["<b>SuperGlue + PnP</b><br/>旋转"]
+  b --> c["<b>优化尺度</b><br/>距离对齐"]
+  c --> d["<b>ARAP + ray-casting</b><br/><span class='ex'>贴合第一帧姿态</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>第一帧里能看到的只有树懒朝上的一面，TRELLIS 把背面补出来，再对齐到桌上的这个摆放姿势（Fig. 2 的 "Geometry"）。它既是物理的初值，也是 Gaussian 的初值。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Zero-order：拓扑和全局参数</span>
+      <span class="stage-io">完整几何 + track + 手 → 弹簧图和一组全局物理参数</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>半径和邻居数决定弹簧连不连，不可微；zero-order 不需要梯度，但参数一多就没效率。</li>
+        <li><b>降维：</b>先假设全物体只有一个 stiffness（homogeneous）。</li>
+        <li><b>拓扑规则：</b>启发式，点和半径内的最近邻相连，最多连 N 个，以此控制弹簧密度；手的 control points 用同样规则接到物体点。</li>
+        <li><b>算法：</b>CMA-ES。采一组参数 → 建弹簧 → 在训练帧上 rollout → 算 Eq. 3 → 更新采样分布。</li>
+        <li><b>12 维（代码）：</b>全局 stiffness、物体半径（0.01–0.05）、物体邻居数（10–50）、control 半径（0.01–0.08）、control 邻居数（10–80）、4 个 collision 弹性和摩擦、collision 距离（0.01–0.05）、drag（0–20）、dashpot（0–200）。默认 20 代。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-PhysTwin/fig2-s1.jpg" alt="Fig. 2 的 PhysTwin 框：topology、geometry、stiffness、contact、Gaussians"></div>
+        <figcaption><b>Fig. 2 局部</b>（作者原图）Stage 3 定的是放大圈里"谁和谁相连"（包括红色 control point 的虚线弹簧）、右上的 Contact，和一个所有弹簧共用的 Stiffness。</figcaption>
+      </figure>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>CMA-ES 采样</b><br/><span class='ex'>12 维的一组值</span>"] --> b["<b>建弹簧 + rollout</b><br/><span class='ex'>手走完训练帧</span>"]
+  b --> c["<b>打分</b><br/>C_geometry + C_motion"]
+  c --> d["<b>更新采样分布</b>"]
+  d --> a
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>每个候选都是一只"全身一样硬"的树懒，手按记录提起肢体，看它的下垂和 track 差多少。论文没报树懒最后得到的值。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">First-order：每根弹簧的刚度</span>
+      <span class="stage-io">Stage 3 的结果 → 每根弹簧一个 stiffness，collision 再细调</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>要表示各种物体就需要 dense stiffness，维度到上万，zero-order 处理不了。</li>
+        <li><b>How：</b>自建的可微 spring-mass 模拟器（实现用 Warp），对 dense stiffness 和 collision 参数同时做梯度下降，cost 仍是 Eq. 3。</li>
+        <li><b>拓扑：</b>Stage 3 定下后不再改，所以不可微的问题在这里不存在。</li>
+        <li><b>代码细节：</b>Adam，lr 1e-3，200 轮（cloth 和 package 100 轮）；stiffness 在 log 空间优化，上限 1e5。</li>
+        <li><b>梯度长度（我读代码的结论）：</b>每个视频帧做一次 backward 和一次 Adam 更新，帧之间的状态只是拷贝，所以梯度不穿过整段 rollout。这和 §4.2 提到的 long time horizon 难题对得上，论文没写这个做法。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Stage 3 结果</b><br/><span class='ex'>k 全身相同</span>"] --> b["<b>可微 rollout</b><br/>Eq. 3 的梯度"]
+  b --> c["<b>Dense stiffness</b><br/><span class='ex'>每根弹簧各一个 k</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>全身一样的 k 展开成每根弹簧一个值，再贴着 3D track 下降。论文没有给树懒的弹簧数，也没有展示 stiffness 分布图；项目页只提到代码里有 material 可视化工具。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Appearance</span>
+      <span class="stage-io">第一帧 3 路图像 → 静态 Gaussians；运行时跟着质点变形</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>质点只管位置，看起来像实物要靠 Gaussian。</li>
+        <li><b>参数 θ：</b>每个 Gaussian 有中心 μ、旋转 q、尺度 s、opacity、颜色 c，从第一帧的 sparse 观测和 shape prior 初始化。</li>
+        <li><b>优化（Eq. 4）：</b>L1 + D-SSIM。为了简单，只在 t = 0 优化。</li>
+        <li><b>各向同性：</b>Gaussian 形状限制为 isotropic，防止形变时出现尖刺。</li>
+        <li><b>运动（Supp. B）：</b>先由相邻质点的运动解出每个质点的局部旋转（Eq. 5），再用 Linear Blend Skinning 把 K 个最近质点的变换按距离倒数加权到每个 Gaussian（Eq. 6–8）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>第一帧 3 路</b><br/><span class='ex'>拟合静态 Gaussian</span>"] --> b["<b>LBS</b><br/>跟随邻近质点"]
+  b --> c["<b>渲染</b><br/><span class='ex'>肢体提起后的图像</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-05-PhysTwin/web-sloth-single-render.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://jianghanxiao.github.io/phystwin-web/#verify">Visualization of Results · Rendering · Single lift sloth</a>：左是真实视频，右是 PhysTwin 的模拟和渲染。看提起时肢体的弯曲是否一致；再看视频末尾右边肢体边缘的黑点和白块，像是第一帧没拍到的区域露了出来（我的推断）。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Gaussian 只见过第一帧的树懒。肢体被提起时，外观完全靠这组 Gaussian 被 LBS 带着走；第一帧看不到的区域，论文只说由 shape prior 初始化。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">Use the twin</span>
+      <span class="stage-io">PhysTwin + 新的 control points → 新动作下的状态和图像</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>新动作：</b>加入 control points，把它们动态地用弹簧接到物体点上，就能模拟不同运动（§4.3）。</li>
+        <li><b>新的起始姿态：</b>用 Stage 2 的 registration 把 twin 对齐到目标视频的第一帧，物理不重新拟合（§5.2）。</li>
+        <li><b>键盘：</b>单手或双手实时控制，模拟器用 Warp 实现。</li>
+        <li><b>遥操作：</b>人操作机械臂时，实时模拟物体未来的状态。</li>
+        <li><b>规划：</b>作为 dynamics model 接到 model-based planning 上。论文没写是哪种 planner，代码 README 后来给了一个 MPPI 示例。</li>
+        <li><b>速度：</b>论文写 real-time，但没报 FPS。代码 README 写树懒约 37 FPS（RTX 4090）。项目页标 "All Real-Time 1x"。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>PhysTwin</b><br/><span class='ex'>单手视频建的树懒</span>"] --> b["<b>对齐第一帧</b><br/><span class='ex'>registration</span>"]
+  b --> c["<b>新 control points</b><br/><span class='ex'>双手拉伸</span>"]
+  a --> d["<b>键盘 / 机械臂</b><br/>实时给 control points"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-05-PhysTwin/web-sloth-keyboard.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://jianghanxiao.github.io/phystwin-web/#applications">Real-time Interactive Simulation with Keyboard Control</a>（29 s，转码为 MP4）：树懒的 twin，粉色和蓝色的手由左右方向键控制，按下的键高亮。全程没有真实物体，看肢体被提起和放下时的下垂。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>用单手视频建的树懒，对齐到双手视频的第一帧，再用那段视频的 control points 驱动，这就是 <a href="#exp-2">E2</a> 的 Fig. 8 第 1、2 行。机器人部分论文用的是绳子和布，所以树懒这条线到键盘为止，见 <a href="#exp-3">E3</a>。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>Spring-mass 作为显式物理</td><td>贯穿全程：手拉 → 弹簧传力 → 肢体被提起、身体下垂</td></tr>
+        <tr><td>基础模型提供 pseudo-GT</td><td>Stage 1：CoTracker3 的 track 抬到 3D</td></tr>
+        <tr><td>手作为 control points</td><td>Stage 1 提取，Stage 3 决定怎么接到物体</td></tr>
+        <tr><td>生成式 shape prior + registration</td><td>Stage 2：TRELLIS 补出树懒的背面</td></tr>
+        <tr><td>Sparse-to-dense 分层优化</td><td>Stage 3：全身一样硬的树懒；Stage 4：每根弹簧一个 k</td></tr>
+        <tr><td>Gaussian + LBS</td><td>Stage 5：第一帧拟合，运行时跟着质点走</td></tr>
+        <tr><td>泛化到没见过的动作</td><td>Stage 6：单手视频 → 双手拉伸</td></tr>
+        <tr><td>实时交互</td><td>Stage 6：键盘玩树懒</td></tr>
+        <tr><td>遥操作和规划</td><td>例子覆盖不到，论文用绳子和布，见 E3</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>贴得更准、预测更远、换动作不掉；但比的全是几何和图像，没有速度和机器人成功率</h2>
+  <p>顺序同论文的三个问题：<a href="#exp-1">E1</a> 重放和未来预测 → <a href="#exp-2">E2</a> 没见过的动作 → <a href="#exp-3">E3</a> 下游应用；然后是补充材料：<a href="#exp-4">E4</a> 分层优化的消融 → <a href="#exp-5">E5</a> track 质量 → <a href="#exp-6">E6</a> 数据效率。全部比精度，论文不比时间。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>重放这段视频、预测后面的帧，有多准？<span class="exp-src">§5.2 · Q1</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PhysTwin/tab1.jpg" alt="Table 1：Spring-Gaus、GS-Dynamics、PhysTwin 在两个任务上的六项指标"></div>
+      <figcaption><b>Table 1</b>（作者原图）先看右半边 Future Prediction 的 IoU 一列，再看 Track Error。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PhysTwin/fig3.jpg" alt="Fig. 3：红布、绳子、玩偶三个物体，四种方法，重放和未来预测"></div>
+      <figcaption><b>Fig. 3</b>（作者原图）三组物体：红布、绳子、zebra。蓝框是 Reconstruction &amp; Resimulation，红框是 Future Prediction。每组四行：Observation、PhysTwin、GS-Dynamics、Spring-Gaus。看红布：GS-Dynamics 的布几乎不离开桌面，Spring-Gaus 的 Gaussian 散到画面边上。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>两个任务所有指标都最好，未来帧上差距更大。</b>重放：Chamfer 0.005 vs GS-Dynamics 0.014、Spring-Gaus 0.041；IoU 84.4 vs 72.1、57.6。未来：IoU 72.5 vs 49.8、46.4；Track Error 0.022 vs 0.070、0.094。</dd></div>
+      <div><dt>在故事里</dt><dd>证明拟合出来的是物理，不只是把训练帧背下来。</dd></div>
+      <div><dt>指标</dt><dd><ul class="tight"><li>3D：单向 Chamfer（局部真实点云到完整预测状态）；Track Error（每段视频 9 个手工标注的点）。单位论文没写。</li><li>2D：PSNR、SSIM、LPIPS 看图像，IoU 看轮廓。只在中间视角评，因为物体可见性最好。</li><li>对所有帧和场景取平均；没有 seed 数或方差。</li></ul></dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>自采 22 个场景：rope、stuffed animals、cloth、delivery packages；视频 7:3 切成训练和测试，只用训练部分建 twin。</li><li>动作由 control points 给定；未来帧的手也要给（我的推断：§5.1 把动作定义为 control point 位置，没有别的来源）。</li><li>Spring-Gaus：作者加了 control springs，并用本文的 shape prior 初始化；优化不稳定，只算成功的 case，这对它有利。</li><li>GS-Dynamics：换成 CoTracker3 的 3D tracker，并加上本文的 Gaussian blending 来渲染。</li><li>Fig. 9 有三个视角的定性图，没有数字。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>换成没见过的动作，还准吗？<span class="exp-src">§5.2 · Q2</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PhysTwin/tab2.jpg" alt="Table 2：GS-Dynamics 和 PhysTwin 在 unseen interaction 上的六项指标"></div>
+      <figcaption><b>Table 2</b>（作者原图）拿 PhysTwin 这一行和 Table 1 的 Future Prediction 那一行对比。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PhysTwin/fig8-sloth.jpg" alt="Fig. 8 前两行：树懒从单手提起迁移到双手拉伸，PhysTwin 和 GS-Dynamics 对比"></div>
+      <figcaption><b>Fig. 8 前两行</b>（作者原图）就是我们的例子。左边 Observation 是建模用的单手动作，右边五格是没见过的双手动作。看第 3、4 格：PhysTwin 的胳膊跟着手；GS-Dynamics 的胳膊短一截，手边露出淡色的真实物体。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PhysTwin/fig4.jpg" alt="Fig. 4：灰布和树懒在没见过的动作下的预测"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）另外两组：灰布（训练时折两边，测试时提中间）和树懒（测试时提两条胳膊）。GS-Dynamics 的布几乎不动，树懒的胳膊跟不上手。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>未见动作上基本不掉，GS-Dynamics 差距明显。</b>Chamfer 0.013 vs 0.029；Track Error 0.018 vs 0.038；IoU 72.18 vs 63.4。和自己 Table 1 的 future（0.012、0.022、72.5）相当。</dd></div>
+      <div><dt>在故事里</dt><dd>这是 twin 和 video reconstruction 的分界：模型能接它没见过的输入。</dd></div>
+      <div><dt>指标</dt><dd>同 E1。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>同一物体的 11 对交互，正反两个方向，共 22 个实验。</li><li>twin 只用源交互的训练部分构建，在目标交互的整段序列上评。</li><li>用 registration 把 twin 对齐到目标第一帧。</li><li>Spring-Gaus 不参评：它的 Gaussian 不能适应不同的初始条件。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>twin 对机器人有用吗？<span class="exp-src">§5.3 · Q3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PhysTwin/fig5.jpg" alt="Fig. 5：键盘交互、遥操作叠加、模型规划三个应用"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）(a) 键盘控制灰布；(b) 遥操作绳子，右边显示器上是 Digital Twin Overlay；(c) 双臂规划，图里是绿布，右侧是 Initial / Final / Target State，caption 文字说的却是绳子（项目页两个都有）。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><img src="2026-11-05-PhysTwin/web-target-rope.jpg" alt="绳子的目标状态"><figcaption>Target State</figcaption></figure>
+        <figure><video src="2026-11-05-PhysTwin/web-mpc-rope.mp4" autoplay muted loop playsinline controls></video><figcaption>Motion Planning</figcaption></figure>
+        <figure><video src="2026-11-05-PhysTwin/web-teleop-rope.mp4" autoplay muted loop playsinline controls></video><figcaption>Teleoperation</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://jianghanxiao.github.io/phystwin-web/#applications">Applications</a>：左图是目标形状，中间是规划出的双臂动作把绳子弯过去，比它的终点和左图。右边是遥操作，显示器里的绳子和真绳子一起动。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>只证明能跑通，没有数字。</b>没有成功率、目标误差、闭环频率，也没有和别的 dynamics model 比。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑 "real-time + 高保真 → 可以进规划回路" 这一句，属于展示。</dd></div>
+      <div><dt>指标</dt><dd>论文没有定义。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight"><li>Fig. 5 和项目页的绳子、布。</li><li>论文没写用的 planner、双臂怎么变成 control points、绳子的 twin 怎么对齐到机器人场景。</li></ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>zero-order 和 first-order 真的都需要吗？<span class="exp-src">Supp. C</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PhysTwin/tab3.jpg" alt="Table 3：只用 zero-order、只用 first-order 和完整方法的对比"></div>
+      <figcaption><b>Table 3</b>（作者原图）对比 IoU 一列：左半重放，First-order Only 更高；右半未来，Zero-order Only 更高。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>两步都有用，完整方法全部最好。</b>IoU：重放 84.4 vs Zero-only 80.2、First-only 82.7；未来 72.5 vs 69.2、65.7。</dd></div>
+      <div><dt>在故事里</dt><dd>这是分层优化唯一的证据。作者解释：Zero-only 抓不到细粒度材料差异；First-only 没法优化不可微的弹簧连接，默认连接不符合物体结构，control 连接距离也不能用固定值。</dd></div>
+      <div><dt>我的读法</dt><dd><ul class="tight"><li>First-only 重放更好、未来更差，像是错误的拓扑下用 dense stiffness 过拟合了训练帧（推断）。</li><li>Zero-only 的未来 IoU 69.2 已经远高于 GS-Dynamics 的 49.8。GS-Dynamics 用了同样的 CoTracker3 track 和 Gaussian blending，所以这部分优势主要来自显式物理，不是分层优化；first-order 再加 3.3（推断）。</li></ul></dd></div>
+      <div><dt>指标</dt><dd>同 E1。</dd></div>
+      <div><dt>怎么评测</dt><dd>同样的两个任务；只改优化器。论文没说 First-only 的"默认连接"具体取什么值；代码的默认值是物体半径 0.02、control 半径 0.04。</dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>track 比它的监督信号更好吗？<span class="exp-src">§5.2 · Supp. C</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-PhysTwin/fig6.jpg" alt="Fig. 6：CoTracker3 的 pseudo track 和 PhysTwin 的 track 对比，绿圈处颜色混乱和整齐"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）绿圈是手抓布的地方。左边 CoTracker3 颜色乱掉（点跟错了），右边 PhysTwin 的颜色仍然连续。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>物理约束能修掉 track 的噪声，但只有定性证据。</b>论文说 surpass CoTracker3，没给 CoTracker3 的 Track Error。</dd></div>
+      <div><dt>在故事里</dt><dd>解释为什么带噪声的 pseudo-GT 够用：模拟器走不出物理上不可能的运动（我的解读）。</dd></div>
+      <div><dt>指标</dt><dd>无，看图。</dd></div>
+      <div><dt>怎么评测</dt><dd>一个布的案例。</dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-6">
+    <h3><span class="exp-n">E6</span>给 GS-Dynamics 更多数据能追上吗？<span class="exp-src">Supp. C</span></h3>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>方法</th><th>训练数据</th><th>结果</th></tr>
+        <tr><td>PhysTwin</td><td>1 个 data point</td><td>—</td></tr>
+        <tr><td>GS-Dynamics</td><td>30 个 data point（同一动作多采 29 个）</td><td>"does not show a performance boost"</td></tr>
+      </table>
+    </div>
+    <p class="note">这张小表根据 Supp. C 的文字整理；论文没有给这个实验的数值表。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>30 倍数据也没帮上 GS-Dynamics，</b>但只有一句话，没有数字。</dd></div>
+      <div><dt>在故事里</dt><dd>回应"baseline 只是数据不够"的质疑。</dd></div>
+      <div><dt>指标</dt><dd>论文未给。</dd></div>
+      <div><dt>怎么评测</dt><dd>一个物体、一个动作：双手拉伸和折叠绳子。</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>作者承认：</b>现在要 3 路 RGB-D；单路 RGB 配合合适的 prior 是 future work（Supp. D）。</li>
+    <li><b>作者承认：</b>物理只来自一种交互；多种动作才能把物体的内在属性估得更准（Supp. D）。</li>
+    <li><b>时间没有报：</b>论文没有优化时长和 FPS。代码 README 写 stuffed animal 上 CMA-ES 约 12 分钟、first-order 约 5 分钟，不开 self-collision，这不是论文的结果。</li>
+    <li><b>机器人没有数字：</b>规划和遥操作都是定性 demo，没有 sim-to-real 的量化证据。Supp. D 关于减少 domain randomization 的说法是展望，没做实验。</li>
+    <li><b>参数是拟合量，不是测量值（推断）：</b>论文没有和真实材料值比过。代码里质量全是 1，所以 stiffness 只在这个约定下有意义。</li>
+    <li><b>抓取不是接触（推断）：</b>手是用弹簧接到物体上的点，不是有摩擦的接触面，打滑和松手这类事件不在模型里；视频里手也要始终看得见。</li>
+    <li><b>覆盖范围（推断）：</b>实验都是桌面上单个物体被手操作，没有两个物体互相作用，也没有塑性物体和流体。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For r2s-lite</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>质量和摩擦是假设值 → 可以试 Stage 3 的做法：</b>几个全局参数用 CMA-ES 搜，cost 是 rollout 和 track 的差，我们已有 replay 和 SAM3 track。但一次采样就是一次完整 rollout，这里靠便宜的 Warp spring-mass，Isaac 回放贵得多（推断）；拟合出的也只是等效值，不是实测。</li>
+    <li><b>毛巾这类物体 → 这篇列出了缺什么：</b>我们的动作来源更直接（记录的 flange 和夹爪，不用跟踪手），但它假设 3 路相机已标定，Chamfer 和 3D track 都直接建立在上面，DROID 差约 20 cm 的相机位姿必须先修好（推断）。另外它用弹簧接手，不是接触，不能直接搬到 Isaac 的夹爪上。</li>
+    <li><b>没有 sim-to-real 证据 → 可以先用它的评测设计：</b>前 70% 帧拟合、后 30% 帧打分，再换同一物体的另一段动作，不用训练 policy 就能得到 held-out 证据。这仍然不是 sim-to-real，这篇的机器人部分也没有给出那种证据。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-05-PhysTwin.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>

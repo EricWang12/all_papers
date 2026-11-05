@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>AgenticRSR</title>
+<meta name="description" content="AgenticRSR：URDF 定尺度、agent 按标量反馈改场景、MuJoCo 探针查交互，Codex 写程序策略，经同一接口上真机；真机 8/18，conversion 80.0%。">
+<meta name="paper:title" content="Agentic RSR: Real-to-Sim-to-Real through Scene Reconstruction and Execution-Grounded Robot Policies">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.10479">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.10479v2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-05</p>
+  <h1>AgenticRSR</h1>
+  <p class="full-title">Agentic RSR: Real-to-Sim-to-Real through Scene Reconstruction and Execution-Grounded Robot Policies</p>
+  <p class="meta">Yihan Li†, Yating Feng, Shengjiu Sun, Jianing Chen, Hao Ren, Bowen Yang et al.（通讯：Yihan Li、Renjing Xu）· Sun Yat-sen University、HKUST (Guangzhou) · arXiv 2610.10479v2，2026-10-11（v1 2026-10-07）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.10479">arXiv</a><a href="https://arxiv.org/pdf/2610.10479v2">PDF</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：agent 重建工作台、检查任务交互，再开发能在真机运行的策略；第二相关 Robotic harness（Codex agent 写 <code>policy.py</code> 并在执行中决定重试）。论文和 arXiv 都没给项目页；代码和场景数据"will be made publicly available"，暂无链接。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>给一段绕工作台的视频、一句任务和已知机器人，要得到支持这个任务的米制仿真，并让在里面开发的策略能在真机跑；以前的工作只做其中一段。</dd></div>
+    <div><dt>Idea</dt><dd>URDF 当尺子定尺度 → DSH agent 按 depth 和颜色的标量反馈改场景 → MuJoCo 探针查交互 → Codex agent 分三遍写 <code>policy.py</code> → 同一套 API 加经验记忆上真机。</dd></div>
+    <div><dt>Result</dt><dd>18 个场景全过 visual check，Depth MAE 0.0808 m（参考是视频估的深度，不是实测）；真机 8/18 任务成功（44.4%），sim 10/18（55.6%），conversion 80.0%（Table 4），每任务几次 trial 没写。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>重建和策略各做各的：场景只求像，程序没处排练，sim 里学到的东西带不到真机</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>F5 · Stack two bowls（Franka FR3）</b>：输入一段绕工作台慢拍的 RGB 视频 <span class="ex">V</span>、任务 <span class="ex">q = Stack two bowls</span>（Table 5）、已知机器人资产 <span class="ex">U = Franka URDF</span>；黑桌上一只蓝碗、一只绿碗（Fig. 5）→ 想要：一个以米为单位、能抓能放的 MuJoCo 场景，一份在里面练好的 <span class="ex">policy.py</span>，最后真 Franka 把绿碗叠到蓝碗上。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>例子输入</b><br/><span class='ex'>Franka 绕拍视频</span><br/><span class='ex'>Stack two bowls</span>"]:::example
+  IN --> A1["<b>Gaussian 重建</b><br/>Re³Sim 等 3 个<br/>出图或 Gaussian"]
+  A1 --> AX["缺可用 depth<br/>和物体几何<br/><span class='ex'>Lab 23.7–25.4</span>"]:::gap
+  IN --> B1["<b>SimFoundry</b><br/>生成语义相近的<br/>digital cousin"]
+  B1 --> BX["不是这张桌子<br/><span class='ex'>depth .5711 m</span><br/><span class='ex'>BBox .1922 m</span>"]:::gap
+  IN --> C1["<b>Agentic R2S</b><br/>agent 修 twin<br/>不写策略"]
+  C1 --> CX["停在场景<br/><span class='ex'>无 code policy</span><br/><span class='ex'>无 recovery</span>"]:::gap
+  IN --> D1["<b>CaP</b>、<b>Instruct2Act</b><br/>写好程序<br/>就去执行"]
+  D1 --> DX["出了预想难改<br/><span class='ex'>Real 25.6 / 27.8</span><br/><span class='ex'>18 任务均值</span>"]:::gap
+  </pre></div>
+  <p class="note">F5 的数字来自 Table 10（列 5，早先的 Codex 批次），Real SR 来自 Table 4，论文没有逐任务的策略结果，所以 F5 没有自己的成功率。"坏在哪"：第 1 条出自 §4.2（缺 depth 是输出格式不兼容，"not an inherent inability"）；第 2 条是推断，依据 §3.1 "rather than generate a semantically similar scene variant"；第 3 条只有 Table 1 的能力对比，论文没跑它；第 4 条出自 §5 和 §4.4（看错相似物体、单 wrist 视角被挡、物体没认出）。Fig. 5 图注没写任务名，它紧接 §4.4 的 bowl stacking，我按 F5 读（推断）。</p>
+  <p class="crux"><b>根本问题：</b>场景的好坏、策略的好坏、真机的结果，三者从不用同一个任务去检验。　<b>这篇的切入点：</b>用同一个任务把三段串起来：机器人定尺度，评估器把关场景，同一个 task-level 接口贯穿 sim 和真机。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Gaussian real-to-sim</b><br><span class="muted">Re³Sim、RL-GSBridge、RoboSimGS、GSWorld</span></td><td>真实场景 → 可学策略的高保真仿真</td><td>高保真渲染耦合交互几何</td><td>建完不再修、不写程序（Table 1，Re³Sim）→ 本文 agent 按标量反馈反复改 mesh 场景</td></tr>
+      <tr><td><b>Digital cousins</b><br><span class="muted">SimFoundry、ACDC</span></td><td>视频或图 → 可交互、保留 affordance 的场景</td><td>生成语义相近的变体，用于评测和训练</td><td>只求相近 → 本文复原被拍的这张桌子，并定到米</td></tr>
+      <tr><td><b>Agentic Real2Sim</b><br><span class="muted">Chen et al. 2026a</span></td><td>录像里的机器人-物体交互 → episodic twin</td><td>VLM agents + simulator-in-the-loop 修正</td><td>止于 twin，sim-to-real 未确立（Table 1）→ 本文接到 code policy 和真机</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>写好就跑的 code policy</b><br><span class="muted">Code as Policies、Instruct2Act</span></td><td>语言指令 → 可执行机器人程序</td><td>LLM 组合感知和控制 API</td><td>程序出了预想难改后续策略（§5）→ 本文 agent 在 checkpoint 决定继续、重试或改写</td></tr>
+      <tr><td><b>多轮 coding agent</b><br><span class="muted">CaP-X；同路 Inner Monologue、ASPIRE、ENPIRE、RoboClaw</span></td><td>用执行反馈迭代策略或技能</td><td>CaP-X：多轮写码，sim 和真机共用工具</td><td>练习场不是被拍的工作台（Table 1，CaP-X 无重建）→ 本文在这张桌子的重建里练</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §1、§2 Related Work、Table 1、§3.1、§5，未另行检索。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-AgenticRSR/tab1.jpg" alt="Table 1：CaP、Agentic R2S、CaP-X、Re3Sim、SimFoundry、Agentic RSR 在五项能力上的对比"></div>
+    <figcaption><b>Table 1</b>（作者原图）作者自己的判定：✓ 实验展示过，– 论文没确立，× 不属于该方法。只有最后一列五项全 ✓，这一列就是本文的主张，不是测量结果。</figcaption>
+  </figure>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>用已知机器人当尺子建场景，在场景里练程序，再把程序和经验带上真机</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-05-AgenticRSR/fig1.jpg" alt="Agentic RSR 总览：上方 Real to Sim 三步，右下 SIM 与代码窗口，下方 Sim to Real 虚线箭头回到真机"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）真实观测和已知机器人几何 → 米制场景和交互检查 → policy agent 在 sim 里开发测试 → 带经验记忆迁到真机。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左上 REAL：</b>Agilex Piper 工作台和绿色托盘，这是输入视频的画面（看起来是 P3，推断）；我们的例子换成 Franka 和两只碗，入口一样。</li>
+    <li><b>上方 "Real to Sim" 三个圆点：</b>1 Robot Alignment（红色 robot mask，四个视角）= Stage 1；2 Scene Modeling = Stage 2；3 Physics Verification（夹爪特写）= Stage 3。</li>
+    <li><b>右下 SIM 和代码窗口：</b>场景里跑 <code>def task()</code>，observe、动作、inspect，完成就 stop，否则 reset = Stage 4。这段是示意：App. D.2 禁止 pick/place 和 grasp helper，真实 API 是 <code>move_pose</code>、<code>gripper</code>、<code>move_trajectory</code>。</li>
+    <li><b>下方 "Sim to Real" 虚线箭头：</b>标着 "Memory Transfer &amp; Interactive Adaptation"，带过去的是 policy 和经验记忆，物体要在真机上重新定位 = Stage 5。</li>
+    <li><b>左下 REAL：</b>Franka 和抽屉盒，图上两台机器人混着画，论文确实用了这两台（Table 5）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>视频 + 任务 + URDF</span>"]:::example --> M["<b>Sim 里开发</b><br/><span class='ex'>米制场景 + policy.py</span>"]
+  M --> O["<b>真机执行</b><br/><span class='ex'>绿碗叠上蓝碗</span>"]
+  </pre></div>
+  <p class="flow-hint">两个不同的 agent 系统：场景由 DSH 编排（主配置 Claude Opus 5.5），策略由 Codex 写（GPT-6 Astra，high reasoning）。DSH = DeepSeek Harness，是执行框架，不是模型。</p>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage，外加贯穿 Stage 4–5 的 execution-grounded loop</h2>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>Input</b><br/><span class='ex'>视频 V、q、Franka URDF</span>"]:::example --> S1
+  S1["<b>1 · Metric registration</b><br/><span class='ex'>URDF → 米制相机和 depth</span>"] --> S2["<b>2 · Scene refinement</b><br/><span class='ex'>F5 depth .080 m</span>"]
+  S2 --> S3["<b>3 · MuJoCo checks</b><br/><span class='ex'>碗 → open_container</span>"]
+  S3 --> S4["<b>4 · Policy, 3 passes</b><br/><span class='ex'>真值 → 视觉 → 随机化</span>"]
+  S4 --> S5["<b>5 · Real execution</b><br/><span class='ex'>Fig. 5：✗ ✓ ✗ ✓</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；观察-动作循环和接口见 <a href="#stage-all">execution-grounded loop</a>。论文 App. D 把 Real-to-Sim 叫 Stage 1–3，Fig. 4 又把策略叫 Stage 1–3，这里策略的三段一律叫 Pass 1–3。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Robot-anchored metric registration</span>
+      <span class="stage-io">视频 V + URDF → 米制的 4 个 reference camera 和 depth，世界系 = robot base</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>VGGT-Ω 的 depth 和相机只有相对尺度；画面里唯一知道真实尺寸的东西就是机器人。</li>
+        <li><b>输入约束：</b>相机慢慢绕工作台，每帧都看得到机器人、场景和任务物体（§4.1）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-AgenticRSR/fig2.jpg" alt="从视频采样 32 帧，VGGT Omega 给相对深度和相机，SAM3 给 mask，合成点云后和 URDF 做 ICP 配准，得到米制场景"></div>
+        <figcaption><b>Fig. 2</b>（作者原图）视频估的 depth、相机和 robot mask 拼成观测到的机器人点云，和已知 URDF 对齐后得到 robot-base 系下的米制 depth 和相机。</figcaption>
+      </figure>
+      <p class="eyebrow">符号（先看这张表）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+        <tr><td><i>K<sub>v</sub></i>, <i>E<sub>v</sub></i>, <i>d<sub>v</sub></i></td><td>VGGT-Ω 估的第 v 帧内参、世界到相机外参、深度（单位是重建单位，不是米）</td><td><span class="ex">32 帧各一组</span></td></tr>
+        <tr><td><i>B</i>, <i>G</i></td><td>机器人底座的坐标系（米）；VGGT 重建的坐标系（任意单位）</td><td><span class="ex">Franka 在 [0,0,0]</span></td></tr>
+        <tr><td><i>s</i></td><td>尺度：1 米等于多少重建单位</td><td>数值未报告</td></tr>
+        <tr><td><i>T<sub>B→G</sub></i></td><td>把米制 URDF 放进重建坐标系的相似变换（缩放 + 旋转 + 平移，<i>T</i>(x) = <i>s</i>Rx + t）</td><td>数值未报告</td></tr>
+        <tr><td><i>r</i></td><td>观测到的机器人有多大：点云 5% 到 95% 分位之间的距离</td><td>数值未报告</td></tr>
+        <tr><td><i>L</i>, <i>L<sub>f</sub></i></td><td>给候选解排序的无量纲损失；最终解的损失</td><td><span class="ex">Franka 均值 0.11364</span></td></tr>
+        <tr><td><i>d</i><sub>50</sub></td><td>把模型投影回画面后，深度残差的中位数，换算成毫米</td><td><span class="ex">Franka 35.3 mm</span></td></tr>
+      </table></div>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左 "Input Video" → "32 Frames"：</b>采样 32 帧，其中 4 帧选作后面一直固定的 reference view。</li>
+        <li><b>上排 "VGGT Omega"：</b>"Relative Depth" 和 "K &amp; [R|t]"，也就是相对深度和相机，这一步还没有米。</li>
+        <li><b>下排 "SAM3" → "Mask"：</b>机器人标成红色，prompt 是 <code>robotic arm with base and camera</code>（App. D.1）。</li>
+        <li><b>中 "Point Cloud"：</b>只把 mask 内的深度反投影，得到观测到的机器人点云。</li>
+        <li><b>"URDF" ↓ "ICP Registration"：</b>URDF 是米制的，配上去的缩放就是尺度 <i>s</i>。</li>
+        <li><b>右 "Output Scene"：</b>Real 和 "Sim (metric scale)"：应用 <i>T</i><sub>B→G</sub> 的逆，把场景和相机搬到 robot-base 系；深度除以 <i>s</i> 变成米，相对几何不变。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>观测点云</b><br/><span class='ex'>mask 内 depth 反投影</span>"] --> b["<b>128 个 rotation 候选</b><br/>打分，留 top 3"]
+  b --> c["<b>Multi-scale Sim(3) ICP</b><br/>URDF 表面对点云"]
+  c --> d["<b>细化</b><br/>两轮平移、旋转、缩放<br/>再 coarse-to-fine 旋转"]
+  d --> e["<b>按 L 取最低</b><br/><span class='ex'>Franka L_f 0.11364</span>"]
+  e --> f["<b>输出</b><br/>场景和相机进 robot-base 系<br/>depth ÷ s = 米"]:::win
+      </pre></div>
+      <p class="eyebrow">排序损失 L 的六项（App. B.1，权重加起来是 1）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>权重</th><th>项</th><th>白话</th></tr>
+        <tr><td>0.50</td><td>1 − mask IoU</td><td>URDF 投影到画面后，和 SAM3 mask 的平均重合度，占一半</td></tr>
+        <tr><td>0.12</td><td>1 − mask recall</td><td>同一对 mask 的平均 recall</td></tr>
+        <tr><td>0.14</td><td>min(5ρ<sub>m→o</sub>, 1)</td><td>一个方向的点云距离：60 分位最近邻距离除以机器人大小</td></tr>
+        <tr><td>0.08</td><td>min(5ρ<sub>o→m</sub>, 1)</td><td>反方向的同一距离（下标 m、o 我读作模型和观测，论文没展开）</td></tr>
+        <tr><td>0.08</td><td>1 − O</td><td>覆盖：最近邻距离小于机器人大小 5% 的点所占比例，两方向取较小</td></tr>
+        <tr><td>0.08</td><td>min(<i>d</i><sub>50</sub><sup>VGGT</sup>/<i>r</i>, 1)</td><td>投影深度残差；没有有效重叠时直接罚满</td></tr>
+      </table></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-AgenticRSR/tab7.jpg" alt="Table 7：Franka 和 Piper 各 9 段 capture 的配准损失、平均 IoU 和深度残差"></div>
+        <figcaption><b>Table 7</b>（作者原图）看 Mean IoU 和 <i>d</i><sub>50</sub>：两台机器人的 IoU 都约 0.84，深度残差 35.3 mm 和 21.3 mm。</figcaption>
+      </figure>
+      <ul class="tight">
+        <li><span class="gap">这不是尺度精度：</span>Table 7 是拟合统计，论文写明它们 "distinct from reference-pose error"；<i>d</i><sub>50</sub> 本身用 <i>s</i> 换算，所以 <i>s</i> 错了它看不出来（后半句是推断）。</li>
+        <li><span class="gap">没有独立尺子：</span>全文没有专门验 <i>s</i> 的实验（卷尺、标定板）；App. C.2 的 42 个 "measured objects" 有 CD 和 BBox，但参考几何从哪来没写。</li>
+        <li><span class="gap">没写的：</span>视频里机器人的关节角怎么得到，URDF 按什么姿态去配，论文没说。</li>
+      </ul>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>F5 的视频 → 32 帧 → <span class="ex">Franka 在 [0,0,0]</span> 的世界系，4 个相机从此冻结。F5 自己的配准值未报告，只有 Franka 九段 capture 的聚合（Table 7）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Feedback-guided agentic scene reconstruction</span>
+      <span class="stage-io">q + 4 张 reference RGB + 初始 Blender 场景 → 通过 joint visual check 的 Blender 场景</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>agent 看图能快速调整，但只看图分不出"看着像"和"位置对"。</li>
+        <li><b>How：</b>DSH 开独立的 session：planning 只看 q 和 4 张图写 plan；refinement 按 plan 改几何、布局、材质、灯光。</li>
+        <li><b>冻结：</b>机器人和 4 个相机由执行程序锁死，agent 改不了；runner 检查冻结资产后才算数。</li>
+        <li><b>agent 看到的反馈：</b>只有总 depth 误差和总颜色误差两个标量，加上图；depth 图和误差图不给看（App. D.1）。</li>
+        <li><b>谁说了算：</b>接受由程序评估器决定，不是 agent 自评。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  P["<b>Planning session</b><br/>写物体层级、尺寸、能力<br/><span class='ex'>蓝碗、绿碗、黑桌</span>"] --> R["<b>Refinement session</b><br/>几何 → 自检 → 外观 → 自检"]
+  R --> X["<b>External runner</b><br/>跑 Blender 脚本、查冻结<br/>存 candidate、渲 4 view"]
+  X --> E["<b>Evaluator</b><br/>D、C、Q 对 4 个 view"]
+  E -->|未过| R
+  E -->|过| O["<b>Accepted scene</b><br/><span class='ex'>F5 depth .080 m</span>"]:::win
+      </pre></div>
+      <p class="eyebrow">Joint visual check（§3.1，全部同时满足）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>符号</th><th>白话</th><th>4 view 均值</th><th>每个 view</th></tr>
+        <tr><td><i>D<sub>v</sub></i></td><td>渲染深度和参考深度的绝对误差（米）</td><td>&lt; 0.15 m</td><td>&lt; 0.20 m</td></tr>
+        <tr><td><i>C<sub>v</sub></i></td><td>Lab 颜色差 ΔE<sub>76</sub></td><td>&lt; 15</td><td>&lt; 30</td></tr>
+        <tr><td><i>Q<sub>v</sub></i></td><td>有效渲染深度的覆盖率</td><td>—</td><td>≥ 0.50</td></tr>
+      </table></div>
+      <ul class="tight">
+        <li><span class="gap">Depth 的含义：</span>参考深度来自 Stage 1 的视频重建，所以 <i>D<sub>v</sub></i> 量的是和这个参考的一致性，不是和独立实测真值的误差（§3.1 原话）。</li>
+        <li><b>prompt 的工序：</b>Geometry blockout → RGB self-check（找最大的 3 处不一致，只修这些）→ Appearance → Final self-check（App. D.1）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-AgenticRSR/fig3.jpg" alt="Franka FR3 和 Agilex Piper 的真实与仿真视角对照，各六个场景"></div>
+        <figcaption><b>Fig. 3</b>（作者原图）一部分任务场景的真实和仿真视角。Franka 第 2 列就是两只碗。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>上两行 Franka FR3：</b>Real 和 Sim 同一视角，比物体位置和背景；两只碗在第 2 列。</li>
+        <li><b>下两行 Agilex Piper：</b>同样成对；Real 右上是木地板，Sim 是一整块棕色平面，背景只求大致相近（我的观察）。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>planning 写下蓝碗、绿碗及其大致尺寸；refinement 改到过关。F5 的逐场景数字只有早先的 Codex 批次（Table 10）：<span class="ex">Depth .080 m · Lab 10.41 · SSIM .7468 · CD .0167 m · F1@1cm .3212 · BBox .0471 m</span>。DSH 批次没有逐场景表。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">MuJoCo scene and task-interaction checks</span>
+      <span class="stage-io">通过 visual check 的场景 → MuJoCo 场景 S<sub>M</sub>，附探针报告，状态 provisional 或 needs_repair</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>像不等于能用。MuJoCo 把 mesh collider 当凸包（App. D.1），所以碗的 mesh 会把碗口填实，另一只碗放不进去（后半句是我按例子说的）。</li>
+        <li><b>原则：</b>每个分类和物理值都是假设；prompt 明写 <code>real_world_verified=false</code>，"the current runner has no independent real-world measurement comparator"。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  C["<b>Classify</b><br/>每个 mesh 一个 role 和 collision<br/><span class='ex'>碗 → open_container</span>"] --> M["<b>Export</b><br/>场景 + 已知机器人 → S_M"]
+  M --> V["<b>Visual prior</b><br/>只看图估质量摩擦范围<br/>仅当有 free-joint 物体"]
+  V --> S["<b>static 探针</b><br/>3 s，查自发平移和旋转"]
+  S --> G["<b>grasp 或 articulation 探针</b><br/><span class='ex'>1、3、10 N 夹持</span>"]
+  G --> J["<b>Repair（有明确证据才做）</b><br/>一次改一个原因，新 candidate XML"]
+  J --> K["<b>Independent check</b><br/>同力度重跑 + 4 view 回归"]
+  K -->|不过| J
+  K -->|过| O["<b>status=provisional</b><br/>real_world_verified=false"]:::win
+      </pre></div>
+      <p class="eyebrow">分类表（App. D.1 的 Stage 3 prompt；F5 一列是我按规则套的，论文没给 F5 的分类）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>role</th><th>是什么</th><th>碰撞和关节</th><th>F5（推断）</th></tr>
+        <tr><td style="white-space:nowrap"><code>visual_only</code></td><td>墙、帘子、背景</td><td>none</td><td><span class="ex">背景墙</span></td></tr>
+        <tr><td style="white-space:nowrap"><code>static</code></td><td>桌面、托盘底，需要托住物体的面</td><td>保留碰撞，fixed</td><td><span class="ex">黑桌面</span></td></tr>
+        <tr><td style="white-space:nowrap"><code>dynamic</code></td><td>可抓的独立刚体</td><td>free joint，box 碰撞；空心杯碗桶用 <code>open_container</code>（一底四壁，prompt 说只是近似），不用实心盒或 mesh</td><td><span class="ex">两只碗</span></td></tr>
+        <tr><td style="white-space:nowrap"><code>operable</code></td><td>真有 hinge 或 slide 的任务部件</td><td>hinge 或 slide</td><td>无（F1 的抽屉才有）</td></tr>
+        <tr><td style="white-space:nowrap"><code>compound</code></td><td>固定在运动物体上、要碰撞的部件（篮壁、把手）</td><td>box，<code>attached_to</code> 主体</td><td>无</td></tr>
+      </table></div>
+      <p class="eyebrow">探针做什么（<code>real2sim.stage3.physics_probe</code>）</p>
+      <ul class="tight">
+        <li><b>objects：</b>列出任务物体的位姿、质量、摩擦、可动性；固定物体不算动态验证过。</li>
+        <li><b>static：</b>跑 3 s，看可动物体有没有自己平移或转动；物体掉落或滚走就是没准备好。</li>
+        <li><b>grasp：</b>一个简化夹爪，不是真夹爪：两个对称耦合的 0.025 kg pad，sliding friction 1.0，200-gain position servo，每 jaw 硬上限 10 N；<code>--normal-forces 1 3 10</code>，必要时加 2、4、6 N，夹出最低成功力度的区间，再和 visual prior 比。</li>
+        <li><b>articulation：</b>没有 free-joint 物体时不抓，改对 hinge 或 slide 部件施加限时 force 或 torque，看位移和稳定。</li>
+        <li><b>patch：</b>可改 collision、<code>center_of_mass</code>、<code>mass_kg</code>、position、quaternion；<code>try</code> 一次只动一个参数；不许为过仿真牺牲四视角对齐，不许动机器人。</li>
+        <li><b>验收：</b>候选必须通过独立的 static 和 grasp 重跑，否则同一对话收到 repair 反馈（<code>MAX_REPAIR_TURNS</code> 的值没写）；改了可见几何或位姿，还要回到 4 个 reference view 查回归。</li>
+      </ul>
+      <ul class="tight">
+        <li><span class="gap">这是合理性检查，不是物理辨识：</span>"Without matched real-world observations, neither a successful grasp nor a visual guess validates the true mass or friction."（App. D.1）</li>
+        <li><span class="gap">没有统计：</span>摘要里的 18/18 是 visual check。Stage 3 过了多少场景、修了几次，§4 一个数字都没给。</li>
+      </ul>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>按规则，两只碗是 <span class="ex">dynamic + open_container</span>，所以绿碗才放得进蓝碗；有 free-joint 物体，于是先看图估质量摩擦区间，再夹绿碗 <span class="ex">1 / 3 / 10 N</span>，1 N 失败属于正常。F5 的实际结果论文没有报告。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Three-pass policy development</span>
+      <span class="stage-io">MuJoCo 场景 + q → 锁定版本的 policy.py + 经验文档</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>先用真值定下 task decomposition 和 action logic（Fig. 4 写作 "fast skill bootstrapping"），再换成真机也有的观测，最后才加扰动（§3.2）。</li>
+        <li><b>agent：</b>Codex，GPT-6 Astra，high reasoning。每一遍开新对话，只带上一遍的 policy 和经验。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-AgenticRSR/fig4.jpg" alt="三段策略开发：Privileged skill acquisition，Nominal interface verification，Randomized robustness"></div>
+        <figcaption><b>Fig. 4</b>（作者原图）三段之间传的是 "validated policy + experience"。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>Stage 1 "Privileged skill acquisition"（<code>privileged_exact</code>，这里叫 Pass 1）：</b>可调 <code>api.object_poses()</code>，把 task decomposition 和 action logic 定下来。</li>
+        <li><b>Stage 2 "Nominal interface verification"（<code>visual_exact</code>，Pass 2）：</b>真值拿掉，只能用真机也有的 <code>api.observe()</code>，在稳定场景里完成任务。</li>
+        <li><b>Stage 3 "Randomized robustness"（<code>visual_randomized</code>，Pass 3）：</b>接口不变，扰动 object initialization、camera pose / calibration、execution；扰动幅度只写了 "bounded"，没给数。</li>
+        <li><b>中间箭头：</b>agent 判断完成后渲一帧作证据，把 policy 和经验笔记交给下一遍的新对话。上一遍的 policy 被当草稿，prompt 要求重新观测、删掉无依据的硬编码坐标（App. D.2）。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  A["<b>Pass 1</b><br/><span class='ex'>object_poses() 真值</span>"] --> B["<b>Pass 2</b><br/><span class='ex'>observe() 无真值</span>"]
+  B --> C["<b>Pass 3</b><br/><span class='ex'>扰动位姿、相机、执行</span>"]:::win
+      </pre></div>
+      <ul class="tight">
+        <li><b>policy.py 的禁令：</b>不许 import、读文件、碰仿真内部、用 pick/place 或 grasp helper、joint override、success oracle（App. D.2）。</li>
+        <li><b>practice：</b>写 policy 时可以一次发一条 CLI 命令试探，返回 JSON 和两张图；在 visual 阶段可能不开放（代码里有 "Practice CLI is unavailable in this visual stage"）。</li>
+        <li><b>锁版本：</b>开发时可以改，最终评测时版本固定，动作仍随观测变化（§3.2）。</li>
+      </ul>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>§4.4 用的正是这个例子：bowl stacking 要的是稳定的抓取和放置接触，不只是定位；反复的仿真尝试让 agent 把这些手法写进 policy 步骤和经验。具体写了什么，论文没给。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Sim-to-real transfer and real execution</span>
+      <span class="stage-io">policy + experience memory → 真机上的新 agent 对话 → 任务结果，可写回经验</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>带过去的：</b>policy（验证过的任务步骤和观测-动作逻辑）+ experience memory（有效做法、失败案例、感知难点、该试和该避开的）。</li>
+        <li><b>不能复用的：</b>仿真坐标和成功结论；新对话必须用真实观测重定位。记忆里没有物体真值和仿真内部量（§3.3），但阶段间的经验摘要可以含标明为估计的坐标（App. D.2）。</li>
+        <li><b>安全层：</b>自动检查坐标系和相机标定，限制动作幅度，限定针对机器人和任务的安全工作区；违规动作不执行（§3.3）。</li>
+        <li><b>观测频率：</b>真机 prompt 要求在关键动作前后多看几次，确认物体和机器人状态再决定继续、调整、重试或停。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  P["<b>新 agent 对话</b><br/>policy + experience memory"] --> O["<b>Fresh observation</b><br/><span class='ex'>wrist RGB-D + SAM3</span><br/><span class='ex'>+ 第三人称图</span>"]
+  O --> G["<b>Robot-side safety gate</b><br/>标定、动作限制、工作区"]
+  G -->|违规| N["不执行"]:::gap
+  G -->|通过| A["<b>动作</b><br/>EE pose、gripper、waypoints"]
+  A --> J["<b>agent 看结果</b><br/>继续、调整、重试或停"]
+  J -->|未完成| O
+  J -->|完成| E["<b>完成判断</b><br/>按当前观测，无内置信号"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-05-AgenticRSR/fig5.jpg" alt="Franka 叠碗的五帧真机画面，b 和 d 标红叉，c 和 e 标绿勾"></div>
+        <figcaption><b>Fig. 5</b>（作者原图）代表性的真机帧。(a) 初始；红叉和绿勾标记后续 trial 的放置失败和成功。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(a)：</b>蓝碗在左，绿碗在右，手臂在上方。</li>
+        <li><b>(b) ✗ 和 (c) ✓：</b>夹爪都下到绿碗处，两帧的差别肉眼很小，图注没解释。</li>
+        <li><b>(d) ✗：</b>绿碗被提起但倾斜地悬在蓝碗上方。</li>
+        <li><b>(e) ✓：</b>绿碗落在蓝碗上。图注没说这几帧是同一 episode 的重试还是不同 trial。</li>
+      </ol>
+      <p class="eyebrow" style="margin-top:1.25rem">真机上到底跑了什么</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>项目</th><th>论文写的</th><th>来源</th></tr>
+        <tr><td style="white-space:nowrap">机器人</td><td>Franka FR3 和 Agilex Piper，各 9 个任务</td><td>Table 5</td></tr>
+        <tr><td style="white-space:nowrap">跑的东西</td><td>Codex agent（GPT-6 Astra，high reasoning）新开对话，执行锁定的程序，模型一直在回路里</td><td>§3.3、§4.1、§5</td></tr>
+        <tr><td style="white-space:nowrap">观测</td><td>wrist RGB-D + SAM3 的物体位置估计、第三人称图、EE 和夹爪状态、估计的 wrist 相机位姿</td><td>§3.2</td></tr>
+        <tr><td style="white-space:nowrap">动作</td><td>EE pose 指令、gripper、sparse trajectory，经安全层</td><td>§3.2、§3.3</td></tr>
+        <tr><td style="white-space:nowrap">结果</td><td>18 个任务 8 个成功（44.4%）；这 8 个都在 sim 成功的 10 个之内</td><td>§4.4、Table 4</td></tr>
+        <tr><td style="white-space:nowrap"><span class="gap">没写</span></td><td>每任务 trial 数；哪 8 个任务；sim 失败的 8 个有没有上真机；一次任务耗时和模型调用数；安全层拦截次数；<code>api.reset()</code> 在真机上怎么实现、有无人工复位；相机型号和手眼标定方法；谁判定成功；真机 prompt（App. D.2 只贴了 SIM 的）</td><td>通读全文</td></tr>
+      </table></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>真 Franka 用 wrist RGB-D 和 SAM3 重新定位两只碗，抓绿碗、放蓝碗上（Fig. 5）。F5 在不在成功的 8 个里，论文没有逐任务表。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">Stage 4–5</span>
+      <span class="stage-name">Execution-grounded policy loop 和共享接口</span>
+      <span class="stage-io">一次程序调用里可以多次观测和动作；agent 在调用之间决定下一步</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>写死的程序碰到预想外的情况难改，逐步问模型又慢；折中是程序内部循环，程序之间由 agent 判断（§5）。</li>
+        <li><b>结果上报：</b><code>policy.py</code> 返回 <code>completed</code>、<code>checkpoint</code> 或 <code>failed</code>；<code>checkpoint</code> 不算失败，是让外层 agent 接手看一眼。</li>
+        <li><b>无 oracle：</b>agent 从观测判断完成，并交一帧渲染图作证据；但 App. D.2 的经验 prompt 里有 "Independent stage result"（<code>physical_verdict</code>），这个独立判定的定义论文没写。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  R["<b>run_policy</b><br/>observe 和 act 交替<br/><span class='ex'>找碗 → 抓 → 复看 → 放</span>"] --> S["<b>返回 status</b><br/>加动作结果、错误、最新观测"]
+  S -->|checkpoint 或 failed| A["<b>Agent 决定</b><br/>同一对话里看结果和图"]
+  S -->|completed| D["<b>交证据</b><br/>渲染帧 + 经验摘要"]:::win
+  A --> C["<b>继续</b><br/>场景保留，重新 observe"]
+  A --> T["<b>reset 重试</b><br/>Pass 3 重采扰动"]
+  A --> V["<b>改写</b><br/>policy.py"]
+      </pre></div>
+      <p class="eyebrow">共享接口（这是 App. D.2 SIM prompt 里的版本；§3.2 说 Piper 和 Franka 一致，贡献 3 说 sim 和真机一致）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>调用</th><th>白话</th></tr>
+        <tr><td><code>api.state()</code></td><td>EE 位姿、wrist 相机位姿、夹爪宽度和目标、是否在动；不含物体位姿</td></tr>
+        <tr><td><code>api.observe(queries)</code></td><td>SAM3 + depth 的位置估计、wrist RGB、固定第三人称 RGB；被遮挡的物体就是缺席</td></tr>
+        <tr><td><code>api.robot.move_pose(...)</code></td><td>世界系位姿，四元数顺序 (w,x,y,z)</td></tr>
+        <tr><td><code>api.robot.gripper(width_m)</code></td><td>宽度 0 到 0.08；"closing does not guarantee a grasp"</td></tr>
+        <tr><td><code>api.robot.move_trajectory(waypoints)</code></td><td>稀疏世界系路点，可带夹爪宽度</td></tr>
+        <tr><td><code>api.reset()</code></td><td>恢复当前阶段的初始场景，重试</td></tr>
+        <tr><td><code>api.return_control(reason)</code></td><td>交回 checkpoint，不 reset</td></tr>
+        <tr><td><code>api.stop()</code></td><td>停止运动，"it is not proof of success"</td></tr>
+      </table></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>绿碗放歪时（类似 Fig. 5(d)）程序可返回 <span class="ex">checkpoint</span>，agent 看图后决定从当前状态继续，或 reset 重来，或改 policy。这个走法是按接口推演的，论文没有给 F5 的 trace。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>Robot-anchored metric scale</td><td>Stage 1：Franka URDF 把 F5 的 VGGT 重建定到米</td></tr>
+        <tr><td>Agentic 重建 + 标量反馈 + 程序验收</td><td>Stage 2：蓝碗绿碗按 D、C、Q 改到过关</td></tr>
+        <tr><td>物理角色和碰撞的分类</td><td>Stage 3：碗 → <code>open_container</code>，桌 → <code>static</code></td></tr>
+        <tr><td>image-only 先验、探针、repair</td><td>Stage 3：看图估区间，夹绿碗 1、3、10 N</td></tr>
+        <tr><td>三遍开发</td><td>Stage 4：真值 → 视觉 → 随机化</td></tr>
+        <tr><td>一次调用多次观测和动作，agent 决定继续、重试、改写</td><td>Stage 4–5 loop：绿碗放歪的处理</td></tr>
+        <tr><td>Experience memory，真机重新定位</td><td>Stage 5：叠碗的手法随文字过去，碗位重新观测</td></tr>
+        <tr><td>Robot-side safety</td><td>Stage 5：违规动作不执行</td></tr>
+        <tr><td>模型对比和消融</td><td><a href="#exp-2">E2</a>、<a href="#exp-4">E4</a>：F5 在各变体下的数字</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>场景的视觉指标最好，真机 18 个任务成了 8 个；损失主要发生在 sim 里，不在迁移</h2>
+  <p>顺序同论文：<a href="#exp-1">E1</a> 视频能不能变成米制、视觉一致的场景 → <a href="#exp-2">E2</a> 换模型会怎样 → <a href="#exp-3">E3</a> 策略在 sim 和真机上成不成 → <a href="#exp-4">E4</a>（附录）标定和标量反馈是否必要。E1、E2、E4 比场景误差，E3 比成功率；全文没有比时间。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>视频能变成米制、视觉一致的场景吗？<span class="exp-src">§4.2 · Table 2</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-AgenticRSR/tab2.jpg" alt="Table 2：18 个任务上的场景重建结果，Agentic RSR 的 depth、颜色、SSIM 最好，物体几何列为空"></div>
+      <figcaption><b>Table 2</b>（作者原图）先看最后一行和 SimFoundry 一行：只有这两行有 depth；最后三列 Agentic RSR 是空的。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-AgenticRSR/tab10.jpg" alt="Table 10：早先 Codex 批次的逐场景指标，Franka 和 Piper 各 9 列"></div>
+      <figcaption><b>Table 10</b>（作者原图）早先的 Codex 批次，F5 是 Franka 第 5 列。这里的 Agentic RSR 是 Codex GPT-6 Astra，不是 Table 2 的 Claude Opus 5.5。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-AgenticRSR/tab5.jpg" alt="Table 5：九个 Franka 任务和九个 Piper 任务的 ID 与描述"></div>
+      <figcaption><b>Table 5</b>（作者原图）18 个任务：抽屉和盖子（F1、P1）、放入容器、堆叠、取出纸巾（P9）。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>depth 和颜色误差最低，SSIM 最高。</b>Depth MAE 0.08078 m 对 SimFoundry 0.3916 m；ΔE<sub>76</sub> 8.0104 对最好的基线 20.43；SSIM 0.73375 对 0.5939。18/18 过 joint visual check，首次过关平均 2.22 轮（五轮上限）。</dd></div>
+      <div><dt>在故事里</dt><dd>证明链条第一环：一段视频加 URDF 够建出下游能用的场景。</dd></div>
+      <div><dt>指标</dt><dd>4 个 reference view 上的 Depth MAE、Lab ΔE<sub>76</sub>、全帧灰度 SSIM；过关条件见 <a href="#stage-2">Stage 2</a>。CD、F1@1cm、BBox 是物体级几何。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>同样的 18 段源视频；基线数字沿用早先的评测，没有重跑。</li>
+        <li>基线的空格是输出格式不兼容，不是它们做不到。</li>
+        <li><span class="gap">参考深度来自同一段视频的重建，</span>不是实测真值（§3.1）。</li>
+        <li><span class="gap">偏向本文（推断）：</span>agent 的反馈和最后的评分用同样的指标、同样的 4 个 view，全文没有 held-out view。</li>
+        <li><span class="gap">物体级几何缺失：</span>DSH 批次没报告。只有早先的 Codex 批次有：42 个物体，CD 0.0303 m，F1@1cm 0.3655，可见 bbox 中心误差 0.0869 m（App. C.2），也就是平均差 8.7 cm；这些指标的参考几何从哪来没写。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>换一个模型驱动 DSH 会怎样？<span class="exp-src">§4.3 · Table 3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-AgenticRSR/tab3.jpg" alt="Table 3：八种模型配置的通过数、首次通过轮数和场景指标"></div>
+      <figcaption><b>Table 3</b>（作者原图）先看 Pass 列，再看 Kimi K3 和 DeepSeek V4.1 Flash 两行：N<sub>metric</sub> = 0 是根本没跑完，不是误差为零。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>过关率很依赖模型。</b>Claude Opus 5.5 和 Claude Fable 5.1 都是 18/18；GPT-6 Astra、Sonnet 5.5 是 15/18；GPT-6.1 Sol 12/18；GPT-5.6 Sol 4/18；Kimi K3、DeepSeek V4.1 Flash 0/18（工具交互没走完）。Fable 的 MAE 最低（0.07326 m），Opus 的 ΔE<sub>76</sub> 和 SSIM 最好。</dd></div>
+      <div><dt>在故事里</dt><dd>说明 harness 能换模型，主配置选 Opus 有依据；作者强调这只描述这个流程，不是通用排名。</dd></div>
+      <div><dt>指标</dt><dd>Pass：通过完整 joint visual check 的场景数；R<sub>pass</sub>：过关场景上首次过关的平均轮数；误差均值含没过的场景（N<sub>metric</sub> = 18）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>2026-10-06 的汇总，每个配置都试了 18 个场景。</li>
+        <li>三个 GPT 配置、Opus、Sonnet 是五轮上限；Fable 和两个失败配置的上限没报告。</li>
+        <li>同一 GPT-6 Astra 在 DSH 里 15/18，在 Codex 里 18/18（Table 8，R<sub>pass</sub> 3.80），但批次和轮数不同，作者说跨批次比较不隔离模型或 harness。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>策略在 sim 和真机上成功了多少？<span class="exp-src">§4.4 · Table 4 · Fig. 5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-AgenticRSR/tab4.jpg" alt="Table 4：Code as Policies、Instruct2Act、Agentic RSR 的 Sim SR、Real SR 和 Conversion"></div>
+      <figcaption><b>Table 4</b>（作者原图）先看 Real SR；Conversion 一列不能直接横比，基线是比值，本文是配对的。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>真机成功率最高。</b>Agentic RSR 8/18 = 44.4%，Instruct2Act 5/18 = 27.8%，Code as Policies 25.6%。sim 里 10/18 = 55.6%，其中 8 个上真机也成功，所以 conversion 80.0%。换个看法（我的算术）：18 个任务里 8 个丢在 sim，2 个丢在迁移，瓶颈在 sim 开发本身；样本小，一个任务就差 10 个百分点。</dd></div>
+      <div><dt>在故事里</dt><dd>这是唯一的真机证据，撑起全文 "retain much of their aggregate task performance" 的结论。</dd></div>
+      <div><dt>指标</dt><dd><ul class="tight">
+        <li>SR：Agentic RSR 和 Instruct2Act 是完成任务的比例；Code as Policies 是记录的真机 attempt 的 task-equal 平均。</li>
+        <li>Conversion：基线是 100 × Real SR / Sim SR（未配对）；Agentic RSR 是 sim 成功的任务里真机也成功的比例（配对）。</li>
+        <li>"完成"由谁判定、判定标准是什么，§4.1 没写。</li>
+      </ul></dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>同 18 个任务，Franka FR3 和 Agilex Piper；sim 在随机化条件下，真机用记录的 attempt。</li>
+        <li>基线保留各自的 native policy 格式；Code as Policies 的硬件场景和这 18 个任务不完全对应，作者说真机比较是描述性的。</li>
+        <li><span class="gap">没写：</span>每任务 trial 数、哪些任务成功、Fig. 5 以外的失败案例。</li>
+        <li><span class="gap">没写：</span>Table 4 的策略在哪批场景里开发；策略保留 Codex 实现，而场景结果已换成 DSH（§4.1），v2 也更新过 Real-to-Sim 实验。</li>
+        <li><span class="gap">没做的对照（我的判断）：</span>不经 sim 直接上真机、去掉 experience memory、换粗糙场景。所以这张表不能说明重建质量或 sim 练习对真机成功贡献多少。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>Robot-anchored 标定和标量反馈是不是必要的？<span class="exp-src">App. C.3 · Table 9、11</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-05-AgenticRSR/tab9.jpg" alt="Table 9：历史 Codex 批次的消融，完整系统 18/18，去掉 metric feedback 6/18，去掉 initial calibration 3/18"></div>
+      <figcaption><b>Table 9</b>（作者原图）比第一行和最后两行。Lab 一列：去掉 calibration 只从 11.04 到 11.99，depth 却从 0.1057 m 到 0.2583 m。</figcaption>
+    </figure>
+    <div class="table-wrap"><table class="grid">
+      <tr><th>F5 · Stack two bowls</th><th>Pass</th><th>Last round</th><th>D (m)</th><th>Lab ΔE<sub>76</sub></th><th>SSIM</th></tr>
+      <tr><td>完整系统（Codex GPT-6 Astra，Table 10）</td><td>Yes</td><td>未报告</td><td>.080</td><td>10.41</td><td>.7468</td></tr>
+      <tr><td>GPT-5.6 Sol</td><td>Yes</td><td>9</td><td>0.1389</td><td>8.89</td><td>0.7757</td></tr>
+      <tr><td>No metric feedback</td><td><span class="gap">No</span></td><td>10</td><td>0.1616</td><td>7.04</td><td>0.7406</td></tr>
+      <tr><td>No initial calibration</td><td>Yes</td><td>7</td><td>0.1477</td><td>9.01</td><td>0.7552</td></tr>
+    </table></div>
+    <p class="note">我从 Table 10 和 Table 11 抄出的 F5 一行，不是作者的表。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>去掉标定最伤，且只看画面发现不了。</b>过关数 18/18 → 3/18；ΔE 几乎不变，depth 翻倍多。去掉标量反馈 6/18，depth 0.3746 m。F5 就是例子：没有标量反馈时颜色最好（Lab 7.04），depth 却超线（0.1616 m），没过关。但 F5 恰好是去掉标定还能过的 3 个之一，所以这个结论来自聚合，不来自 F5。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑 "robot-anchored 定尺度必不可少" 和 "程序评估比 agent 自评可靠" 两点。全文只有这组实验直接检验尺度这一环。</dd></div>
+      <div><dt>指标</dt><dd>Pass：joint visual check；R<sub>0.15</sub>：达到 depth 门槛的场景上的平均首次轮数，它只看 depth，和 R<sub>pass</sub> 不同。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>历史 Codex 批次，同 18 个场景，最多 10 轮。主实验的 Claude Opus 5.5 没有做这组消融。</li>
+        <li>去掉标定后，depth 参考和评分怎么定，附录没展开。</li>
+        <li>按 Table 11 我数的：没有标量反馈时 Franka 0/9、Piper 6/9；没有标定时 Franka 2/9、Piper 1/9。</li>
+        <li>完整系统的改善幅度：Depth MAE 0.9036 m → 0.1057 m，ΔE 24.84 → 11.04（App. C.2）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <p class="eyebrow">论文自己说的</p>
+  <ul class="tight">
+    <li>GPT-6 Astra 配 Codex 时，agent 行为随设备、调用接口甚至时间变化，原因没测；依赖闭源服务，难复现（§5）。</li>
+    <li>模型延迟和离散 checkpoint 限制了对快速接触变化的响应，比不上 π₀ 这类高频 VLA；作者建议高层程序配快速低层闭环（§5）。</li>
+    <li>Depth 指标量的是和视频重建的一致性，不是真值误差（§3.1）；DSH 批次没有物体级几何（§4.2）。</li>
+    <li>mass 和 friction 没有真实测量，物理检查只是 sanity check（<code>real_world_verified=false</code>，App. D.1）。</li>
+    <li>Code as Policies 的真机比较不是配对的（§4.4）；跨批次比较不隔离模型或 harness（§4.3）。</li>
+  </ul>
+  <p class="eyebrow" style="margin-top:1.25rem">我的判断（论文没说）</p>
+  <ul class="tight">
+    <li>尺度 <i>s</i> 没有独立验证，全局就这一个数，错了会传给所有物体。</li>
+    <li>Stage 3 没有任何统计，"checks task-relevant interactions" 这句话目前只有方法描述和 prompt，没有结果数字。</li>
+    <li>方法依赖绕拍视频和可见的机器人；是否适用固定相机的录像、运动中的机器人，没有实验。</li>
+    <li>role 表里可动物体只有刚体（<code>dynamic</code> 写的是 rigid object），软物（F9 beanbag、P9 tissue）只能靠刚体或接触 proxy；软物上的结果没有单独报告。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>相机和尺度：</b>它把 URDF 当尺子，用 mask 为主的排序损失从 128 个旋转起点里选解，证据和我们的 <code>cameras_poses_fit</code> 同类（机器人 mask），多起点加排序可以借。Table 9 还给了一个警告：标定错时 Lab 几乎不变，只看画面查不出。但它用的是绕拍视频，没有位姿真值，<span class="gap">不能说明它能修好 DROID 约 20 cm 的外参误差</span>。</li>
+    <li><b>角色和物理：</b>五种 role 加 <code>open_container</code>、<code>attached_to</code> 是一张现成的碰撞分类表；3 s 静置和 1、3、10 N 夹持探针便宜，可以放在我们 replay 之前。但它判的是物理角色，不是任务角色，<span class="gap">解决不了把 "take the lid off" 当成 "放进容器" 的错</span>；质量摩擦它也只是假设，和我们的 assumed 同级。</li>
+    <li><b>Sim-to-real：</b>我们只回放，它走到了真机：同一 API、靠新观测重定位、经验写成文字，不训练权重。这条路比训练 policy 轻，可以作为我们第一份 sim-to-real 证据的候选（我的判断）。但 8/10 没有 "不经 sim" 的对照，<span class="gap">不能说明 sim 练习本身有用</span>；我们若做，应从一开始加上这个对照，并记录每任务 trial 数。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-05-AgenticRSR.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
