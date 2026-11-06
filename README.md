@@ -10,6 +10,7 @@
 
 - 在线版：artifact "Zhaoning Paper Pile"，https://claude.ai/artifact/GGxYmvE3MgSAJUQDSi9EHb
 - `index.html`：首页，每加一篇 paper 自动重建
+- `library.js`：首页和每篇 paper 的星标、首页的文件夹折叠；`build_index.py` 每次从 skill 复制过来
 - PDF 不进 git（`.gitignore`）：git 会永远保留历史里的文件，PDF 会让 repo 越来越大。每个页面都记录了带版本号的 PDF 链接（`paper:pdf`），任何机器都能重新下载同一份
 - `preferences.md`：页面怎么写（reader profile、projects）。改它，以后所有页面都跟着变
 

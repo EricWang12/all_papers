@@ -1,0 +1,1029 @@
+<!doctype html>
+<!-- Paper page template. Copy to <Project>/artifact/<name>.html, replace every placeholder
+     in double braces, and drop optional blocks you do not use. Keep the section order: it is
+     the reader's order (preferences.md). Figures live in artifact/<name>/ next to this file.
+     This page loads Mermaid itself: pages other than the library home are served without the
+     artifact skeleton, so nothing else draws the charts. In chart labels write class='ex'
+     with single quotes. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>SO101-MAS</title>
+<meta name="description" content="代码讲解：SO101 harness 的 multi-agent 版本。parent 只能 grasp_engage，harness 开零记忆 child 做一次 pick-and-place，再把 measured 与 claim 分开封装回 parent。">
+<meta name="paper:title" content="SO101 multi-agent harness (harness/so101_mas): parent session delegating pick-and-place to fresh child sessions">
+<meta name="paper:source" content="https://github.com/EricWang12/SO101/tree/main/harness/so101_mas">
+<meta name="paper:venue" content="Code walkthrough, SO101 commit 42138fa, 2026">
+<meta name="paper:pdf" content="https://github.com/EricWang12/SO101/tree/42138fa/harness/so101_mas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+table.baselines td:last-child { white-space: normal; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* code excerpts stand in for the authors' figures */
+pre.code { margin: .6rem 0 0; padding: .75rem .9rem; background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 6px; font: .8rem/1.55 var(--f-mono); overflow-x: auto; white-space: pre; max-width: 100%; }
+pre.code .hl { color: var(--ex); background: var(--ex-bg); }
+.code-cap { font: 500 .78rem var(--f-mono); color: var(--muted); margin: .9rem 0 0; }
+code { font: .86em var(--f-mono); }
+/* interactive mock player */
+.pl-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.pl-bar .pl-main { color: var(--surface); background: var(--accent); border-color: var(--accent); }
+.pl-pos { font: 500 .8rem var(--f-mono); color: var(--muted); }
+#pl-seek { flex: 1 1 160px; min-width: 120px; accent-color: var(--accent); }
+.pl-now { margin: .8rem 0; padding: .7rem .9rem; border-radius: 8px; background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); font-size: .95rem; max-width: none; }
+.pl-now b.who { font-family: var(--f-mono); font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ex); margin-right: .4rem; }
+.pl-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 1fr); gap: .75rem; align-items: start; }
+@media (max-width: 860px) { .pl-grid { grid-template-columns: minmax(0, 1fr); } }
+.pl-col { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: .6rem; min-height: 200px; max-height: 620px; overflow-y: auto; }
+.pl-col.active { border-color: var(--ex); box-shadow: 0 0 0 1px var(--ex); }
+.pl-col.gone { opacity: .45; }
+.pl-col > .pl-h { position: sticky; top: -.6rem; background: var(--surface); padding: .3rem 0; z-index: 1; }
+.pl-h { font: 500 .75rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 .5rem; display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+.pl-msg { border: 1px solid var(--rule); border-radius: 6px; padding: .35rem .5rem; margin-bottom: .35rem; font-size: .8rem; line-height: 1.45; overflow-wrap: anywhere; }
+.pl-msg.new { border-color: var(--ex); background: var(--ex-bg); }
+.pl-role { font: 500 .68rem var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--accent); margin-right: .35rem; }
+.pl-msg.r-tool .pl-role { color: var(--win); }
+.pl-msg.r-user .pl-role { color: var(--ex); }
+.pl-msg.err { border-left: 3px solid var(--gap); }
+.pl-msg s { color: var(--muted); }
+.pl-img { display: inline-block; width: 13px; height: 10px; border-radius: 2px; background: var(--accent); margin: 0 2px; vertical-align: middle; }
+.pl-img.off { background: none; border: 1px dashed var(--muted); }
+.pl-cnt { display: grid; grid-template-columns: auto 1fr 1fr; gap: .15rem .6rem; font: .78rem/1.5 var(--f-mono); margin-bottom: .6rem; }
+.pl-cnt .k { color: var(--muted); }
+.pl-cnt .chg { color: var(--ex); font-weight: 500; }
+.pl-code { font: .74rem/1.5 var(--f-mono); background: var(--bg); border-left: 3px solid var(--accent); border-radius: 4px; padding: .5rem .6rem; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: .6rem; }
+.pl-code .f { color: var(--accent); display: block; margin-bottom: .25rem; }
+.pl-log { font: .74rem/1.5 var(--f-mono); color: var(--muted); }
+.pl-log div { padding: .1rem 0; border-top: 1px dashed var(--rule); }
+.pl-log div.new { color: var(--ink); }
+.pl-empty { color: var(--muted); font-size: .85rem; }
+
+/* results */
+.results li b:first-child { font-family: var(--f-mono); color: var(--win); }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+  table.baselines td:last-child { white-space: normal; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Robotic-harness</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#play">Play</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Robotic-harness · 归档于 2026-11-05 · 代码讲解（不是论文）</p>
+  <h1>SO101-MAS</h1>
+  <p class="full-title">SO101 multi-agent harness：parent session 把每次 pick-and-place 交给一个全新的 child session</p>
+  <p class="meta">代码：<code>harness/mas.py</code> + <code>harness/so101_mas/</code>（episode.py 308 行，surfaces.py 33 行，policy/ 5 个文件）· 底层 <code>so101_harness/agent.py</code>、<code>context.py</code>、<code>model.py</code> · 契约来自 robot-harness-MAS <code>delegation_contracts.py</code> · SO101 commit 42138fa</p>
+  <p class="links">
+    <a href="https://github.com/EricWang12/SO101/tree/main/harness/so101_mas">Code (private)</a>
+  </p>
+  <p class="filed">归档到 <b>Robotic-harness</b>：这是我们自己 harness 的 multi-agent 版本（RoboDojo MAS 移植到 SO-101 真机 / MuJoCo）。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>单 agent harness 一个 conversation 跑完整个 episode：context 越来越长，模型还自己判自己成功。</dd></div>
+    <div><dt>Idea</dt><dd>parent 没有 <code>set_gripper</code>，只能调 <code>grasp_engage(target)</code>；harness 开一个<b>零记忆</b>的 child conversation 做一次 pick-and-place，结束后把 <b>measured（harness 量的）</b>和 <b>claim（child 自称的）</b>分开封装成 tool result 还给 parent。</dd></div>
+    <div><dt>Result</dt><dd>仿真抽屉任务：agent alone / agent parent 都是 4/5；MAS 中位 21 calls、0.43 M tokens（alone 19、0.38 M）。没变好，但每个 phase 的 context 都从头开始。</dd></div>
+  </dl>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>你的问题</th><th>答案在哪</th><th>一句话</th></tr>
+      <tr><td>1 · 每个 agent 的 request 怎么发</td><td><a href="#stage-2">Stage 2</a> · <a href="#seq">时序图</a></td><td>每个 session 一个独立 <code>messages</code> 列表 + 自己的 tools，经 <code>Model.complete()</code> 发；child 用 <code>Model.session()</code> 拿到独立连接和 X-Session-ID。</td></tr>
+      <tr><td>2 · harness 怎么分配 agent</td><td><a href="#stage-3">Stage 3</a> · <a href="#stage-4">Stage 4</a></td><td>不是调度器：parent 的 tool call <code>grasp_engage</code> 就是分配。harness 截住它，<b>同步</b>跑一个 Child 到结束再返回。</td></tr>
+      <tr><td>3 · agent 怎么管 context</td><td><a href="#stage-all">Context（贯穿）</a></td><td>child 从零开始（只有 brief 的一行 target）；每个 session 各自 prune 图片、age 旧 reasoning；parent 只看到封好的 result。</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>一个 conversation 装下整个 episode，会撑爆 context，也会自己给自己打分</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Blocks through the hole</b>（真实记录 <code>outputs/achp/20261025-185324-sim-blocks-…</code>，GPT-6 parent，MuJoCo）：任务 <span class="ex">"put all three blocks into the box through the top hole"</span>，三块积木（青/蓝、绿、橙）在桌上，白盒子顶上一个方孔 → 想要：三块都进盒子。</p>
+    <p class="muted">这次跑在 <code>harness-achp/</code> 里 so101_mas 的副本（parent 是 model），逻辑与 <code>harness/so101_mas</code> 相同，只多了相机改名和不同的默认预算。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>例子输入</b><br/><span class='ex'>3 blocks · top hole</span>"] --> A1["<b>单 agent harness.py</b><br/>一个 conversation 做完全部"]
+  A1 --> AX["context 不断变长<br/><span class='ex'>一次 request 363k tokens</span>"]:::gap
+  A1 --> AY["自己判成功<br/><span class='ex'>错报成功 12 次</span>"]:::gap
+  IN --> B1["<b>child 继承 parent 历史</b><br/>（假想的朴素 delegation）"]
+  B1 --> BX["child 一样背着全部历史<br/><span class='ex'>省不了 context</span>"]:::gap
+  IN --> C1["<b>program parent（ACHP）</b><br/>写死的程序代替 parent"]
+  C1 --> CX["只会一种任务<br/><span class='ex'>需要 programs/pull.py</span>"]:::gap
+  </pre></div>
+  <div class="table-wrap">
+    <table class="grid baselines">
+      <tr><th>做法</th><th>怎么做</th><th>在例子上哪里坏</th><th>数字</th></tr>
+      <tr><td>单 agent（<code>harness.py</code>）</td><td>一个 <code>Episode</code>，模型同时规划、抓取、判成功</td><td>三块积木 × 每块十几个 motion，所有 reasoning 和图都在一条历史里；最后 <code>finish_episode</code> 是模型自己说了算</td><td>2026-10-23 一次 request 363k tokens，其中重放的 reasoning 占 87%；仿真抽屉 95 局里 12 次错报成功</td></tr>
+      <tr><td>child 继承历史（假想）</td><td>把 parent 的 messages 复制给 child</td><td>child 第 1 个 request 就带着 parent 全部历史，context 问题原样搬过去</td><td>代码未实现，推断</td></tr>
+      <tr><td>program parent（<code>harness-achp --parent program</code>）</td><td>Python 程序当 parent，模型只做 ENTRY/GRASP/RELEASE</td><td>省 token，但每类任务要写一个 program；blocks 场景没有对应 program</td><td>抽屉 17 calls、0.28 M tokens（5 局中位）</td></tr>
+    </table>
+  </div>
+  <p class="note">数字出自 AGENTS.md（*Ported from robodojo-mas*、*Drawer-box notes*、*Agent–code hybrid*）。</p>
+  <p class="crux"><b>根本问题：</b>规划和动手挤在一个 conversation、一个裁判里。　<b>切入点：</b>把"动手"切成有边界的 phase，每个 phase 一个新 conversation，结果由 harness 量、和 child 的话分开交回。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>parent 只会"派活"，child 只会"干一件活"，harness 在中间封装进出</h2>
+  <p class="code-cap">so101_mas/surfaces.py:14–17 —— 角色就是一张 tool 清单（作者的"原图"）</p>
+<pre class="code">PARENT = ('observe', 'mark_point', 'move_free_space', 'servo_delta', 'recover_motion', 'report_issue',
+          'finish_episode', <span class="hl">'grasp_engage'</span>)
+CHILD  = ('observe', 'mark_point', 'move_free_space', 'servo_delta', <span class="hl">'set_gripper'</span>, 'recover_motion', 'report_issue',
+          <span class="hl">'grasp_report'</span>)</pre>
+  <p class="eyebrow" style="margin-top:1rem">怎么读</p>
+  <ol class="read">
+    <li><b>parent 没有 <code>set_gripper</code>：</b>它没法抓东西，想动积木只能 <code>grasp_engage</code>。</li>
+    <li><b>child 没有 <code>finish_episode</code>：</b>它不能宣布整个任务成败，只能 <code>grasp_report(placed|failed)</code> 结束自己这一段。</li>
+    <li><b>两者都能动手臂</b>（<code>move_free_space</code>、<code>servo_delta</code>）：parent 用来换视角、让开；child 用来抓放。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  T["<b>Task</b><br/><span class='ex'>3 blocks → hole</span>"] --> P["<b>Parent session</b><br/><span class='ex'>7 calls</span>"]
+  P -->|"grasp_engage(target)"| C["<b>Child session ×5</b><br/><span class='ex'>17/28/17/20/20 calls</span>"]
+  C -->|"sealed result"| P
+  P --> F["<b>finish_episode</b><br/><span class='ex'>give_up</span>"]:::gap
+  </pre></div>
+  <p class="flow-hint">例子：parent 一共 7 次 call，5 个 child 共 102 次；总 109。仿真判定 0 块入盒。</p>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>一个 episode 的 6 步</h2>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Launch</b><br/><span class='ex'>mas.py run → MasEpisode</span>"] --> S2["<b>2 · Parent turn</b><br/><span class='ex'>call-001 grasp_engage</span>"]
+  S2 --> S3["<b>3 · Engage + brief</b><br/><span class='ex'>brief #1, caps 16/60/300</span>"]
+  S3 --> S4["<b>4 · Child session</b><br/><span class='ex'>17 calls, 10 motions</span>"]
+  S4 --> S5["<b>5 · Seal + return</b><br/><span class='ex'>time_cap, claim null</span>"]
+  S5 -->|"下一块 / 重试"| S2
+  S5 --> S6["<b>6 · Finish</b><br/><span class='ex'>give_up · 0 in box</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3。贯穿每一步的有两样：<a href="#stage-all">context 管理</a>，和两个 session 共用的同一个 <code>World</code>。</p>
+
+  <p class="eyebrow" id="seq" style="margin-top:1.5rem">时序图 · 一次 grasp_engage 里 request 怎么走（问题 1、2）</p>
+  <div class="flow"><pre>
+sequenceDiagram
+  participant P as Parent
+  participant L as LLM gateway
+  participant C as Child session
+  participant W as World
+  P->>L: complete(parent msgs)<br/>session = run
+  L-->>P: tool_call grasp_engage(target)
+  P->>P: call() → engage()
+  P->>W: reading() gripper + tool pose
+  P->>P: build_brief → brief.json
+  P->>C: Child + Model.session()
+  C->>W: observe("grasp phase 1 start")
+  loop until grasp_report or cap
+    C->>L: complete(child msgs)<br/>session = run:grasp-child-01
+    L-->>C: tool calls
+    C->>W: act(), operator approves
+  end
+  C-->>P: outcome, claim
+  P->>W: reading() again
+  P->>P: build_result → result.json
+  P->>P: tool result {measured, claim} + images
+  </pre></div>
+</section>
+
+<section id="play">
+  <p class="eyebrow">Interactive · Mock execution</p>
+  <h2>一步步看它执行</h2>
+  <p class="note" style="margin:0 0 .8rem">Mock：model 的回复是写死的（按例子压缩成 2 个 phase）；计数、prune、aging、caps、brief/result 封装都按代码规则在浏览器里真算。键盘 ← → 也能翻。</p>
+  <div class="pl-bar">
+    <button type="button" class="ghost" data-act="reset">⏮</button>
+    <button type="button" class="ghost" data-act="prev">◀ 上一步</button>
+    <button type="button" class="ghost pl-main" data-act="play">▶ 播放</button>
+    <button type="button" class="ghost" data-act="next">下一步 ▶</button>
+    <span class="pl-pos" id="pl-pos"></span>
+    <input type="range" id="pl-seek" min="0" value="0" aria-label="跳到第几步">
+  </div>
+  <div class="pl-now" id="pl-now"></div>
+  <div class="pl-grid">
+    <div class="pl-col" id="pl-parent"></div>
+    <div class="pl-col pl-mid">
+      <div class="pl-h">Harness · World</div>
+      <div id="pl-counters"></div>
+      <div class="pl-code" id="pl-code"></div>
+      <div class="pl-log" id="pl-log"></div>
+    </div>
+    <div class="pl-col" id="pl-child"></div>
+  </div>
+  <p class="note" style="margin-top:.6rem">图例：<span class="pl-img"></span> 挂在 context 里的图 · <span class="pl-img off"></span> 已 detach（只剩路径）· <s>划线</s> = 被 aging 删掉的 reasoning / observation body · 黄框 = 这一步新加的消息。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的代码</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Launch：mas.py 借用 harness.py 的命令行</span>
+      <span class="stage-io">命令行 → World + Model + parent RoleSurface + MasEpisode</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>不重写 harness：所有开关、检查、operator 提示照用。</li>
+        <li><b>How：</b><code>main()</code> 先吃掉 4 个 child 参数，再把 <code>harness.run</code> 换成自己的 <code>run</code>（mas.py:145）。</li>
+        <li>一个 <code>Model</code>，session 名 = run 文件夹名（mas.py:58）；一个 <code>World</code>；parent 的 <code>RoleSurface('parent')</code>（mas.py:76）。</li>
+        <li>每 phase 上限 <code>caps</code>：16 motions / 60 calls / 300 s（<code>CAPS</code>，episode.py:42；<code>--child-max-*</code> 可改）。</li>
+        <li><code>--playbook --isaac --layout --env --out</code> 直接拒绝（<code>HARNESS_ONLY</code>），不悄悄忽略。</li>
+      </ul>
+      <p class="code-cap">harness/mas.py:140–146</p>
+<pre class="code">mas, rest = limits.parse_known_args()          # --child-max-motions/-calls/-seconds, --child-skill
+...
+sys.argv = [sys.argv[0]] + rest
+<span class="hl">base.run = functools.partial(run, mas=mas)</span>    # harness.py 的 main() 现在调用 MAS 的 run
+base.main()</pre>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>model <span class="ex">gpt-6-astra</span>；child skill <span class="ex">none</span>；caps <span class="ex">16 / 60 / 300 s</span>；parent tools 8 个（上面 PARENT）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Parent turn：一次 request = 一个 session 的 messages + tools</span>
+      <span class="stage-io">system + task + 观测 → model reply → dispatch tool calls</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>两种 session 用同一个回合协议（继承 <code>so101_harness.agent.Episode</code>），区别只在 tools、prompt layer、上限。</li>
+        <li><b>System prompt</b>（<code>Session.run</code>, episode.py:116）：<code>layers(surface, world)</code>（固定 5 层 + 开关层）<b>+ 本角色一层</b>：parent 加 <code>parent-v1.md</code>，child 加 <code>child-v1.md</code> + skill。</li>
+        <li><b>第一条 user message</b>：episode-task 模板填 task + <code>CURRENT observation</code> JSON + 两张图（ZED/RealSense、wrist）。</li>
+        <li><b>每次 request</b>（<code>Episode.ask</code>, agent.py:175）：<code>calls += 1</code> → <code>prune()</code> → <code>model.complete(self.messages, self.surface.tools, call_id)</code> → 回复<b>原样</b>追加（带 provider continuation）。</li>
+        <li><b>dispatch</b>（agent.py:207）：只读 call 可以一批；motion、<code>set_gripper</code>、<code>finish_episode</code>、<code>grasp_engage</code>、<code>grasp_report</code> 必须单独一条（<code>MAS_ALONE</code>）。混在一起：<code>BATCH='reads-run'</code> 只拒绝那条，读的照跑。</li>
+        <li>没有 tool call → 塞提醒，连续 3 次 → <code>no_tool_call</code>。</li>
+        <li><b>parent 的 <code>call()</code></b>（episode.py:225）：名字不是 <code>grasp_engage</code> 就交给 Episode.call；是就进 <code>engage()</code>。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>limit()</b><br/>calls / seconds 还有吗"] --> b["<b>ask()</b><br/>prune → complete"]
+  b --> c["<b>dispatch(calls)</b><br/>MAS_ALONE 检查"]
+  c --> d["<b>call(c)</b><br/>grasp_engage?"]
+  d -->|"是"| e["<b>engage()</b> → Stage 3"]:::win
+  d -->|"否"| f["<b>Episode.call</b><br/>observe / mark / act"]
+  f --> a
+  </pre></div>
+      <p class="code-cap">so101_mas/episode.py:113–126 —— Session.run 的开头</p>
+<pre class="code">paths = layers(self.surface, self.world) + <span class="hl">tuple(self.layer)</span>   # 角色层接在最后
+system = system_prompt(paths)
+state, images = self.world.observe(self.opening)             # 'episode start' / 'grasp phase N start'
+task_text = TASK_TEMPLATE.read_text().replace(…, self.task)
+self.messages = [{'role': 'system', 'content': system}]       # <span class="hl">每个 session 一条全新的历史</span>
+self.deliver(f'{task_text}\n\nCURRENT observation: {json.dumps(self.shown(state))}', …images)</pre>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>parent 的 layers：<span class="ex">policy-v3 · harness-system · evidence-action-loop · environment · embodiment-v2 · scene-camera-zed · gripper-fit · depth-none · <b>parent-v1</b></span>。第一个 call 就是 <span class="ex">call-001 grasp_engage</span>，没先 observe。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Engage + brief：分配 = 截住一个 tool call</span>
+      <span class="stage-io">grasp_engage(target) → 封好的 brief + 一个 Child 对象</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>没有调度器、没有并行：一次 <code>grasp_engage</code> = 一个 child，<b>同步</b>跑完才回到 parent。顺序由 parent 的 call 决定。</li>
+        <li><b>caps 截到剩余预算</b>（episode.py:244）：每项取 min(phase 上限, episode 剩余)。剩不下 1 → <code>budget_exhausted</code>，不开 child。</li>
+        <li><b>brief</b>（<code>build_brief</code>，robot-harness-MAS）：parent 只写 <code>target</code>（≤240 字）；harness 加 <code>parent_observation_id</code>、<code>delegation_index</code>、<code>caps</code>，再算 SHA-256。schema 封闭：多一个字段就报错，真值不可能夹带。</li>
+        <li><b>child 的模型</b>：<code>self.model.session('grasp-child-NN')</code>（model.py:174）。gateway profile → 新的 httpx 连接 + <code>X-Session-ID = run:grasp-child-NN</code>；DeepSeek → 复制对象，共用 provider。</li>
+        <li><b>child 的 tools</b>：<code>RoleSurface('child', …)</code>，继承 parent 的 gripper-opening / fixed-jaw 开关。</li>
+        <li><b>child 的 layers</b>：<code>CHILD_LAYER</code> + <code>CHILD_SKILLS[--child-skill]</code>（默认 place-into-container）。</li>
+        <li><b>operator 提示加前缀</b>：临时替换 <code>world.approve</code> → <code>[grasp phase N] …</code>，<code>finally</code> 里换回。</li>
+      </ul>
+      <p class="code-cap">so101_mas/episode.py:244–271</p>
+<pre class="code">caps = {'max_actions': min(self.caps['max_actions'], <span class="hl">self.max_motions - self.motions</span>),
+        'max_model_calls': min(self.caps['max_model_calls'], <span class="hl">self.max_calls - self.calls</span>),
+        'max_sim_seconds': round(min(self.caps['max_sim_seconds'], left), 1)}
+brief = build_brief(args, parent_observation_id=f'step-{self.world.current["step"]:03d}',
+                    delegation_index=index, caps=caps)
+model = <span class="hl">self.model.session(f'grasp-child-{index:02d}')</span>
+child = Child(self.world, model, RoleSurface('child', …), <span class="hl">child_instruction(brief)</span>, self.out,
+              layer=(CHILD_LAYER, *skills), events_path=folder / 'agent-events.jsonl',
+              max_calls=caps['max_model_calls'], max_motions=caps['max_actions'], max_seconds=caps['max_sim_seconds'])
+self.world.approve = lambda summary: approve(f'[grasp phase {index}] {summary}')</pre>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>brief #1：target <span class="ex">"Pick up the cyan rectangular block … put it into the box through the square hole in its top. Release over the hole, not on the lid."</span>，<span class="ex">parent_observation_id step-000</span>，caps <span class="ex">16 / 60 / 300.0</span>，sha256 <span class="ex">42bef2ca…</span> → <code>delegations/grasp-child-01/brief.json</code>。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Child session：零记忆，干完一件就报告</span>
+      <span class="stage-io">一行 task + 新观测 → 抓、搬、放 → grasp_report 或 cap</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>child 从零开始，request 小；它不能宣布任务成败，避免"自己干、自己判"。</li>
+        <li><b>它知道的全部</b>：同一套 system layers（无 parent-v1，有 child-v1）+ 一句 task（<code>child_instruction</code>, episode.py:68）+ <code>observe('grasp phase N start')</code>。<b>parent 的对话、图片一概没有。</b></li>
+        <li><b>它共享的</b>：同一个 <code>World</code> —— 手臂、相机、scene map、<code>world.frames</code>（DA3 多视角深度会用到 parent 时期的 wrist 帧）、step 编号、servo guard、operator 审批。</li>
+        <li><b>上限</b>（<code>Child.limit</code>, episode.py:180）：motions → <code>action_cap</code>；calls → <code>model_call_cap</code>；墙钟 → <code>sim_time_cap</code>（名字来自仿真，这里含 operator 等待）。</li>
+        <li><b>grasp_report</b>（<code>Child.call</code>, episode.py:189）：<code>validate_report</code> → <code>self.claim</code> → outcome <code>reported</code>。另外记下最后一次 close 的 <code>stopped_short</code>（= result 的 <code>blocked</code>）。</li>
+        <li>自己的 trace：<code>delegations/grasp-child-NN/agent-events.jsonl</code>；图片和 steps 仍写进 run 文件夹。</li>
+      </ul>
+      <p class="code-cap">child 的第一条 user message（例子 phase 1，<code>child_instruction</code> 的输出）</p>
+<pre class="code">Pick-and-place phase 1. Target: Pick up the cyan rectangular block on the table in front-right of
+the white box, and put it into the box through the square hole in its top. Release over the hole,
+not on the lid.. Limits: at most 16 motions, 60 model calls and 300 s on the wall clock.
+
+Use the exact task language … Begin from current public evidence. …
+CURRENT observation: {…}   + [CURRENT (step N): zed] + [CURRENT (step N): wrist]</pre>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <div class="table-wrap"><table class="grid">
+          <tr><th>phase</th><th>calls</th><th>motions</th><th>结束</th><th>child 自己说</th></tr>
+          <tr><td>1</td><td>17</td><td>10</td><td><span class="gap">sim_time_cap</span> 300.1 s</td><td>—（无 claim）</td></tr>
+          <tr><td>2</td><td>28</td><td>15</td><td><span class="gap">sim_time_cap</span></td><td>—</td></tr>
+          <tr><td>3</td><td>17</td><td>10</td><td>reported 160.9 s</td><td>failed：两次试提都抓住，倾斜搬运时滑落</td></tr>
+          <tr><td>4</td><td>20</td><td>9</td><td>reported</td><td>failed：50° 抓住，移动中滑落到盖上</td></tr>
+          <tr><td>5</td><td>20</td><td>10</td><td><span class="gap">sim_time_cap</span></td><td>—</td></tr>
+        </table></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Seal + return：measured 和 claim 两个作者分开</span>
+      <span class="stage-io">child outcome + 前后读数 → result.json → parent 的 tool result</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>parent 不能只听 child 的话：harness 自己量的数（gripper、tool pose、用量）和 child 的 claim 分栏；harness 截断的 phase <b>没有 claim</b>。</li>
+        <li><b>记账</b>：child 的 calls、motions、token usage 加回 parent（episode.py:277）—— 所以 episode 预算算的是总量。</li>
+        <li><b>停止原因映射</b>（<code>CHILD_STOPS</code>, episode.py:45）：cap → 只结束 phase；<code>operator_stop</code>、<code>motor_too_hot</code>、<code>environment_fault</code> → 结束整个 episode。</li>
+        <li><b>build_result</b>：<code>measured</code> + <code>claim</code>（仅 reported）+ child trace 的 SHA-256 + 自身 SHA-256 → <code>result.json</code>。</li>
+        <li><b><code>projected()</code></b>（episode.py:76）：把契约字段改成这条手臂的叫法（<code>flange_pose</code>→<code>tool_pose</code>，<code>blocked</code>→<code>last_close_stopped_short</code>，<code>sim_time_cap</code>→<code>time_cap</code>）。</li>
+        <li>然后 parent 拿到：<code>last_action_effect</code> + 新观测 JSON + <b>BEFORE（engage 前，半尺寸）</b>和 <b>AFTER / CURRENT</b> 图。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  o["<b>child.run()</b><br/><span class='ex'>sim_time_cap</span>"] --> m["<b>measured</b>（harness）<br/><span class='ex'>gripper 0.0 → 38.0</span>"]
+  o --> cl["<b>claim</b>（child）<br/><span class='ex'>null</span>"]
+  m --> r["<b>build_result</b><br/><span class='ex'>result.json · sha256</span>"]
+  cl --> r
+  r --> p["<b>projected()</b> + observe<br/><span class='ex'>stopped_by time_cap</span>"]:::win
+  </pre></div>
+      <p class="code-cap">例子 phase 1：parent 真正收到的 tool result（agent-events.jsonl，图片和 observation 略）</p>
+<pre class="code">{"success": true, "last_action_effect": {"action": "grasp_engage", "delegation_index": 1,
+  "measured": {"gripper_before": -0.0002, "gripper_after": 38.0, "last_close_stopped_short": true,
+               "tool_pose_before": [0.241, 0.003, 0.108, …], "tool_pose_after": [0.237, -0.008, 0.062, …],
+               "motions_used": 10, "model_calls_used": 17, "seconds_used": 300.1,
+               <span class="hl">"stopped_by": "time_cap"</span>},
+  <span class="hl">"claim": null</span>}}</pre>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>parent 看到 claim 为空、jaws 张开 38、积木还在桌上 → call-019 再派一次：<span class="ex">"Pick up the cyan block currently ahead of the open jaws (wrist image near x330,y270) …"</span>。parent 的 call 编号从 001 跳到 019，因为 child 的 17 次已经加进 <code>self.calls</code>。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">Finish：只有 parent 能结束 episode</span>
+      <span class="stage-io">多个 phase 结果 → finish_episode → run.json</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><code>MasEpisode.run</code> 在 Session 结果上加 <code>delegations</code>：每个 phase 的 index、stopped_by、claim。</li>
+        <li>仿真有 <code>world.verdict(task)</code>；真机由 operator 打分。</li>
+        <li>parent-v1.md 要求：结束前自己看相机，不能只信 claim。</li>
+      </ul>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>call-109 <span class="ex">finish_episode give_up, repeated_failure</span>："Five pick-and-place phases failed to place the blue block…"。仿真判定 <span class="ex">blocks_in_box 0</span>。parent 的放弃是对的。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿</span>
+      <span class="stage-name">Context 管理：三层</span>
+      <span class="stage-io">phase 隔离 · 图片 prune · reasoning aging（context v2）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>① phase 隔离（MAS 自己的）：</b>child 的 <code>self.messages</code> 是新列表；跨边界只有 brief（一行 target）和 result（measured + claim + 图）。child 的 17–28 个回合不进 parent 的历史。</li>
+        <li><b>② 图片 prune</b>（<code>Episode.prune</code>, agent.py:353；每个 session 各自一份）：attached 图超过 <code>keep_images + 4</code> = 12 张，就把最旧的换成 <code>[earlier image detached: steps/…]</code>，只留 8 张。成批换，provider 的 prompt cache 前缀保持稳定。</li>
+        <li><b>③ aging</b>（<code>context.age</code>, context.py:36）：触发 = 图片要 prune，或距上次 ≥ 4 个 motion（<code>CONTEXT_STRIDE</code>），或上次 request ≥ 150k input tokens。动作 = 最近 6 个 assistant 回合以外的 <code>reasoning_content</code> 和 continuation 删掉，tool result 里的 observation body 换成 <code>{observation_step, aged}</code>；超水位只留 2 个回合。</li>
+        <li><b>④ Static 字段</b>（<code>context.Static</code>）：intrinsics、calibration、image_sizes 只在第一次观测给，之后写"as given at step N"。每个 session 一份 → child 第一次观测又会收到完整版。</li>
+        <li><b>⑤ motion 一行摘要</b>（<code>context.summary</code>）：每个 motion 结果开头一行 plain-language。</li>
+        <li><b>trace 不受影响</b>：只改发出去的 messages；<code>agent-events.jsonl</code> 和 content-addressed 的 request/response 全保留。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  A["<b>Parent messages</b><br/>system · task · 观测 · 回合…"] -->|"brief: target"| B["<b>Child messages</b><br/>（全新）system · 一行 task · 观测"]
+  B -->|"result: measured + claim + 图"| A
+  A --- PA["<b>parent 自己 prune / age</b><br/><span class='ex'>7 calls 里 age 5 次</span>"]
+  B --- PB["<b>child 自己 prune / age</b><br/><span class='ex'>phase 2: 28 calls, age 9 次</span>"]
+  </pre></div>
+      <p class="code-cap">so101_harness/agent.py:357–363 —— 为什么例子里 parent 7 个 call 就 age 了 5 次</p>
+<pre class="code">images_due = len(self.attached) > self.keep_images + 4
+over = self.last_input >= options.CONTEXT_WATERMARK                         # 150000
+if not (images_due or over or <span class="hl">self.motions - self.aged_at >= options.CONTEXT_STRIDE</span>):   # 4
+    return
+changed = context.age(self.messages, 2 if over else options.CONTEXT_KEEP_TURNS)  # 6</pre>
+      <p class="eyebrow" style="margin-top:1.2rem">KV cache：harness 不管 cache，只决定 request 的开头还是不是上一次的开头</p>
+      <ul class="tight">
+        <li><b>服务端没有 session：</b>每次都是一个完整的 Chat Completions request（整个 <code>messages</code> + <code>tools</code>）。parent / child 只是 harness 里两个 Python 对象各自的 <code>self.messages</code>：发哪个列表，就是哪个 agent。</li>
+        <li><b>cache 是 provider 按前缀自动做的：</b>开头和最近某个 request 一字不差的部分可以复用。harness 能影响的只有三件事：回复原样追加（带 continuation）；<code>X-Session-ID</code>（GPT-6 gateway 靠它把同一会话的 request 送到同一份 cache，model.py 注释："without which the gateway reused none of its prompt cache"）；prune 成批改旧消息。</li>
+        <li><b>parent 和 child 之间不共享 KV：</b>system 之后的内容就不同了。双方都只能命中共同的固定前缀。</li>
+        <li><b>child 跑的时候，parent 的 messages 在内存里原封不动；</b>parent 下一次 request = 上次的全部 + grasp_engage 的 tool result。服务端 cache 还在，就能命中。</li>
+      </ul>
+      <p class="code-cap">例子里每次 request 实际命中的 cached tokens（agent-events.jsonl 的 usage）</p>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>request</th><th>input</th><th>cached</th><th>为什么</th></tr>
+        <tr><td>parent call-001</td><td>11,618</td><td>9,600</td><td>新 session：只命中固定前缀（之前跑过的 run 留下的）</td></tr>
+        <tr><td>child 1 call-001</td><td>11,736</td><td>9,600</td><td>child 第一次发，也命中 9,600：跨 session 共用的固定前缀</td></tr>
+        <tr><td>parent call-019（phase 1 跑了 5 分钟后）</td><td>14,241</td><td><span class="win">11,520</span></td><td>parent 的旧前缀还在 cache 里</td></tr>
+        <tr><td>parent call-048 / 066 / 087 / 108</td><td>15.5k–18.3k</td><td><span class="gap">9,600</span></td><td>child 的 motions 加进 parent.motions → prune 触发 → step 0 那两张图被 detach，第 2 条消息变了，前缀从这里断</td></tr>
+        <tr><td>parent call-109</td><td>21,007</td><td><span class="win">18,048</span></td><td>和 call-108 之间只追加</td></tr>
+        <tr><td>child 1 call-002…017</td><td>17k–26k</td><td>9,600 ↔ 17k–26k 交替</td><td>每个 motion 加 4 张图，阈值 12、保留 8 → 几乎每隔一次就 prune，改旧消息，cache 回到 9,600</td></tr>
+      </table></div>
+      <p class="note">“成批 prune 保持前缀稳定”在这里基本没起作用：每个 motion 4 张图，一批只能撑一两次 request。（由 usage 数字和 prune 规则推断。）</p>
+      <ul class="tight">
+        <li><b>例子里的细节：</b>parent 的 <code>self.motions</code> 包含 child 的 motions（每个 phase 加 9–15），所以 parent 几乎每次 phase 回来后都触发 aging —— 但 parent 只有 ≤7 个回合，<code>age()</code> 在回合数 ≤ 6 时什么也不删，事件照记。（这是读代码得出的推断。）</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了哪些机制</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>机制</th><th>例子里在哪</th></tr>
+        <tr><td>角色 = tool 清单</td><td>parent 8 个 tool 无 set_gripper；child 有 set_gripper、grasp_report</td></tr>
+        <tr><td>分配 = 截住 grasp_engage，同步跑 child</td><td>5 次 engage，5 个 grasp-child 文件夹</td></tr>
+        <tr><td>封闭 brief + SHA-256</td><td>brief #1 target、step-000、42bef2ca…</td></tr>
+        <tr><td>caps 截到剩余预算</td><td>16/60/300 未被截（预算充足）</td></tr>
+        <tr><td>独立 gateway session</td><td>X-Session-ID <code>&lt;run&gt;:grasp-child-01..05</code></td></tr>
+        <tr><td>harness 截断 → 无 claim</td><td>phase 1、2、5 time_cap，claim null</td></tr>
+        <tr><td>child 报告 failed + 证据</td><td>phase 3、4</td></tr>
+        <tr><td>用量回加 parent</td><td>parent call-001 → call-019</td></tr>
+        <tr><td>每 session 独立 context 管理</td><td>parent age 5 次；child 6–9 次</td></tr>
+        <tr><td>只有 parent 结束 episode</td><td>call-109 give_up</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>结果一览（AGENTS.md，仿真，GPT-6）</h2>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>setup</th><th>抽屉成功</th><th>中位 calls</th><th>中位 input tokens</th></tr>
+      <tr><td>agent alone（harness.py）</td><td>4/5</td><td>19</td><td>0.38 M</td></tr>
+      <tr><td><b>agent parent（本页 MAS）</b></td><td>4/5</td><td>21</td><td>0.43 M</td></tr>
+      <tr><td>program parent（ACHP hybrid）</td><td>4/5（修正后 5/5）</td><td>17</td><td>0.28 M</td></tr>
+    </table>
+  </div>
+  <ul class="tight results">
+    <li><b>4 个录制布局</b> hybrid 2/12，agent alone 5/12（MAS parent 未单列）。</li>
+    <li><b>blocks 场景</b>只有 agent alone 成功过一次（三块全进）；本页例子 0 块。</li>
+    <li><b>没有真机 MAS 记录</b>：<code>outputs/mas/</code> 不存在。</li>
+  </ul>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>child 只知道一行 target：parent 学到的教训（"竖直抓会在倾斜时滑"）只能塞进 240 字里；例子 phase 4 正是这样传的。</li>
+    <li>5 分钟墙钟 cap 在例子里截断了 3/5 个 phase —— 这些 phase 白干，没有 claim。真机还要算 operator 审批的等待时间。</li>
+    <li>parent 的 prompt 也带 gripper-fit 层（<code>RoleSurface</code> 继承了 gripper_opening），虽然它没有 <code>set_gripper</code>。</li>
+    <li><code>child_instruction</code> 把以句号结尾的 target 拼成 <code>lid.. Limits</code>（小瑕疵）。</li>
+    <li>串行、单手臂：没有并行 child，也没有多种 child（ACHP 副本多了 gripper-only phase）。</li>
+    <li><code>--playbook</code>、Isaac rig 还不支持（<code>HARNESS_ONLY</code>）。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Robotic-harness</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li>这是 RoboDojo MAS（<code>robot-harness-robodojo-mas</code> 的 ScopedGraspPolicySession）的最小移植：契约复用 robot-harness-MAS 的 <code>delegation_contracts</code>，回合协议复用 <code>Episode</code>，新代码约 500 行（含 mas.py）。</li>
+    <li>measured / claim 分栏可以直接借给单 agent：给 <code>finish_episode</code> 也附一份 harness 量的事实。</li>
+    <li>要让 MAS 胜过单 agent，最该改的是 brief：允许带上前几个 phase 的 result 摘要，而不只是 target。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>SO101/harness/so101_mas/</code> · 例子 <code>outputs/achp/20261025-185324-sim-blocks-put-all-three-blocks-into-the-box-throug/</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      box.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<script>
+(() => {
+  const root = document.getElementById("play");
+  if (!root) return;
+  const KEEP = 8, STRIDE = 4, KEEP_TURNS = 6;
+  const EP = { calls: 100, motions: 100, seconds: 3600 };          // options.MAX_* (live defaults)
+  const PHASE = { act: 16, calls: 60, secs: 300 };                 // episode.py CAPS
+
+  const CODE = {
+    run: ["harness/mas.py:58–95 · run", "model = Model(args.profile, session=out.name)\nworld = World.open(out, …)\nsurface = RoleSurface('parent', …)\nresult = MasEpisode(world, model, surface, args.task, out, caps=caps).run()"],
+    srun: ["so101_mas/episode.py:113–126 · Session.run", "paths = layers(self.surface, self.world) + tuple(self.layer)\nsystem = system_prompt(paths)\nstate, images = self.world.observe(self.opening)\nself.messages = [{'role': 'system', 'content': system}]\nself.deliver(task_text + CURRENT observation, images)"],
+    ask: ["so101_harness/agent.py:175–200 · Episode.ask", "self.calls += 1\nself.prune()\nprepared, result = self.model.complete(self.messages, self.surface.tools, call_id)\nself.messages.append(message)   # 原样追加，带 provider continuation"],
+    engage: ["so101_mas/episode.py:225–258 · call → engage", "if c['function']['name'] != 'grasp_engage': return super().call(c)\ncaps = {k: min(self.caps[k], episode 剩余)}   # 16 / 60 / 300\nbrief = build_brief(args, parent_observation_id=…, delegation_index=index, caps=caps)\n(folder / 'brief.json').write_text(…)"],
+    child: ["so101_mas/episode.py:259–273 · engage", "model = self.model.session(f'grasp-child-{index:02d}')\nchild = Child(self.world, model, RoleSurface('child', …), child_instruction(brief), …,\n              layer=(CHILD_LAYER, *skills), max_calls=caps['max_model_calls'], …)\nself.world.approve = lambda s: approve(f'[grasp phase {index}] {s}')\noutcome = child.run()"],
+    dispatch: ["so101_harness/agent.py:207–233 · dispatch", "if len(calls) > 1 and any(name in MAS_ALONE for name in names):\n    # options.BATCH == 'reads-run'\n    refused = {i for i, name in enumerate(names) if name in alone}\n只读 call 照跑；motion 回 mixed_mutation_batch"],
+    act: ["so101_harness/agent.py:288–309 · Episode.call (motion)", "receipt = self.world.act(name, args)   # 规划 → 场景检查 → operator 审批 → 执行\nself.motions += 1\nstate, images = self.world.observe(f'after {name}')\nreturn {…, 'last_action_effect': effect, 'observation': …}, BEFORE + AFTER 图"],
+    close: ["so101_mas/episode.py:189–196 · Child.call", "result, images, outcome = super().call(c)\nif name == 'set_gripper' and effect['commanded'] == 'close':\n    self.last_close = bool(effect.get('stopped_short'))   # → result 的 blocked"],
+    prune: ["so101_harness/agent.py:353–371 · prune", "images_due = len(self.attached) > self.keep_images + 4   # > 12\nif not (images_due or over or self.motions - self.aged_at >= 4): return\ncontext.age(self.messages, 6)   # 旧 reasoning、observation body 删掉\nfor m, i in self.attached[:-8]: → '[earlier image detached: …]'"],
+    limit: ["so101_mas/episode.py:180–187 · Child.limit", "if self.motions >= self.max_motions: return 'action_cap'\nif self.calls >= self.max_calls: return 'model_call_cap'\nif time.monotonic() - self.started > self.max_seconds:\n    return 'sim_time_cap'"],
+    seal: ["so101_mas/episode.py:277–308 · engage 收尾", "self.calls += child.calls; self.motions += child.motions\nstopped_by, ends = CHILD_STOPS[outcome['outcome']]\nresult = build_result(brief=brief, measured=measured,\n    claim=child.claim if stopped_by == 'reported' else None, …)\neffect = projected(result)\nstate, images = self.world.observe(f'after grasp phase {index}')"],
+    report: ["so101_mas/episode.py:197–205 · Child.call (grasp_report)", "self.claim = validate_report(args)   # result ∈ placed|failed, reason ≤ 240\nreturn {'success': True, 'result': self.claim['result']}, [], 'reported'"],
+    read: ["so101_harness/agent.py:256–259 · Episode.call (observe)", "state, images = self.world.observe('observe call')\nreturn {'success': True, 'observation': self.shown(state)}, images, None"],
+    finish: ["agent.py:277–283 + episode.py:220–223", "self.claim = args\nreturn {'success': True, 'outcome': args['outcome']}, [], 'finished'\n# MasEpisode.run: result | {'delegations': [每个 phase 的 stopped_by, claim]}"],
+  };
+
+  let cur = 0;
+  const sess = (name, sid, caps) => ({ name, sid, caps, msgs: [], calls: 0, motions: 0, attached: [], agedAt: 0, aged: 0, secs: 0, lastClose: null, gone: false });
+  const push = (s, m) => { m.step = cur; s.msgs.push(m); return m; };
+  function user(s, text, imgs = []) {
+    const m = push(s, { role: "user", text, imgs: imgs.map(l => ({ l, off: false })) });
+    m.imgs.forEach((_, i) => s.attached.push([s.msgs.length - 1, i]));
+  }
+  const tool = (s, name, text, o = {}) => push(s, { role: "tool", name, text, obs: !!o.obs, err: !!o.err });
+  function prune(s) {
+    const due = s.attached.length > KEEP + 4, stride = s.motions - s.agedAt >= STRIDE;
+    if (!due && !stride) return [`prune：图 ${s.attached.length} ≤ 12，motions−aged_at = ${s.motions - s.agedAt} < 4 → 跳过`, false];
+    s.agedAt = s.motions;
+    const turns = s.msgs.map((m, i) => m.role === "assistant" ? i : -1).filter(i => i >= 0);
+    let changed = 0;
+    if (turns.length > KEEP_TURNS) {
+      const limit = turns[turns.length - KEEP_TURNS];
+      for (let i = 0; i < limit; i++) {
+        const m = s.msgs[i];
+        if (m.agedAt === undefined && ((m.role === "assistant" && m.think) || (m.role === "tool" && m.obs))) { m.agedAt = cur; changed++; }
+      }
+    }
+    s.aged++;
+    const drop = s.attached.slice(0, Math.max(0, s.attached.length - KEEP));
+    drop.forEach(([mi, ii]) => { s.msgs[mi].imgs[ii].off = true; });
+    s.attached = s.attached.slice(-KEEP);
+    return [`prune 触发（${due ? `图 ${drop.length + KEEP} > 12` : "motions−aged_at ≥ 4"}）→ context_aged：age 改 ${changed} 条，detach ${drop.length} 张图`, changed + drop.length > 0];
+  }
+  function ask(S, s, think, calls) {
+    s.calls++;
+    const [note, broke] = prune(s);
+    const cache = s.calls === 1 ? "新 session：只能命中各 session 共用的固定前缀（system + tools）"
+      : broke ? "旧消息被改了 → 前缀断在被改处，只能命中固定前缀" : "只在末尾追加 → 可命中上一次 request 的整段前缀";
+    S.log(`→ LLM [${s.sid}] ${s.msgs.length} 条 messages · ${s.attached.length} 张图`);
+    S.log(note);
+    S.log(`KV cache：${cache}`);
+    push(s, { role: "assistant", id: `call-${String(s.calls).padStart(3, "0")}`, think, calls });
+    if (s !== S.P) s.secs += 12;
+  }
+  function motion(S, s, name, text) {
+    s.motions++; S.W.step++;
+    const st = S.W.step;
+    S.log(`operator: "${S.C && !S.C.gone && s === S.C ? `[grasp phase ${S.phases.length + 1}] ` : ""}${name} …" → 批准`);
+    S.log(`world.act ${name}: executed → observe step ${st}`);
+    tool(s, name, `${text} · observation (step ${st})`, { obs: 1 });
+    user(s, null, ["BEFORE zed", "BEFORE wrist", `AFTER zed s${st}`, `AFTER wrist s${st}`]);
+    s.secs += 20;
+  }
+  function engage(S, target) {
+    const k = S.phases.length + 1, P = S.P;
+    const caps = { max_actions: Math.min(PHASE.act, EP.motions - P.motions), max_model_calls: Math.min(PHASE.calls, EP.calls - P.calls), max_sim_seconds: Math.min(PHASE.secs, EP.seconds - P.secs) };
+    S.brief = { target, parent_observation_id: `step-${String(S.W.step).padStart(3, "0")}`, delegation_index: k, caps };
+    S.log(`caps = min(16, ${EP.motions}−${P.motions}) / min(60, ${EP.calls}−${P.calls}) / min(300, …) = ${caps.max_actions} / ${caps.max_model_calls} / ${caps.max_sim_seconds}`);
+    S.log(`delegations/grasp-child-0${k}/brief.json：target + ${S.brief.parent_observation_id} + index ${k} + caps + sha256`);
+  }
+  function spawn(S) {
+    const k = S.phases.length + 1, b = S.brief;
+    S.C = sess(`Child ${k}`, `<run>:grasp-child-0${k}`, b.caps);
+    push(S.C, { role: "system", text: "同样的固定 layers（不含 parent-v1）+ child-v1.md + skill-place-into-container-v1.md" });
+    S.W.step++;
+    user(S.C, `Pick-and-place phase ${k}. Target: ${b.target}. Limits: at most ${b.caps.max_actions} motions, ${b.caps.max_model_calls} model calls and ${b.caps.max_sim_seconds} s on the wall clock. · CURRENT observation (step ${S.W.step})`, [`zed s${S.W.step}`, `wrist s${S.W.step}`]);
+    S.log(`Model.session("grasp-child-0${k}") → 新连接，X-Session-ID ${S.C.sid}`);
+    S.log(`observe "grasp phase ${k} start" → step ${S.W.step}`);
+    S.log(`world.approve 加前缀 [grasp phase ${k}]`);
+  }
+  function seal(S, outcome, claim, gripAfter) {
+    const C = S.C, P = S.P, k = S.phases.length + 1;
+    P.calls += C.calls; P.motions += C.motions; P.secs += C.secs;
+    const stopped = { sim_time_cap: "time_cap", reported: "reported" }[outcome];
+    S.log(`child.run() → ${outcome}；CHILD_STOPS → stopped_by ${stopped}，只结束 phase`);
+    S.log(`parent.calls += ${C.calls}，parent.motions += ${C.motions}`);
+    S.log(`build_result → delegations/grasp-child-0${k}/result.json（measured + ${claim ? "claim" : "claim null"} + sha256）`);
+    S.phases.push({ k, stopped, claim });
+    C.gone = true;
+    S.W.step++;
+    tool(P, "grasp_engage", `measured: gripper ${S.W.grip}→${gripAfter}, last_close_stopped_short ${C.lastClose}, motions_used ${C.motions}, model_calls_used ${C.calls}, seconds_used ${C.secs.toFixed(1)}, stopped_by ${stopped} · claim ${claim ? JSON.stringify(claim) : "null"} · observation (step ${S.W.step})`, { obs: 1 });
+    user(P, null, ["BEFORE zed", "BEFORE wrist", `AFTER zed s${S.W.step}`, `AFTER wrist s${S.W.step}`]);
+    S.W.grip = gripAfter;
+  }
+
+  const T1 = "Pick up the cyan block … put it into the box through the square hole in its top";
+  const T2 = "Pick up the cyan block currently ahead of the open jaws … release through the top hole";
+  const STEPS = [
+    { who: "harness", code: "run", say: "mas.py run：一个 Model（X-Session-ID = run 名）、一个 World（手臂 + 相机）、parent 的 RoleSurface（8 个 tool，没有 set_gripper），然后 MasEpisode.run()。",
+      run(S) { S.P = sess("Parent", "<run>", null); S.log("parent tools: observe, mark_point, move_free_space, servo_delta, recover_motion, report_issue, finish_episode, grasp_engage"); } },
+    { who: "parent", code: "srun", say: "Parent 的 Session.run：system = 固定 layers + parent-v1.md；observe('episode start') 拍 step 0；第一条 user message = 任务 + 观测 JSON + 2 张图。",
+      run(S) { push(S.P, { role: "system", text: "policy-v3 · harness-system · evidence-action-loop · environment · embodiment · 开关层 … + parent-v1.md" }); user(S.P, "put all three blocks into the box through the top hole · CURRENT observation (step 0)", ["zed s0", "wrist s0"]); S.log("observe 'episode start' → step 0"); } },
+    { who: "parent", code: "ask", say: "Parent 第 1 次请求：它自己的 messages + 8 个 tool 发出去；回复只有一个 grasp_engage。",
+      run(S) { ask(S, S.P, "我没有 set_gripper，搬积木只能交给 grasp_engage。", [`grasp_engage(target="${T1}")`]); } },
+    { who: "harness", code: "engage", say: "dispatch：grasp_engage 单独一条，合规 → MasEpisode.call 截住 → engage()：caps 截到 episode 剩余，封 brief。这就是“分配”。",
+      run(S) { engage(S, T1); } },
+    { who: "child", code: "child", say: "开一个全新的 Child：独立的 Model.session、全新 messages。child 只知道一行 task + 一次新观测，parent 的历史一条都没有。",
+      run(S) { spawn(S); } },
+    { who: "child", code: "ask", say: "Child 第 1 次请求（它自己的 call-001）。回复里同时有 mark_point 和 move_free_space。",
+      run(S) { ask(S, S.C, "先标出积木位置，然后直接移过去。", ["mark_point(view=zed, cyan block)", "move_free_space(above block)"]); } },
+    { who: "child", code: "dispatch", say: "混了只读 call 和 motion：BATCH='reads-run' → mark_point 照跑，move_free_space 被拒（mixed_mutation_batch），什么都没动。",
+      run(S) { tool(S.C, "mark_point", "status agreed · xyz_m [0.27, −0.06, 0.02]"); tool(S.C, "move_free_space", "error mixed_mutation_batch: must be the only tool call in its response", { err: 1 }); user(S.C, null, ["mark overlay"]); S.log("mark_point 执行；move_free_space 拒绝"); } },
+    { who: "child", code: "ask", say: "Child call-002：这次 move_free_space 单独一条。",
+      run(S) { ask(S, S.C, "单独发移动。", ["move_free_space(above block, tilt 50°)"]); } },
+    { who: "child", code: "act", say: "motion 走完整的 World 流程：规划、场景检查、operator 看到带 [grasp phase 1] 前缀的提示并批准、执行、重新观测；结果 + BEFORE/AFTER 4 张图进 child 的 context。",
+      run(S) { motion(S, S.C, "move_free_space", "executed, residual 2.1 mm"); } },
+    { who: "child", code: "act", say: "Child call-003：张开夹爪（一问一执行合成一步）。",
+      run(S) { ask(S, S.C, "张到能套住积木的宽度。", ["set_gripper(open, opening 38)"]); motion(S, S.C, "set_gripper", "open → 38.0"); S.W.grip = 38; } },
+    { who: "child", code: "act", say: "Child call-004：往下 3 cm。",
+      run(S) { ask(S, S.C, "下降到积木两侧。", ["servo_delta(dz −0.03)"]); motion(S, S.C, "servo_delta", "executed"); } },
+    { who: "child", code: "prune", say: "Child call-005 发出前 prune()：挂着的图已超过 12 张 → 触发。回合还不到 6 个，没有 reasoning 可删；最旧的图 detach，只留 8 张。",
+      run(S) { ask(S, S.C, "对准了，夹紧。", ["set_gripper(close)"]); } },
+    { who: "child", code: "close", say: "执行 close：夹爪停在 6.7 没合拢（stopped_short）→ Child 记下 last_close = true，之后成为 result 的 blocked。",
+      run(S) { motion(S, S.C, "set_gripper", "close → 6.7, stopped_short true"); S.C.lastClose = true; S.W.grip = 6.7; } },
+    { who: "child", code: "act", say: "Child call-006：试提 2 cm（child-v1.md 要求先验证抓牢）。",
+      run(S) { ask(S, S.C, "试提一下看抓牢没有。", ["servo_delta(dz +0.02)"]); motion(S, S.C, "servo_delta", "executed"); } },
+    { who: "child", code: "act", say: "Child call-007：倾斜着往盒子上方搬。发出前 prune 又触发了（图 16 > 12），但回合刚好 6 个，只 detach 图。",
+      run(S) { ask(S, S.C, "抓住了，往孔上方移。", ["move_free_space(above hole, tilt 50°)"]); motion(S, S.C, "move_free_space", "executed"); } },
+    { who: "child", code: "read", say: "Child call-008：observe 是只读的，不算 motion，返回观测 + 2 张图。",
+      run(S) { ask(S, S.C, "看看积木还在不在夹爪里。", ["observe()"]); S.W.step++; tool(S.C, "observe", `wrist：夹爪空了，积木掉在桌上 · observation (step ${S.W.step})`, { obs: 1 }); user(S.C, null, [`zed s${S.W.step}`, `wrist s${S.W.step}`]); S.W.grip = 0.0; } },
+    { who: "child", code: "prune", say: "Child call-009：图 14 > 12，而且回合已有 8 个 > 6 → age：最早 2 个回合的 reasoning 和 observation body 被删（划线），图 detach 到 8 张。trace 文件里全保留，只是不再发给模型。",
+      run(S) { ask(S, S.C, "重新标出掉下来的积木。", ["mark_point(view=wrist, cyan block)"]); tool(S.C, "mark_point", "status agreed · xyz_m [0.25, −0.04, 0.02]"); user(S.C, null, ["mark overlay"]); } },
+    { who: "child", code: "limit", say: "（压缩：真实 phase 1 用了 17 calls、10 motions。）墙钟过了 300 s → 下一次 ask 前 Child.limit() 返回 sim_time_cap。child 没来得及 grasp_report，所以没有 claim。",
+      run(S) { S.C.secs = 300.1; S.log("Child.limit() → sim_time_cap"); } },
+    { who: "harness", code: "seal", say: "engage 收尾：child 的用量加回 parent；harness 自己读夹爪和 tool pose 填 measured；claim 为 null；projected() 改成本机的字段名，加上新观测和 BEFORE/AFTER 图，作为 grasp_engage 的 tool result 交给 parent。child 的 messages 被丢掉。",
+      run(S) { seal(S, "sim_time_cap", null, 38.0); } },
+    { who: "parent", code: "prune", say: "Parent 下一次请求编号跳了（child 的 calls 已经算进来）。parent.motions 也加了 → motions−aged_at ≥ 4 → prune 触发，但 parent 只有 1 个回合，没什么可删。",
+      run(S) { ask(S, S.P, "claim 是空的，夹爪张着，积木还在桌上。换个描述再派一次。", [`grasp_engage(target="${T2}")`]); } },
+    { who: "harness", code: "engage", say: "第 2 次分配：caps 用 parent 当前计数（已包含 phase 1 的用量）重新算。",
+      run(S) { engage(S, T2); } },
+    { who: "child", code: "child", say: "Child 2：又是全新的 session 和 messages，phase 1 学到的东西只能靠 parent 写进 target。",
+      run(S) { spawn(S); } },
+    { who: "child", code: "close", say: "Child 2 call-001：积木就在夹爪前，直接夹。",
+      run(S) { ask(S, S.C, "积木在两爪之间，夹紧。", ["set_gripper(close)"]); motion(S, S.C, "set_gripper", "close → 7.0, stopped_short true"); S.C.lastClose = true; S.W.grip = 7.0; } },
+    { who: "child", code: "act", say: "Child 2 call-002：提到孔上方。",
+      run(S) { ask(S, S.C, "竖直提起再平移到孔上方。", ["move_free_space(above hole)"]); motion(S, S.C, "move_free_space", "executed"); } },
+    { who: "child", code: "act", say: "Child 2 call-003：松开。",
+      run(S) { ask(S, S.C, "在孔上方松开。", ["set_gripper(open)"]); motion(S, S.C, "set_gripper", "open → 40.0"); S.W.grip = 40; } },
+    { who: "child", code: "report", say: "Child 2 call-004：grasp_report。validate_report 检查格式，存成 claim，outcome = reported。（mock：这里故意让 child 报 placed。）",
+      run(S) { ask(S, S.C, "松开了，应该进孔了。", ['grasp_report(result="placed", reason="released over the hole")']); tool(S.C, "grasp_report", "success · result placed"); } },
+    { who: "harness", code: "seal", say: "这次有 claim。measured 和 claim 分两栏交回 parent：measured 是 harness 读的，claim 只是 child 的说法。",
+      run(S) { seal(S, "reported", { result: "placed", reason: "released over the hole" }, 40); } },
+    { who: "parent", code: "read", say: "Parent 不只信 claim：parent-v1.md 要求结束前自己看相机。",
+      run(S) { ask(S, S.P, "child 说 placed，自己看一眼。", ["observe()"]); S.W.step++; tool(S.P, "observe", `zed：积木在盖子上，孔旁边 · observation (step ${S.W.step})`, { obs: 1 }); user(S.P, null, [`zed s${S.W.step}`, `wrist s${S.W.step}`]); } },
+    { who: "parent", code: "finish", say: "只有 parent 能结束 episode：finish_episode(give_up)。run() 的结果再附上每个 phase 的 stopped_by 和 claim，写进 run.json。（真实例子：5 个 phase、109 calls，give_up，0 块入盒。）",
+      run(S) { ask(S, S.P, "两次都没放进去，放弃。", ['finish_episode(outcome="give_up", category="repeated_failure")']); tool(S.P, "finish_episode", "success · outcome give_up"); S.log("outcome finished → run.json（delegations: " + S.phases.map(p => `#${p.k} ${p.stopped}`).join(", ") + "）"); } },
+  ];
+
+  function build(n) {
+    const S = { P: null, C: null, W: { step: 0, grip: 0.0 }, phases: [], brief: null, logs: [] };
+    S.log = t => S.logs.push({ t, step: cur });
+    for (cur = 0; cur <= n; cur++) STEPS[cur].run(S);
+    return S;
+  }
+
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  function msgHTML(m, n) {
+    const cls = `pl-msg r-${m.role}${m.step === n ? " new" : ""}${m.err ? " err" : ""}`;
+    const imgs = (m.imgs || []).map(i => `<span class="pl-img${i.off ? " off" : ""}" title="${esc(i.l)}${i.off ? "（detached）" : ""}"></span>`).join("");
+    let body = "";
+    if (m.role === "assistant") {
+      const think = m.think ? (m.agedAt !== undefined && m.agedAt <= n ? `<s>reasoning: ${esc(m.think)}</s>` : `<i>reasoning:</i> ${esc(m.think)}`) : "";
+      body = `<span class="pl-role">assistant ${m.id}</span>${think}<br>${m.calls.map(c => `<code>${esc(c)}</code>`).join("<br>")}`;
+    } else if (m.role === "tool") {
+      const aged = m.obs && m.agedAt !== undefined && m.agedAt <= n;
+      body = `<span class="pl-role">tool · ${esc(m.name)}</span>${aged ? `<s>${esc(m.text)}</s> → {observation_step, aged}` : esc(m.text)}`;
+    } else {
+      body = `<span class="pl-role">${m.role}</span>${m.text ? esc(m.text) : ""}${imgs ? `<br>${imgs}` : ""}`;
+    }
+    return `<div class="${cls}">${body}</div>`;
+  }
+  function colHTML(s, n, title, empty) {
+    if (!s) return `<div class="pl-h">${title}</div><p class="pl-empty">${empty}</p>`;
+    return `<div class="pl-h"><span>${esc(s.name)} · ${s.msgs.length} messages</span><span>${esc(s.sid)}</span></div>` + s.msgs.map(m => msgHTML(m, n)).join("");
+  }
+  function counters(S, Q) {
+    const row = (k, a, b, pa, pb) => `<span class="k">${k}</span><span class="${a !== pa ? "chg" : ""}">${a}</span><span class="${b !== pb ? "chg" : ""}">${b}</span>`;
+    const P = S.P, C = S.C && !S.C.gone ? S.C : null, QP = Q && Q.P, QC = Q && Q.C && !Q.C.gone ? Q.C : null;
+    const v = (s, f) => s ? f(s) : "—";
+    return `<div class="pl-cnt"><span class="k"></span><span class="k">parent</span><span class="k">child</span>` +
+      row("calls", v(P, s => `${s.calls}/${EP.calls}`), v(C, s => `${s.calls}/${s.caps.max_model_calls}`), v(QP, s => `${s.calls}/${EP.calls}`), v(QC, s => `${s.calls}/${s.caps.max_model_calls}`)) +
+      row("motions", v(P, s => `${s.motions}/${EP.motions}`), v(C, s => `${s.motions}/${s.caps.max_actions}`), v(QP, s => `${s.motions}/${EP.motions}`), v(QC, s => `${s.motions}/${s.caps.max_actions}`)) +
+      row("图（挂着）", v(P, s => s.attached.length), v(C, s => s.attached.length), v(QP, s => s.attached.length), v(QC, s => s.attached.length)) +
+      row("aging 次数", v(P, s => s.aged), v(C, s => s.aged), v(QP, s => s.aged), v(QC, s => s.aged)) +
+      row("秒（墙钟）", "—", v(C, s => `${s.secs.toFixed(0)}/${s.caps.max_sim_seconds}`), "—", v(QC, s => `${s.secs.toFixed(0)}/${s.caps.max_sim_seconds}`)) +
+      row("last_close", "—", v(C, s => String(s.lastClose)), "—", v(QC, s => String(s.lastClose))) +
+      row("world step", S.W.step, "", Q ? Q.W.step : S.W.step, "") +
+      row("gripper", S.W.grip, "", Q ? Q.W.grip : S.W.grip, "") + `</div>`;
+  }
+
+  const el = id => document.getElementById(id);
+  const seek = el("pl-seek");
+  seek.max = STEPS.length - 1;
+  let i = 0, timer = null;
+  function render() {
+    const S = build(i), Q = i > 0 ? build(i - 1) : null, st = STEPS[i];
+    el("pl-pos").textContent = `${i + 1} / ${STEPS.length}`;
+    seek.value = i;
+    el("pl-now").innerHTML = `<b class="who">${st.who}</b>${esc(st.say)}`;
+    const pc = el("pl-parent"), cc = el("pl-child");
+    pc.innerHTML = colHTML(S.P, i, "Parent", "还没开始");
+    cc.innerHTML = colHTML(S.C, i, "Child", "还没有 child：只有 parent 调 grasp_engage 时才会开一个");
+    pc.classList.toggle("active", st.who === "parent");
+    cc.classList.toggle("active", st.who === "child");
+    cc.classList.toggle("gone", !!(S.C && S.C.gone));
+    const [f, code] = CODE[st.code];
+    el("pl-code").innerHTML = `<span class="f">${esc(f)}</span>${esc(code)}`;
+    el("pl-counters").innerHTML = counters(S, Q);
+    el("pl-log").innerHTML = S.logs.slice(-10).reverse().map(l => `<div class="${l.step === i ? "new" : ""}">${esc(l.t)}</div>`).join("");
+    for (const c of [pc, cc]) { const n = c.querySelector(".new"); if (n) c.scrollTop = n.offsetTop - c.offsetTop - 40; }
+  }
+  function go(n) { i = Math.max(0, Math.min(STEPS.length - 1, n)); render(); }
+  function stop() { clearInterval(timer); timer = null; root.querySelector("[data-act=play]").textContent = "▶ 播放"; }
+  root.addEventListener("click", e => {
+    const a = e.target.closest("[data-act]");
+    if (!a) return;
+    const act = a.dataset.act;
+    if (act === "play") {
+      if (timer) return stop();
+      if (i === STEPS.length - 1) go(0);
+      a.textContent = "⏸ 暂停";
+      timer = setInterval(() => { if (i >= STEPS.length - 1) stop(); else go(i + 1); }, 1700);
+      return;
+    }
+    stop();
+    go(act === "reset" ? 0 : act === "prev" ? i - 1 : i + 1);
+  });
+  seek.addEventListener("input", () => { stop(); go(+seek.value); });
+  document.addEventListener("keydown", e => {
+    if (e.target.closest("input, textarea")) return;
+    const r = root.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) return;
+    if (e.key === "ArrowRight") { stop(); go(i + 1); }
+    if (e.key === "ArrowLeft") { stop(); go(i - 1); }
+  });
+  render();
+})();
+</script>
+
+<script src="../../library.js"></script>
+</body>
+</html>
