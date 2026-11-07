@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>CoDimRecon</title>
+<meta name="description" content="GPT-6 agent 从多视角 RGB 重建可仿真的室内场景：刚体重建成 primitives 加关节，电话线、塑料袋、椅垫按维度重建成 rod / shell / solid，再用仿真机器人测试按顺序修模型。">
+<meta name="paper:title" content="CoDimRecon: Agentic Reconstruction of Sim-Ready 3D Scenes with Deformable Curves, Surfaces, and Volumes">
+<meta name="paper:source" content="https://arxiv.org/abs/2609.36024">
+<meta name="paper:venue" content="arXiv 2026 (preprint)">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2609.36024v3">
+<meta name="paper:date" content="2026-09-28">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-07</p>
+  <h1>CoDimRecon</h1>
+  <p class="full-title">CoDimRecon: Agentic Reconstruction of Sim-Ready 3D Scenes with Deformable Curves, Surfaces, and Volumes</p>
+  <p class="meta">Shuzhao Xie*, Lelin Wang*, Guying Lin, Zhi Wang†, Minchen Li† · 清华 SIGS、CMU、Genesis AI · arXiv 2609.36024v3（v1 2026-09-28，v3 2026-10-03），preprint</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2609.36024">arXiv</a><a href="https://arxiv.org/pdf/2609.36024v3">PDF</a>
+    <a href="https://shuzhaoxie.github.io/CoDimRecon/">Project page</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：agent 从多视角 RGB 重建含可变形物体（曲线、曲面、体积）的可仿真场景；第二相关 Sim-robot-learning（IPC 里的 rod / shell / solid 仿真）。项目页写着 Code "Soon"，读的时候还没有代码。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>已有的 sim-ready 场景重建只出刚体；电话线、塑料袋、椅垫要的几何形式（中心线 + 半径、带厚度的壳、水密实体）和材料模型都不一样，而且光看静态几何定不下来。</dd></div>
+    <div><dt>Idea</dt><dd>一个 GPT-6 Astra agent 借 VGGT-Omega 几何和 SAM3D 参考 mesh，在 Blender 里用 primitives 重建刚体和关节；可变形物体按维度分 session 重建，用仿真器 skill 初始化 IPC 物理模型，再用预设的仿真机器人测试按固定顺序归因修改，材料模型最后才动。</dd></div>
+    <div><dt>Result</dt><dd>6 个场景上 CD 最低、NC 最高（ScanNet++ CD 21.66 vs GPT-6 Astra 22.73，Table 3），Replica Stable(All) 97.54% vs HoloScene* 49.41%；Franka 在 IPC 里把听筒抬起 197.8 mm，半径 1.3 mm 的电话线随之拉开、通过全部检查（App B.4）；纸改成塑性铰后折痕保留 92.5% vs 3.7%（Table 4）。可变形物体只有演示，没有和真实几何的误差。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>已有方法把每个物体都当刚体：一根卷曲电话线既没有可仿真的形式，也没有合适的材料模型</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>办公室里的卷曲电话线</b>（Fig. 1 的 Telephone Cord、Fig. 2(c) 的 Curves 行）。输入是这间办公室的多视角 RGB，没有深度。场景看起来是 ScanNet++ <span class="ex">67d702f2e8</span>，项目页叫 Scene 067-D；这是我的推断，论文没说 Fig. 1 用的是哪个场景。评测时这个场景渲染了 <span class="ex">186</span> 帧，分辨率 <span class="ex">876×584</span>（App C.1）。桌上一部电话，听筒和机身之间连着一根卷曲电话线。</p>
+    <p>→ 想要：一个可编辑、可仿真的办公室。家具是紧凑的刚体；抽屉和电话按键带关节；电话线是 <span class="ex">centerline + 半径</span> 的 rod。Franka 抓起听筒时，线被拉开，而且不穿模。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>办公室多视角 RGB</span><br/><span class='ex'>电话 + 卷曲电话线</span>"]:::example
+  IN --> A1["<b>HoloScene*</b><br/>逐物体优化 SDF<br/>只出刚体"]
+  A1 --> AX["电话线没有可仿真形式<br/><span class='ex'>Deformable ✗</span><br/><span class='ex'>CD 27.15</span>"]:::gap
+  IN --> B1["<b>ReplicateAnyScene</b><br/>VLM + SAM3 分割<br/>生成 mesh 直接当资产"]
+  B1 --> BX["刚体 mesh，几何粗<br/><span class='ex'>Deformable ✗</span><br/><span class='ex'>CD 50.73 · F1 19.08</span>"]:::gap
+  IN --> C1["<b>GPT-6 Astra 直接建</b><br/>同一 backbone<br/>只看 RGB 写 Blender"]
+  C1 --> CX["线最多是静态几何<br/><span class='ex'>Deformable ✗</span><br/><span class='ex'>CD 22.73 · NC 70.14</span>"]:::gap
+  IN --> D1["<b>一个 session 全管</b><br/>本文消融 Fig. 7<br/>三类指令合在一起"]
+  D1 --> DX["线缆塌成同心圆环<br/><span class='ex'>粗、不可信</span><br/><span class='ex'>只有定性图</span>"]:::gap
+  </pre></div>
+  <p class="note">数字是 ScanNet++ 三个场景的均值（Table 3），论文没有电话线这个物体自己的分数。"坏在哪"有推断成分。论文只给了两条依据：这三个 baseline 都不输出可仿真的可变形资产（Table 1 的 Deformable Simulation 列、§4.2）；直接让 agent 从图像建，会出现尺度和布局错误、形状过粗（§3.1 的预实验）。第 4 条是本文自己的消融（§4.3、<a href="#exp-5">E5</a>），只有一张定性图。</p>
+  <p class="crux"><b>根本问题：</b>可仿真的形式取决于物体的维度：线缆要 centerline + 半径，薄片要中面 + 厚度，软体要水密实体。材料模型光看静态几何也定不下来。　<b>这篇的切入点：</b>agent 按维度分 session 重建可变形物体，用仿真器自带的示例 skill 初始化物理模型，再在仿真里让机器人做预设测试，暴露问题后按固定顺序归因修改，材料模型最后才动。</p>
+  <h3 id="related">Related work</h3>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-07-CoDimRecon/tab1.jpg" alt="Table 1：各组合式场景重建方法在输入、几何引导、生成先验、自动实例发现、免训练、agentic、可变形仿真上的对比"></div>
+    <figcaption><b>Table 1</b>（作者原图）最后一列 Deformable Simulation 只有本文打勾；Agentic 一列里 VIGA、Lucida、Lumera、LiteReality-Agent、GPT-6 Astra 也打勾，区别在输入和是否要训练。</figcaption>
+  </figure>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>优化式组合重建</b><br><span class="muted">HoloScene（baseline）、ObjectSDF++、PhyRecon 等</span></td><td>多视角 → 逐物体的 sim-ready 场景</td><td>用掩码、相机，逐物体优化 SDF 并加物理约束</td><td>要掩码和相机、要优化、只有刚体 → 本文免训练，agent 用 primitives 重建，并加入可变形物体</td></tr>
+      <tr><td><b>零样本模块拼装</b><br><span class="muted">ReplicateAnyScene（baseline）、SimRecon</span></td><td>视频 → 组合式 3D 场景</td><td>预训练分割 + 3D 生成器，生成 mesh 就是最终资产</td><td>生成 mesh 直接用、不可编辑 → 本文只把 SAM3D mesh 当参考，重建成可编辑 primitives</td></tr>
+      <tr><td><b>Agentic 场景创作</b>（本文所属）<br><span class="muted">GPT-6 Astra（baseline）、Lucida、Lumera、LiteReality-Agent、VIGA</span></td><td>agent 从观测写出场景</td><td>agent 调 3D 工具搭场景，迭代检查</td><td>要微调或 RL（Lucida、Lumera）、要 RGB-D 和 RoomPlan（LiteReality）、只看单图（VIGA）、没有参考（Astra），且都只有刚体 → 本文 RGB、免训练、带几何和生成参考，还出可变形资产</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>余维度仿真</b><br><span class="muted">Discrete elastic rods、discrete shells、IPC / C-IPC、弹塑性模型</span></td><td>把 rod、shell、solid 及其接触仿真准</td><td>降维表示 + 无穿透接触 + 塑性等本构</td><td>假设几何和材料已经给好 → 本文从图像重建出这些求解器要的输入</td></tr>
+      <tr><td><b>物理参数整定</b><br><span class="muted">Zhang et al. 2025（真机 rollout 标定软体）、GS-Agent（agent 调材料）</span></td><td>让软体参数对上真实或目标行为</td><td>用真机交互或文本目标做反馈来调参数</td><td>依赖真实动态或文本目标 → 本文只用预设的仿真测试，参数是"有效值"，不是实测</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §1、§2 Related Work（含 Table 1）、§3.3 和 App A（余维度仿真）、§3.3 对 Zhang et al. 2025 的那句对比；未另行检索。§2 还讨论了单图组合重建（Gen3DSR、SceneMaker、φ-Scene、REST3D 等）和文本生成场景（SceneSmith、SAGE、PAT3D 等），它们的输入不同，这里没有单列。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>agent 先借几何和生成参考，把整个场景搭成可编辑的刚体；再把可变形物体按维度单独重建，放进 IPC 仿真里让机器人测一遍</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-07-CoDimRecon/web-teaser.webp" alt="Fig. 1：左边办公室输入视角，中间重建场景俯视图和四个放大物体，右边曲线、曲面、体积三行机器人仿真"></div>
+    <figcaption><b>Fig. 1</b>（作者原图，用的是项目页 <a href="https://shuzhaoxie.github.io/CoDimRecon/">Overview</a> 的高清版）多视角 RGB → 可仿真的办公室 → 三种维度的可变形物体各和机器人交互一次。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左 "Input Images"：</b>办公室的 5 张输入视角。输入只有 RGB，相机、深度都要自己估。</li>
+    <li><b>中 "Sim-Ready Scene"：</b>重建结果的俯视图，四个蓝圈放大了四个物体：Chair Cushion（volume）、Telephone Cord（curve，就是我们的例子）、Plastic Bag（surface）、Sliding Drawer（带 prismatic 关节的刚体）。</li>
+    <li><b>中上 "Rigid Bin" / "Deformable Bag"：</b>垃圾桶和桶里的塑料袋拆成两个物体，一个刚体，一个可变形。</li>
+    <li><b>右 "Simulations"：</b>Curve 行是 Franka 抓起听筒、电话线被拉长（例子的最后一步）；Surface 行是把塑料袋从桶里拉出来；Volume 行是用圆头工具压椅垫。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>办公室多视角 RGB</span>"]:::example --> M["<b>Agent 按维度重建</b><br/><span class='ex'>电话线 → rod</span>"]
+  M --> O["<b>Output</b><br/><span class='ex'>听筒抬起 197.8 mm</span><br/><span class='ex'>检查全部通过</span>"]:::win
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage：前两个搭刚体场景，后三个处理可变形物体</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-07-CoDimRecon/web-overview.webp" alt="Fig. 2：(a) 场景重建，(b) 场景精修，(c) 可变形物体重建和仿真"></div>
+    <figcaption><b>Fig. 2</b>（作者原图，用的是项目页 Method 的高清版）三栏是论文的三个 stage；我把第 (c) 栏拆成了下面的 Stage 3–5。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>(a) "Scene Reconstruction"：</b>"Multi-view RGB" → "3D &amp; Semantic Prior（Cameras, depth, masks）" → "Recon with Reference"。左边灰色的是生成的参考场景，右边是 agent 用 primitives 重建的场景；底下椅子从 "Mesh Reference" 变成 "Editable Primitives"。这是 <a href="#stage-1">Stage 1</a>。</li>
+    <li><b>(b) "Scene Refinement"：</b>"Feedback from Metrics" 一栏对比 Reference 和 Rendered；循环是 "Render（RGB, Depth）→ Evaluate（PSNR, SSIM …）→ Refine Lighting/Texture/Pose"。"Articulated Objects" 给了 Sliding Drawer 和 Pressable Keyboard。这是 <a href="#stage-2">Stage 2</a>。</li>
+    <li><b>(c) 上半 "Category-wise geometry processing"：</b>三行分别是 Curves / Cord（"Repair &amp; Complete Path"）、Surfaces / Plastic bag（"Complete Surface"）、Volumes / Chair（"Identify Soft Parts"）。这是 <a href="#stage-3">Stage 3</a>。</li>
+    <li><b>(c) 下半 "Agent-guided behavioral verification"：</b>"Reusable Skills（Models &amp; params; Scripts; Preset tests/scenes）"给三类各一个测试：Curves Extend、Surfaces Fold、Volumes Compress。底部循环是 "Initial Modeling → Plan &amp; Simulate → Check"，F 走 "Revise" 再 "Rerun"，Y 走 "Accept &amp; freeze"。这是 <a href="#stage-4">Stage 4</a> 和 <a href="#stage-5">Stage 5</a>。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>Input</b><br/><span class='ex'>办公室多视角 RGB</span>"]:::example --> S1
+  S1["<b>1 · 带参考的重建</b><br/><span class='ex'>电话和桌子成 primitives</span>"] --> S2["<b>2 · 场景精修</b><br/><span class='ex'>电话按键有关节</span>"]
+  S2 --> S3["<b>3 · 按维度重建</b><br/><span class='ex'>线 → centerline</span><br/><span class='ex'>r = 1.3 mm</span>"]:::win
+  S3 --> S4["<b>4 · 物理模型 + 静止形</b><br/><span class='ex'>IPC elastic rod</span>"]:::win
+  S4 --> S5["<b>5 · 行为测试</b><br/><span class='ex'>抬听筒 197.8 mm</span>"]:::win
+  S5 -->|失败：按顺序归因| S4
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。Stage 5 失败时，修改可以落在动作（Stage 5 本身）、几何（Stage 3）或数值、材料（Stage 4），见 <a href="#stage-5">Stage 5</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Reconstruction with Geometric and Generative References</span>
+      <span class="stage-io">多视角 RGB → Blender 里可编辑的刚体场景（primitives）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>预实验里，agent 直接从图像建场景有三个反复出现的问题：尺度和布局错、可见细节被粗略近似、很少主动用外部 3D 工具（§3.1）。所以把几何和生成参考变成固定流程的输入。</li>
+        <li><b>几何参考：</b>VGGT-Omega 从 RGB 估出相机内参、相机到世界的位姿、深度图和点图；agent 估物体尺寸、位姿，或者拿渲染和观测比时，都查这份共享的公制几何。</li>
+        <li><b>实例：</b>CropFormer 逐帧出实体掩码；按 MaskClustering 反投影、跨视角按 3D 重叠聚类成 3D track，再用 InstaScene 的欠分割过滤。</li>
+        <li><b>生成参考：</b>每个 track 选一个视角给 SAM3D 生成 mesh。选的不是 2D 掩码最大的视角，而是掩码像素用点图抬到 3D 后表面积最大的视角，因为大掩码可能只是一个只拍到局部的近景（App B.1 式 1）。</li>
+        <li><b>位姿对齐：</b>在选中视角前后 ±r 帧里，渲染 mesh，用 MASt3R 找观测和渲染的稠密对应，抬成 3D 点对，用 Umeyama 求尺度、旋转、平移的增量；重复 K 轮，留平均掩码 IoU 最高的那次（App B.1 式 2–5）。</li>
+        <li><b>小物体：</b>容器里漏掉的小物体，agent 先认出容器，查对应图像区域，拿可见内容的掩码，再用 REST3D（内部调 SAM3D）补回去（App B.3）。</li>
+        <li><b>重建：</b>agent 把参考场景载入 Blender，删掉多余或错的物体，用几何上下文修房间外壳；家具和规则刚体用 primitives 加 bevel、subdivision、lattice modifier 重建，生成 mesh 只当形状参考。可变形物体不走这一步，交给 Stage 3。</li>
+        <li><b>紧凑程度：</b>一把办公椅，SAM3D 参考有 178,172 个顶点；agent 重建用了 43 个 primitives（22 个立方体、18 个圆柱、3 个锥台），2,192 个顶点，顶点减到 1/81，面减到 1/301，文件从 22.9 MiB 降到 610 KiB；和参考比，轮廓 IoU 81.1–93.7%（五个正交视角，App B.2）。注意比的是生成参考，不是真椅子。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-07-CoDimRecon/fig8.jpg" alt="Fig. 8：I 初始重建流程，II 小物体补全"></div>
+        <figcaption><b>Fig. 8</b>（作者原图）Stage 1 的展开：上面是参考场景怎么来的，下面是书架、柜子里的小物体怎么补。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>"I. Initial Reconstruction"：</b>"Multi-view Images" → "Pretrained Models" + "Mask Clustering" 得到 "View-consistent Masks"、"Multi-view Depths"、"Camera Poses" → "Image-to-3D" + "Pose Alignment" 得到 "Coarse Scene with Noise Objects"（物体散落、有噪声）→ "Wall &amp; Floors Estimation" + "Remove Out of Bounds" → "Coarse Scene"。</li>
+        <li><b>"II. Small Object Completion"：</b>粗场景里两个蓝圈（书架、柜子）被认成 "Container?"；agent 对书架照片做 "Multi-round Prompt-guilded Detection"（原图拼写），每轮问 "New objects?"，框出新的物体，最后填满书架。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>RGB 帧</b><br/><span class='ex'>办公室多视角</span>"] --> b["<b>VGGT-Omega</b><br/>相机 · 深度 · 点图"]
+  a --> c["<b>CropFormer 掩码</b><br/>聚成 3D track"]
+  c --> d["<b>SAM3D 参考 mesh</b><br/>选 3D 面积最大的视角"]
+  b --> e["<b>MASt3R + Umeyama</b><br/>K 轮，取 IoU 最高"]
+  d --> e
+  e --> f["<b>Agent 在 Blender</b><br/><span class='ex'>电话、桌子成 primitives</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>186 帧 → VGGT-Omega 给出相机和深度，电话、桌子的公制尺寸由它定；电话有自己的 3D track 和 SAM3D 参考 mesh，agent 在 Blender 里把电话机身重建成 primitives。Fig. 2(c) 的 Curves 行里，电话线是从电话参考 mesh 上圈出来的（"Cord" 照片 → 电话 mesh 上的蓝圈 → 一个圆环），我读成线的初始形状来自这个参考 mesh；这是看图的推断，正文没写。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Scene Refinement</span>
+      <span class="stage-io">primitive 场景 → 外观对齐、带关节、在重力下站稳的刚体场景</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>agent 搭的场景灯光、外观和观测不一样，小的位姿误差会让物体悬空或互相穿插，后面仿真会不稳（§3.2）。</li>
+        <li><b>Render–evaluate–refine：</b>在输入视角渲染、和参考图比；用二次颜色对齐做诊断，用迭代加权最小二乘逐通道拟合下面的映射。</li>
+        <li><b>怎么用这个诊断：</b>对齐后指标提升大，说明主要是灯光或材质不对；提升小，说明该看几何或位姿。agent 改对应部分，再评估输入视角。不把 3DGS 外观烘到 mesh 上，因为那会把光照混进反照率，到仿真光照下就不一致。</li>
+        <li><b>关节：</b>给 agent 一份关节建模指南，覆盖 revolute、prismatic、screw、cylindrical、universal、spherical；agent 把能独立动的刚体部件拆开，连小部件也拆，比如键盘按键、电话按键。</li>
+        <li><b>刚体稳定：</b>整个场景导入 MuJoCo，所有物体先当刚体，在重力下 settle，把结果位姿写回作为标准摆放。可变形物体在 Stage 3–5 单独处理。</li>
+      </ul>
+      <p class="eyebrow">符号表（颜色对齐 c′ = a c² + b c + d）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+          <tr><td>c</td><td>渲染图里一个像素在某个颜色通道上的值</td><td>办公室渲染图的像素</td></tr>
+          <tr><td>c′</td><td>映射后的值，拿去和参考照片的同一像素比</td><td>同一位置的照片像素</td></tr>
+          <tr><td>a、b、d</td><td>每个通道各拟合一组的三个系数</td><td>论文没给具体数值</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart TD
+  r["<b>Render 输入视角</b><br/>RGB + 深度"] --> q["<b>二次颜色对齐</b><br/>看指标提升多少"]
+  q -->|提升大| l["改灯光或材质"]
+  q -->|提升小| g["改几何或位姿"]
+  l --> j["<b>拆关节</b><br/><span class='ex'>电话按键、抽屉</span>"]
+  g --> j
+  j --> m["<b>MuJoCo 重力 settle</b><br/>位姿写回 Blender"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>办公室在输入视角下渲染、对齐颜色、改灯光和位姿；抽屉拿到 prismatic 关节（Fig. 1 的 Sliding Drawer），电话按键被拆成能按的部件（§3.2 点名了电话按键）；电话和桌子在 MuJoCo 里 settle 后不再悬空。电话线此时还没有物理模型。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Category-wise Deformable Reconstruction</span>
+      <span class="stage-io">可变形物体的参考几何 → 求解器能用的 curve / surface / volume</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>仿真要的几何必须和离散化对上。细的线、薄的片如果当普通 3D 实体，需要很细的厚度方向网格，低阶单元还会 locking；所以 rod 用曲线，shell 用曲面（§1、App A）。这改变了重建目标本身。</li>
+        <li><b>三类各修什么（§3.3）：</b>curve（线缆）要补全路径、估计半径；surface（衣物、纸）要补洞、把碎片合成一个流形壳，再给厚度；volume（坐垫）要闭合成水密实体，好做四面体网格。</li>
+        <li><b>分开 session：</b>三类各在一个独立的 agent session 里做，各拿自己类别的指令。合成一个 session 时，线缆几何更粗、更不可信（Fig. 7，<a href="#exp-5">E5</a>）。</li>
+        <li><b>volume 的特殊处理：</b>高面数的 volume 先做一个闭合的低面数代理，把细 mesh 绑上去，四面体化代理（§3.3 Rest Shape）。</li>
+      </ul>
+      <p class="eyebrow">曲线从图像到 centerline + 半径：论文写了什么、没写什么</p>
+      <ul class="tight">
+        <li><b>写了：</b>curve 的修补是 "path completion and radius estimation"（§3.3）；目标是 "a continuous centerline and radius"（§1）；Fig. 2(c) 画的是 照片 → 电话参考 mesh 上的线 → 圆环 → "Repair &amp; Complete Path"。电话线最后的结果是 3,200 个节点、总长 1.694 m 的 centerline（App B.4），半径 1.3 mm（Table 2）。</li>
+        <li><b>没写：</b>用什么模型或算法提中心线（没有骨架化、曲线拟合、2D 曲线跟踪的描述）；半径怎么估、和真线差多少；被遮挡的段、自身交叉处怎么补；curve session 的指令原文（附录只给了 GPT-6 Astra baseline 的 prompt）。</li>
+        <li><b>能确定的输入：</b>§3.1 把 VGGT-Omega 几何、CropFormer 的 3D track、SAM3D 参考 mesh 定为固定流程的输入，curve session 应能用到它们；具体怎么用于电话线，论文没说（推断）。</li>
+        <li><b>agent 怎么决定：</b>物体归哪一类、由谁判断，论文没写。归类能改：椅垫靠背碎片在重力下掉落、求解不收敛后，agent 把它 "Volume re-classified"，并把整个座垫底面粘住（Table 6）。</li>
+        <li><b>交叉的证据：</b>重建出来的线圈自己穿插：有 15,755 对不相邻的线段胶囊互相重叠，最多重叠 2.48 mm；Stage 4 必须重采样才能进 IPC（App B.4）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-07-CoDimRecon/fig2-c.jpg" alt="Fig. 2(c) 放大：三类几何处理和行为验证"></div>
+        <figcaption><b>Fig. 2(c)</b>（作者原图，从 PDF 裁出的第三栏）上半是这一步；看 Curves 行：照片里垂下的线 → 电话参考 mesh 上被圈出的线 → 一个闭合圆环 → 修补、补全后拉开的长卷线。</figcaption>
+      </figure>
+      <div class="flow"><pre>
+flowchart TD
+  k["<b>按维度分 session</b><br/>各拿各的指令"] --> c["<b>Curve</b><br/>补路径 + 估半径"]
+  k --> s["<b>Surface</b><br/>补洞 + 合碎片"]
+  k --> v["<b>Volume</b><br/>闭合成水密实体"]
+  c --> c2["<b>centerline + r</b><br/><span class='ex'>3,200 节点 · 1.694 m</span><br/><span class='ex'>r = 1.3 mm</span>"]:::example
+  s --> s2["<b>流形壳 + 厚度</b><br/><span class='ex'>纸 0.105 mm</span>"]
+  v --> v2["<b>四面体网格</b><br/><span class='ex'>椅垫、豆袋</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>电话线进 curve session：从参考里的那个圆环补全路径、估半径，得到 3,200 个节点、1.694 m 长的 centerline，半径 1.3 mm（直径 2.6 mm）。这根线自己有大量穿插，留给 Stage 4 处理。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Physical Modeling from Simulator Skills + Rest Shape</span>
+      <span class="stage-io">curve / surface / volume → IPC 里的初始物理模型、参数和静止形</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>重建出的几何定不下材料和接触属性（§3.3）。</li>
+        <li><b>后端：</b>IPC 系的接触（Li et al. 2020）；App B.4 写的具体求解器是 QIPC（beanbag 一节写了版本 v0.0.1.dev895）。Stage 2 的刚体 settle 用的是 MuJoCo，两者不同。</li>
+        <li><b>Reusable simulator skills：</b>每个 skill 打包了可用的本构模型、能直接跑的示例场景、脚本和候选初始参数。</li>
+        <li><b>谁定什么：</b>几何维度定离散化：curve 用 rod，surface 用 shell，volume 用实体有限元。agent 选适合这个物体的材料模型，并改写最接近的示例配置。</li>
+        <li><b>参数怎么来：</b>不是拟合出来的，也不是 VLM 看图估的。参数取自 skill 的示例，只在行为测试暴露问题时修改；Table 2 标注为"有效仿真参数，不是实测材料属性"。</li>
+        <li><b>每次试验的场景（App B.4）：</b>IPC 要无穿透的输入，所以只放交互需要的几何：一台固定底座的 Franka（7 个转动关节、2 个滑动手指，用 affine body dynamics）；目标可变形物体和与它相连的刚体（如听筒和电话机身）；场景其余部分合成一个固定的碰撞环境。重力 9.81 m/s²，电话线、椅垫、豆袋的 dt = 0.01 s。</li>
+        <li><b>静止形：</b>重建出的几何不一定在重力下平衡，所以交互前先 settle。curve 和 surface 直接导入；settle 变形太大，就回去改几何。settle 后的形状写回 Blender，同时保留仿真参数和可编辑资产。</li>
+      </ul>
+      <p class="eyebrow">各类物体用什么模型</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>物体</th><th>维度</th><th>模型</th><th>参数来源</th></tr>
+          <tr><td>电话线</td><td>curve</td><td>QIPC 自带的 discrete elastic rod with twist（Bergou 2008）</td><td>仿真器已有的电话示例，作为"看起来合理"的先验，没对真线标定</td></tr>
+          <tr><td>纸</td><td>surface</td><td>各向同性 StVK membrane + hinge bending，塑性铰</td><td>塑性是行为测试后加的（Stage 5）</td></tr>
+          <tr><td>塑料袋</td><td>surface</td><td>离散薄壳，StVK 面内弹性 + hinge bending</td><td>仿真设置，没对真袋标定</td></tr>
+          <tr><td>椅垫</td><td>volume</td><td>StVK–Hencky 实体，无粘性泡沫模型</td><td>Hencky 和 E = 30 kPa 来自之前的椅垫测试（Table 6）</td></tr>
+          <tr><td>豆袋</td><td>volume</td><td>stable Neo-Hookean 实体</td><td>Table 2</td></tr>
+          <tr><td>垃圾桶、听筒、Franka</td><td>刚体</td><td>affine body（ABD）</td><td>垃圾桶是固定的 affine body，密度 700 kg/m³；听筒 0.2 kg、机身 0.55 kg，可动</td></tr>
+        </table>
+      </div>
+      <p class="note">表是我按 §3.3、Table 2、App B.4 的文字整理的。</p>
+      <p class="eyebrow">符号表（Table 2 的列）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>电话线的值</th></tr>
+          <tr><td>ρ</td><td>密度</td><td>1600 kg/m³</td></tr>
+          <tr><td>E</td><td>杨氏模量，即材料有多硬；电话线的拉伸、弯曲、扭转模量都用这个值</td><td>40 MPa</td></tr>
+          <tr><td>ν</td><td>泊松比：拉长时横向缩多少</td><td>0.35</td></tr>
+          <tr><td>r / h</td><td>线的半径，或者壳的厚度</td><td>r = 1.3 mm</td></tr>
+          <tr><td>κ<sub>Y</sub></td><td>塑性铰的屈服曲率：弯过这个程度就留下永久折痕</td><td>不适用（只有纸有：25 m⁻¹）</td></tr>
+          <tr><td>δ</td><td>接触激活距离：两个表面近于这个距离，IPC 的排斥屏障就开始起作用</td><td>0.15 mm</td></tr>
+          <tr><td>μ</td><td>摩擦系数</td><td>0.60</td></tr>
+        </table>
+      </div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-07-CoDimRecon/tab2.jpg" alt="Table 2：电话线、纸、椅垫、豆袋的模型和参数"></div>
+        <figcaption><b>Table 2</b>（作者原图）先看第一行电话线；横线表示不适用。电话线的无应力自然形就是重建出的线圈，所以没有外力时它保持卷曲。</figcaption>
+      </figure>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-07-CoDimRecon/fig9.jpg" alt="Fig. 9：豆袋在 0 s 和 6 s，以及到平衡的距离和动能曲线"></div>
+        <figcaption><b>Fig. 9</b>（作者原图）静止形 settle 的例子用的是豆袋，不是电话线：(a) 每个顶点到平衡位置的距离，除以包围盒对角线 D = 1.75 m；(b) 动能。</figcaption>
+      </figure>
+      <ul class="tight">
+        <li><b>怎么读 Fig. 9：</b>(a) 的 "Max" 和 "Mean" 两条线都一路下降，2.3 s 后最大值低于 10⁻⁴ D；(b) 的动能从峰值 0.26 J 降到 6 s 时的 8.5 × 10⁻¹¹ J。初始几何和平衡最多差 1.1% D，没有四面体翻转（最小单元 Jacobian 大于 0.91），体积变化小于 0.75%（App B.4）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  g["<b>centerline + r</b><br/><span class='ex'>15,755 对重叠</span>"] --> sk["<b>Rod skill</b><br/>示例场景 + 参数"]
+  sk --> rs["<b>重采样</b><br/><span class='ex'>576 段 · 1.664 m</span><br/><span class='ex'>偏差 ≤ 0.422 mm</span>"]
+  rs --> at["<b>两端接到刚体</b><br/>听筒 0.2 kg · 机身 0.55 kg"]
+  at --> st["<b>重力 settle</b><br/>写回 Blender"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <ul class="tight">
+          <li><b>选模型：</b>维度是 curve，所以用 QIPC 的 discrete elastic rod with twist，从重建的 centerline 和半径初始化；用 Bishop frame 初始化方向，扭转随动态演化。</li>
+          <li><b>参数：</b>拉伸、弯曲、扭转模量都是 40 MPa，ρ = 1600 kg/m³，r = 1.3 mm，线重约 14 g；这些取自仿真器已有的电话示例。</li>
+          <li><b>去掉自穿插：</b>原 centerline 有 15,755 对重叠，最多 2.48 mm。agent 拟合了一条 576 段的折线，每段都比线的直径长至少 1 μm；段长 2.60–3.49 mm（平均 2.89 mm），总长 1.664 m，离原曲线最远 0.422 mm。</li>
+          <li><b>两端：</b>最外面的三条边做成应力释放引线，接到听筒或机身上：在刚体坐标系里位置和切向固定，轴向扭转自由。</li>
+          <li><b>静止形：</b>线圈本身是无应力自然形；在重力下 settle 后的形状写回 Blender。所以存下来的静止形是重力下的平衡形，不是无应力形（App B.4）。</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Agent-Guided Behavioral Verification</span>
+      <span class="stage-io">初始模型 → 通过预设机器人测试、冻结的资产（或按顺序修改后重跑）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>示例参数只是初始化。资产能不能支持预期的交互，往往要在仿真里动起来才看得出（§1、§3.3）。</li>
+        <li><b>不用真机：</b>agent 规划预设的诊断操作，不需要真机 rollout 来标定（§3.3 拿这点和 Zhang et al. 2025 对比）。</li>
+        <li><b>三个测试：</b>抬起听筒拉开电话线（Extend）；在三个位置按压再松开椅垫（Compress）；折纸，松手后应保留折痕（Fold）。</li>
+        <li><b>agent 定什么：</b>抓取和接近位姿、夹爪开合、手臂运动；仿真器离线跑；agent 看渲染出的 rollout 和诊断报告。</li>
+        <li><b>检查：</b>物理有效性，比如单元拉伸的上下界、单元翻转；外加任务级验收标准。</li>
+        <li><b>失败时按固定顺序归因：</b>先查指令动作、工具、接触位置；再查几何和边界条件；然后查数值设置；还复现不了想要的行为，才改材料模型，改完对这个资产固定下来。</li>
+        <li><b>结果的含义：</b>没有实测的真实动态，接受的值只是假设模型下的"有效参数"，不是恢复出的材料参数。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  p["<b>规划诊断操作</b><br/><span class='ex'>抓听筒、抬起</span>"] --> sim["<b>IPC 离线仿真</b><br/><span class='ex'>14 s · 1,401 states</span>"]
+  sim --> ck["<b>Check</b><br/>有效性 + 任务验收"]
+  ck -->|Y| ok["<b>Accept and freeze</b><br/><span class='ex'>两次重复都通过</span>"]:::win
+  ck -->|F| dg["<b>按顺序归因</b><br/>动作 → 几何<br/>→ 数值 → 材料"]
+  dg --> p
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-07-CoDimRecon/tab6.jpg" alt="Table 6：行为测试中的每次修改，归因和是否改了材料"></div>
+        <figcaption><b>Table 6</b>（作者原图）行为测试中的所有修改，每个资产内按时间排序。8 次修改里只有 2 次改了材料模型。</figcaption>
+      </figure>
+      <ul class="tight">
+        <li><b>怎么读 Table 6：</b>第一行就是例子：电话线 "No collision-free path in the first two plans"，归因 "Motion"，修改 "Re-planned trajectory"，材料没动。椅垫那几行能看到整个顺序：先改材料（Hencky），再改动作、几何和边界（"Volume re-classified"）、工具（70 mm 圆头）、接触位置。纸的 "Crease not kept after release" 才改成塑性铰（<a href="#exp-3">E3</a>）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-07-CoDimRecon/web-cord-lift.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://shuzhaoxie.github.io/CoDimRecon/">Deformable simulation · Telephone cord</a>（10.5 s）：Franka 伸向桌上的电话，夹住听筒抬起，卷曲的线被拉直、垂成一串。看线在拉开时是否穿过自己或桌面，以及另一端是否一直连在机身上。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <ul class="tight">
+          <li><b>失败两次：</b>agent 的前两个规划都找不到无碰撞的路径，归因到动作，重新规划轨迹（Table 6）。</li>
+          <li><b>时间线（14 s）：</b>电话从桌面上方 10 mm 落下，settle 8 s；8.6–9.6 s 夹爪接近，10.3 s 前闭合，10.7–12.8 s 靠手指接触把听筒抬起，保持到 14 s；手指 PD 控制器限力 20 N。</li>
+          <li><b>验收标准：</b>线段拉伸比保持在 [0.9, 1.1]；7.5–8 s 的 settle 漂移小于 1 mm、最大节点速度小于 2 mm/s；听筒升起并保持在起点上方至少 120 mm，持握滑移小于 5 mm，手指和表面的间隙小于 1 mm；刚体 affine 应变小于 10⁻³；机器人关节残差小于 0.1 mm。</li>
+          <li><b>结果：</b>两次重复运行都通过，数字见 <a href="#exp-2">E2</a>。</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>几何参考（VGGT-Omega）</td><td>Stage 1：办公室的相机、深度给电话和桌子定公制尺寸</td></tr>
+        <tr><td>生成参考 + 位姿对齐（SAM3D、MASt3R、Umeyama）</td><td>Stage 1：电话的参考 mesh，Fig. 2(c) 里线也从这个 mesh 上圈出（看图推断）</td></tr>
+        <tr><td>Primitive 重建</td><td>Stage 1：电话、桌子成 primitives；论文的定量例子是办公椅，43 个 primitives</td></tr>
+        <tr><td>容器内小物体补全（REST3D）</td><td>Stage 1：同一办公室的书架（Fig. 8），不是电话线</td></tr>
+        <tr><td>Render–evaluate–refine</td><td>Stage 2：办公室在输入视角对齐颜色、改灯光和位姿</td></tr>
+        <tr><td>关节建模</td><td>Stage 2：抽屉 prismatic，电话按键</td></tr>
+        <tr><td>MuJoCo 刚体稳定</td><td>Stage 2：电话、桌子 settle 后写回</td></tr>
+        <tr><td>按维度分 session</td><td>Stage 3：电话线进 curve session，得到 centerline + 1.3 mm 半径</td></tr>
+        <tr><td>Reusable simulator skills</td><td>Stage 4：rod 模型和参数取自仿真器的电话示例</td></tr>
+        <tr><td>IPC 无穿透输入、静止形</td><td>Stage 4：576 段重采样；重力下的平衡形写回 Blender</td></tr>
+        <tr><td>行为测试 + 按顺序归因</td><td>Stage 5：两次重新规划动作后，抬起 197.8 mm 通过</td></tr>
+        <tr><td>行为测试触发材料修改</td><td>电话线没触发。把例子延伸到同一流程里的另一张纸：回弹 → 塑性铰（<a href="#exp-3">E3</a>）</td></tr>
+        <tr><td>场景级主结果</td><td><a href="#exp-1">E1</a>：例子所在的 ScanNet++ 场景计入 Table 3 的均值</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>场景几何比 baseline 好一点、站得更稳；可变形物体只有能力演示，没有和真实几何、真实动态的对比</h2>
+  <p><a href="#exp-1">E1</a> 比场景级几何、渲染和刚体稳定性 → <a href="#exp-2">E2</a> 展示三类可变形物体在仿真里能被机器人操作 → <a href="#exp-3">E3</a> 用折纸说明行为测试能发现材料模型错 → <a href="#exp-4">E4</a> 消融几何参考、生成参考和渲染精修 → <a href="#exp-5">E5</a> 消融"分 session"。全文没有成功率、运行时间和 token 开销。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>场景级重建能不能比已有方法更准、更稳？<span class="exp-src">§4.2 · Table 3 · Fig. 3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-07-CoDimRecon/tab3.jpg" alt="Table 3：Replica 和 ScanNet++ 上四个方法的几何、渲染、潜空间相似度和刚体稳定性"></div>
+      <figcaption><b>Table 3</b>（作者原图）深蓝是最好，浅蓝是第二。先看 CD 和 NC 两列，再看最右的 Stable(All)。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-07-CoDimRecon/fig3.jpg" alt="Fig. 3：ScanNet++ 67d702f2e8 上四个方法的外观和几何对比"></div>
+      <figcaption><b>Fig. 3</b>（作者原图）ScanNet++ <span class="ex">67d702f2e8</span>，看起来就是例子所在的办公室。注意这张图里 HoloScene 和 ReplicateAnyScene 用的是数据集的 SfM 位姿和人工标注掩码，和 Table 3 的设置不同。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>几何误差更低、刚体更稳，但渲染不如 HoloScene*。</b>CD：ScanNet++ 21.66 vs GPT-6 Astra 22.73、HoloScene* 27.15；Replica 6.63 vs HoloScene* 6.79。NC 两个数据集都最高（79.76、74.91）。Stable(All)：Replica 97.54 vs GPT-6 Astra 87.97、HoloScene* 49.41；ScanNet++ 96.31，和 GPT-6 Astra 并列。Replica 的 F1 52.24 排第三（HoloScene* 53.48、GPT-6 Astra 52.91）；PSNR、SSIM 两个数据集都排第二，HoloScene* 第一（如 Replica PSNR 21.22 vs 15.06）。</dd></div>
+      <div><dt>在故事里</dt><dd>证明加了可变形物体的同时，场景重建本身没有变差。论文自己说 Replica 上 CD 和 NC 的优势"modest"。</dd></div>
+      <div><dt>指标</dt><dd>CD：50 万个按面积采样点的对称平均最近邻距离，单位 cm；F1@5 cm；NC：法向余弦。PSNR、SSIM、LPIPS 在重建用的同一批输入视角上算，测的是贴合观测，不是新视角合成。Layout、Motion：V-JEPA 2.1 特征空间里 64 对帧的相似度。Stable：在 MuJoCo 里每次只放开一个动态物体，3 s 后倾斜超过 30° 或位移超过 max(5 cm, 0.2 × 包围盒对角线) 算倒；Ground 只算落地物体，All 算全部（App C）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>3 个 Replica 和 3 个 ScanNet++ 场景，都来自 HoloScene 的发布版；ScanNet++ 的参考位姿是 SfM 估的。</li>
+        <li>HoloScene* 是改过的配置：关掉法向监督，掩码用本文的聚类结果，相机和深度用 VGGT-Omega；论文明说这不代表 HoloScene 默认配置的表现。</li>
+        <li>ReplicateAnyScene 的位姿对齐和关系推理模块没开源，作者自己重写并逐场景调参；分割用它默认的 VLM + SAM3。</li>
+        <li>GPT-6 Astra 是同一个 backbone，reasoning effort xhigh，每个场景一个 prompt（App E），直接从 RGB 写 Blender。它在自己的坐标系里建，评测前要整体配准（偏航每 5° 搜一次、考虑镜像、粗到细带尺度的 ICP）；本文、HoloScene*、ReplicateAnyScene 共用 VGGT-Omega 相机，用 Umeyama + ICP 对齐。</li>
+        <li>没有报告多次运行或方差。稳定性测试里物体分类（背景、静态、动态）也由 GPT-6 Astra 给出。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>重建出的 curve、surface、volume 能不能被机器人在仿真里操作？<span class="exp-src">§4.2 · Fig. 4 · App B.4</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-07-CoDimRecon/fig4.jpg" alt="Fig. 4：电话线、纸、椅垫三行仿真截图"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）每行从左到右是时间。(a) 听筒被抬起、线被拉开；(b) 纸被折起，松手后保留折痕；(c) 椅垫被按下又回弹。椅垫的渲染改过表面材质和灯光，好让凹陷看得见，仿真本身没改。</figcaption>
+    </figure>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>电话线测试的检查</th><th>验收阈值</th><th>两次重复的实测</th></tr>
+        <tr><td>线段拉伸比</td><td>[0.9, 1.1]</td><td>[0.9985, 1.0463] / [0.9983, 1.0465]</td></tr>
+        <tr><td>7.5–8 s settle 漂移 / 最大节点速度</td><td>&lt; 1 mm / &lt; 2 mm/s</td><td>0.773 mm / 1.6 mm/s</td></tr>
+        <tr><td>听筒抬升</td><td>≥ 120 mm 并保持</td><td>峰值 197.8 / 197.7 mm</td></tr>
+        <tr><td>持握滑移</td><td>&lt; 5 mm</td><td>1.79 / 1.77 mm</td></tr>
+        <tr><td>手指和表面的间隙</td><td>&lt; 1 mm</td><td>最大 0.143 mm</td></tr>
+        <tr><td>线自身最小间隙（不相邻段）</td><td>—</td><td>两次都是 22.0 μm</td></tr>
+        <tr><td>线和环境的最小间隙</td><td>—</td><td>0.126 / 0.110 mm</td></tr>
+        <tr><td>每步 Newton 迭代</td><td>上限 100</td><td>都不超过 26</td></tr>
+      </table>
+    </div>
+    <p class="note">这张表是我按 App B.4 的正文整理的，论文没有这张表。最大拉伸约 1.046 出现在第一步：重采样后还有 127 对隔一段的胶囊落在接触激活距离内，最近只有 3.5 μm；第一步 IPC 的屏障把它们推开，把 88 段短段从 2.60–2.71 mm 拉到 2.72–2.74 mm，刚好低于 2r + δ = 2.75 mm。两次重复的线轨迹相差 0.665 mm RMS，局部最多 9.55 mm。</p>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-07-CoDimRecon/web-bag.mp4" autoplay muted loop playsinline controls></video><figcaption>Surface · 塑料袋</figcaption></figure>
+        <figure><video src="2026-11-07-CoDimRecon/web-cushion.mp4" autoplay muted loop playsinline controls></video><figcaption>Volume · 椅垫</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://shuzhaoxie.github.io/CoDimRecon/">Deformable simulation</a>：左边，Franka 把 0.03 mm 厚的塑料袋从刚体垃圾桶里拉出来，袋子没有固定点，只靠接触被夹住；右边，70 mm 圆头工具在三处按压椅垫，凹陷约 23 mm 后回弹。电话线的视频在 <a href="#stage-5">Stage 5</a>。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>三类可变形物体都能进 IPC，并被机器人操作而不失效。</b>电话线两次运行都通过全部检查；椅垫最终凹陷 22.9、22.6、22.9 mm，要求峰值凹陷在 18–45 mm 内；塑料袋只给了仿真设置，没有数字。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑"产出的可变形资产能用于 rod、shell、solid 仿真"这一条贡献。</dd></div>
+      <div><dt>指标</dt><dd>每个测试自己的物理有效性和任务验收标准（App B.4），通过或不通过。没有和真实几何、真实动态的误差。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>论文说 baseline 都不输出可仿真的可变形资产，所以只做能力演示，没有跨方法的定量比较（§4.2）。</li>
+        <li>每个资产只测一种交互；电话线跑了两次重复。</li>
+        <li>参数是示例参数，没对真物体标定；仿真出的轨迹在 Blender 里回放渲染。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>行为测试能不能发现数值检查发现不了的材料模型错误？<span class="exp-src">§4.2 · Fig. 5 · Table 4</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-07-CoDimRecon/fig5.jpg" alt="Fig. 5：同一轨迹下弹性和塑性弯曲折纸的初始、折叠、松手后三帧"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）行是 Elastic bending 和 Plastic bending，列是 Initial、Folding、After release。比最右一列：上面的纸弹回平铺，下面的纸保持折起。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-07-CoDimRecon/tab4.jpg" alt="Table 4：弹性和塑性弯曲的峰值、1 秒后、结束时折角，保留率和屈服铰数"></div>
+      <figcaption><b>Table 4</b>（作者原图）看 "+1 s" 和 "Retained (%)" 两列。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><video src="2026-11-07-CoDimRecon/web-paper-fold.mp4" autoplay muted loop playsinline controls></video></div>
+      <figcaption><b>项目页</b> <a href="https://shuzhaoxie.github.io/CoDimRecon/">Robotic paper folding</a>：塑性铰版本，夹爪把纸转 140° 折起，松手后折痕留住。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>两个 rollout 都通过了数值有效性检查，只有行为测试能分出谁对。</b>开夹 1 s 后，弹性折角 4.48°、塑性 114.97°；保留率 3.7% vs 92.5%；屈服的铰 0 vs 372 个。</dd></div>
+      <div><dt>在故事里</dt><dd>"材料模型在行为测试暴露问题时才修改"的唯一完整案例：第一次折纸通过了物理有效性检查，却松手回弹；agent 开启了塑性铰弯曲，κ<sub>Y</sub> = 25 m⁻¹，无硬化（Table 6）。</dd></div>
+      <div><dt>指标</dt><dd>折角是两块固定材料区域按面积加权的法向夹角，0° 表示平行，开头的 5.35° 偏移没有减掉；Retained = +1 s 折角 / 峰值折角；Yielded = 自然角变化超过 0.1 rad 的铰数。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>同一条 140° 的夹爪轨迹，只切换弯曲塑性，其余参数不变；两次都存 1,051 个状态，间隔 0.01 s，7.2–7.7 s 松开夹爪。</li>
+        <li>弹性那次是加了塑性之后补跑的对照，不是原来失败的那次试验。</li>
+        <li>纸：ρ = 761.9 kg/m³（80 g/m²），E = 2.25 GPa，ν = 0.15，厚 0.105 mm，μ = 0.4。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>几何参考、生成参考、渲染精修各起什么作用？<span class="exp-src">§4.3 · Table 5 · Fig. 6</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-07-CoDimRecon/tab5.jpg" alt="Table 5：去掉几何参考、生成参考、渲染精修后的几何和渲染指标"></div>
+      <figcaption><b>Table 5</b>（作者原图）上半是几何，只在 ScanNet++ <span class="ex">67d702f2e8</span> 一个场景上测；下半是渲染，对三个 ScanNet++ 场景取平均。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-07-CoDimRecon/fig6.jpg" alt="Fig. 6：完整方法和分别去掉几何先验、生成参考、渲染精修的三组对比"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）红箭头指出受影响的区域：第一行没有几何先验，柜子变大；第二行没有生成参考，桌上的植物变粗；第三行没有渲染精修，墙面偏粉，书架上物体的外观也不同。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>几何参考管尺度和布局，生成参考管形状细节，渲染精修主要管外观。</b>去掉几何参考，CD 从 7.24 到 11.94（+64.9%），NC −8.2%；去掉生成参考，F1 −13.0%、NC −10.3%；去掉渲染精修，PSNR −5.2%、SSIM −1.5%、LPIPS +5.6%，CD 只 +1.7%。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑 §3.1 的设计：把几何和生成参考变成 agent 的固定输入。</dd></div>
+      <div><dt>指标</dt><dd>同 E1 的 CD、F1、NC、PSNR、SSIM、LPIPS。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>几何消融只有一个场景，论文自己说只能看作"各参考的作用"，不能当 benchmark 级的增益。</li>
+        <li>这个场景看起来就是例子所在的办公室（我的推断）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>可变形物体为什么要分 session？<span class="exp-src">§4.3 · Fig. 7</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-07-CoDimRecon/fig7.jpg" alt="Fig. 7：同一书架上的线缆，左边一个 session 处理所有类别，右边专门的 curve session"></div>
+      <figcaption><b>Fig. 7</b>（作者原图）"Direct"：三类指令合在一个 session，线缆成了三个同心圆环；"Category-wise"：专门的 curve session，线缆是松散交叠的几根，带插头，有一根被拉高成拱形。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>专门的 curve session 做出的线缆更细致、更可信。</b>只有这一张定性图，没有数字。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑 §3.3 "三类分开处理"的设计，也是论文里唯一一个关于线缆几何质量的实验。</dd></div>
+      <div><dt>指标</dt><dd>没有定量指标，也没有真实线缆的对照几何。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>一个合并的 session 对一个专门的 curve session，各一次。</li>
+        <li>线缆在书架的一层上，下面是垃圾桶，看起来是例子所在办公室的书架（对照 Fig. 6 第三行，我的推断）；论文没说这些线缆有没有进仿真。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <p class="muted">论文没有 Limitations 一节；下面前四条是论文自己写明的，其余是我从正文和附录读出来的。</p>
+  <ul class="tight">
+    <li><b>参数不是实测（论文自述）：</b>静态 RGB 定不出真实的动态材料参数，所有值都是假设模型下的有效参数（Table 2 标题、§3.3、App A 末尾）；电话线、塑料袋的参数直接取自仿真器示例，没对真物体标定。</li>
+    <li><b>可变形物体只有演示（论文自述）：</b>没有跨方法的定量比较（§4.2）。</li>
+    <li><b>消融范围小（论文自述）：</b>几何消融只有一个场景（§4.3）。</li>
+    <li><b>baseline 配置不同（论文自述）：</b>HoloScene* 是改过的配置，ReplicateAnyScene 是重写的（App D）。</li>
+    <li><b>曲线精度没测：</b>没有电话线或其他线缆和真实几何的误差。唯一的数字 0.422 mm 是重采样折线离重建曲线的偏差，不是离真线的。</li>
+    <li><b>最细的物体：</b>测过的最细曲线是半径 1.3 mm（直径 2.6 mm）的电话线，只在仿真里；最薄的面是 0.03 mm 的塑料袋。真正进了仿真的曲线只有电话线这一根；Fig. 7 的线缆只有渲染图。</li>
+    <li><b>遮挡和交叉没有处理方法：</b>论文没讨论被挡住的线段、线和线交叉、线和自己交叉怎么重建；能看到的只有后果：重建线圈有 15,755 对自重叠，要靠重采样才能进 IPC；合并 session 时线缆塌成圆环（Fig. 7）。</li>
+    <li><b>只有静态场景：</b>输入是静态房间的多视角 RGB，没有物体被移动的视频，也没有真机 rollout；行为测试是预设的、只在仿真里跑。</li>
+    <li><b>不可复现的细节：</b>curve、surface、volume 三个 session 的指令、所用 skill 的内容、agent 的 reasoning effort、运行时间和 token 开销都没给；项目页写着代码 "Soon"。</li>
+    <li><b>重复性：</b>同一测试重复两次，线的轨迹差 0.665 mm RMS，局部最多 9.55 mm（App B.4）；E1 没有报告重复次数或方差。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>r2s-lite 的 repair loop 可以照抄它的归因顺序。</b>它在失败时先查动作、工具、接触位置，再查几何和边界，然后查数值，最后才改材料；Table 6 的 8 次修改只有 2 次动了材料，每次都记下"归因到什么"。我们的 repair loop 已经会挪物体、缩放、改动作，可以把"这次修改归因到哪一层"写进每个 attempt 的记录，并让质量和摩擦这类假设值排在最后才改。但它也没有实测动态，参数同样是"有效值"，补不上我们"质量、摩擦是假设的"和"没有 sim-to-real 证据"这两个缺口。</li>
+    <li><b>生成 mesh 只当参考，可借给 r2s-lite 的网格和摆放步骤，但它没碰我们的相机问题。</b>它把 SAM3D mesh 当形状参考，agent 重建成 primitives（一把椅子 43 个，轮廓 IoU 81.1–93.7%）；参考 mesh 的摆放用 MASt3R 对应点 + Umeyama，在 ±r 帧里取平均掩码 IoU 最高的那次。这和我们 GPT 设计零件、X-ray 按掩码审查是同一思路，它的"取 IoU 最高的那轮"可以直接借来作摆放的选择规则。但它所有场景都是静态室内扫描，相机由 VGGT-Omega 从 RGB 估、没报相机误差，画面里没有机器人和轨迹；它不能说明怎么修 DROID 约 20 cm 的相机位姿误差，也不涉及物体角色判错。</li>
+    <li><b>网线这类细线缆：它给了仿真的"目标格式"，没给可靠的感知路径。</b>可以借的：用 centerline + 半径表示、用带扭转的 discrete elastic rod 在 IPC 里仿真；两端几条边固定在刚体上，就像 RJ45 插头（插头这一层是我的推断）；重采样消掉自重叠，满足无穿透输入。不覆盖的：它测过的电话线直径 2.6 mm，比约 5 mm 的网线还细，所以细本身不是问题；但它没给中心线怎么从图像提取、半径怎么估，没测和真线的误差，没处理遮挡和交叉；刚度取自电话示例、没标定；输入只有静态场景，没有在视频里跟踪一根被拖动的线。我们要回放网线被拉动的片段，这些都得另外做（推断）。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-07-CoDimRecon.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>
