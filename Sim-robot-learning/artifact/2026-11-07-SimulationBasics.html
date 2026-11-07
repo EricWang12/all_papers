@@ -1,0 +1,919 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>仿真从零讲起</title>
+<meta name="description" content="给高中生的物理仿真入门：循环、三个身体、刚体、接触、软体和每个参数的意思，拿 RoboSimStudio 的海绵当例子，带一个能拖的软体演示。">
+<meta name="paper:title" content="仿真从零讲起：拿 RoboSimStudio 当例子（讲解页）">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.18835">
+<meta name="paper:venue" content="讲解页, 2026-11-07">
+<meta name="paper:pdf" content="https://robosimstudio.github.io/robosimstudio.pdf?v=d80a683b9b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+
+/* simulation explainer only */
+:root { --sponge: #f2c94c; --pore: #b8860b; --node: #2346c8; --spring: rgba(35,70,200,.35); --table: #e9e3d6; --coll: rgba(35,70,200,.12); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sponge: #c9a227; --pore: #6b4d06; --node: #93b0ff; --spring: rgba(147,176,255,.4); --table: #2a2620; --coll: rgba(147,176,255,.15); } }
+:root[data-theme="dark"] { --sponge: #c9a227; --pore: #6b4d06; --node: #93b0ff; --spring: rgba(147,176,255,.4); --table: #2a2620; --coll: rgba(147,176,255,.15); }
+h3.sub { margin: 1.6rem 0 .4rem; }
+figure.diagram { margin: 1rem 0; overflow-x: auto; }
+figure.diagram svg { display: block; width: 100%; min-width: 560px; max-width: 900px; height: auto; }
+.diagram rect.bg { fill: var(--surface); stroke: var(--rule); }
+.diagram text { font: 500 13px var(--f-body); fill: var(--ink); text-anchor: middle; }
+.diagram text.h { font: 700 14px var(--f-display); }
+.diagram text.s { font-size: 12px; fill: var(--muted); }
+.diagram .sponge { fill: var(--sponge); }
+.diagram .pore circle { fill: var(--pore); }
+.diagram .coll { fill: var(--coll); stroke: var(--node); stroke-width: 2; stroke-dasharray: 6 4; }
+.diagram .grid path { stroke: var(--spring); stroke-width: 1.5; fill: none; }
+.diagram .node circle { fill: var(--node); }
+.diagram .tri { fill: var(--coll); stroke: var(--node); stroke-width: 1.5; }
+.diagram .skin { fill: var(--ex); }
+table.params td:first-child { white-space: nowrap; }
+.demo { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1rem; margin: 1rem 0; align-items: start; }
+@media (max-width: 760px) { .demo { grid-template-columns: minmax(0, 1fr); } }
+.demo-stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: .6rem; position: relative; min-width: 0; }
+#sim-canvas { display: block; width: 100%; aspect-ratio: 5 / 2; touch-action: none; cursor: grab; }
+.readout { display: flex; flex-wrap: wrap; gap: .3rem 1rem; font: 500 .78rem var(--f-mono); color: var(--muted); margin-top: .4rem; font-variant-numeric: tabular-nums; }
+.readout b { color: var(--ink); font-weight: 500; }
+.boom { position: absolute; inset: .6rem .6rem auto; background: var(--surface); border: 2px solid var(--gap); border-radius: 6px; padding: .6rem .8rem; font-size: .9rem; }
+.boom b { color: var(--gap); }
+.boom button { margin-left: .5rem; }
+.demo-controls { display: grid; gap: .25rem; align-content: start; min-width: 0; }
+.demo-controls label { display: flex; align-items: baseline; gap: .4rem; font-size: .9rem; font-weight: 700; margin-top: .35rem; }
+.demo-controls label small { font-weight: 400; color: var(--muted); margin-left: auto; }
+.demo-controls output { font: 500 .8rem var(--f-mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+.demo-controls input[type=range] { width: 100%; accent-color: var(--accent); }
+.presets { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; font-size: .85rem; color: var(--muted); }
+.demo button { font: 500 .8rem var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .6rem; cursor: pointer; }
+.demo button:hover { border-color: var(--accent); }
+.demo button.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.toggles { display: flex; flex-wrap: wrap; gap: .3rem 1rem; }
+.toggles label { font-weight: 400; margin: 0; }
+.buttons { display: flex; gap: .5rem; margin-top: .5rem; }
+.hint { font: 500 .78rem var(--f-mono); margin: .2rem 0; }
+.hint.ok { color: var(--win); } .hint.bad { color: var(--gap); }
+.demo-lead { margin-bottom: 0; }
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Sim-robot-learning</span></span>
+    <div class="jump"><a href="#loop">循环</a><a href="#bodies">三个身体</a><a href="#rigid">刚体</a><a href="#contact">接触</a><a href="#soft">软体</a><a href="#demo">演示</a><a href="#coupling">耦合</a><a href="#rss">RoboSimStudio</a><a href="#pitfalls">坑</a></div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Sim-robot-learning · 归档于 2026-11-07</p>
+  <h1>仿真从零讲起</h1>
+  <p class="full-title">物理仿真到底在算什么：拿 RoboSimStudio 的海绵当例子</p>
+  <p class="meta">讲解页，不是单篇论文 · RoboSimStudio 的细节来自它的论文、官方代码（commit d474a18）和我们在 3 段 DROID 上的运行</p>
+  <p class="links"><a href="../../Agent-centric-real-to-sim/artifact/2026-11-03-RoboSimStudio.html">RoboSimStudio 论文页</a><a href="#demo">直接玩演示</a><a href="../../index.html">Reading Room</a></p>
+</header>
+
+<main class="frame">
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>仿真</dt><dd>一个循环：每过很短一段时间 <b>Δt</b>，算一遍每样东西受多少力，再把它挪到下一刻的位置。</dd></div>
+    <div><dt>物体</dt><dd>每个物体有<b>三个身体</b>：给人看的（visual mesh）、判断碰撞的（collision shape）、公式真正去算的（一个刚体，或很多个点）。</dd></div>
+    <div><dt>参数</dt><dd>告诉公式这个东西<b>多重、多硬、多滑、多弹</b>。调参数，就是让算出来的运动和真实视频对上。</dd></div>
+  </dl>
+</section>
+
+<section id="loop">
+  <p class="eyebrow">1 · 循环</p>
+  <h2>仿真就是一本翻页动画，每一页都是算出来的</h2>
+  <div class="flow"><pre>
+flowchart TD
+  A["<b>现在的状态</b><br/><span class='ex'>每个东西的位置、速度</span>"] --> B["<b>算力</b><br/><span class='ex'>重力、弹簧、碰撞、摩擦</span>"]
+  B --> C["<b>算加速度</b><br/><span class='ex'>a = F / m</span>"]
+  C --> D["<b>更新速度和位置</b><br/><span class='ex'>v += a·Δt，x += v·Δt</span>"]
+  D --> E["<b>处理碰撞</b><br/><span class='ex'>穿进去就推出来</span>"]
+  E -->|"下一步，过了 Δt"| A
+  </pre></div>
+  <ul class="tight">
+    <li><b>Δt 有多短：</b>屏幕一帧是 1/60 秒（16.7 ms）。仿真常把一帧再切成很多小步（substep），每步 0.1–2 ms。</li>
+    <li><b>为什么要切这么碎：</b>东西越硬、越轻，回弹得越快。步子迈大了会"算过头"，下一步又往回算过头，越来越大，最后炸掉。下面的演示里可以亲手把它弄炸。</li>
+    <li><b>算多少步：</b>一段 0.5 秒的动作，每步 0.5 ms，就要算 1000 步。</li>
+  </ul>
+</section>
+
+<section id="bodies">
+  <p class="eyebrow">2 · 三个身体</p>
+  <h2>同一块海绵，在仿真里有三份</h2>
+  <figure class="diagram">
+    <svg viewBox="0 0 720 210" role="img" aria-label="三栏示意图：左边是带小孔的黄色海绵外观，中间是一个简化的盒子碰撞形状，右边是刚体的一个点或软体的一格格点">
+      <g class="panel"><rect class="bg" x="8" y="8" width="224" height="194" rx="8"/><text x="120" y="32" class="h">① 看的 visual mesh</text>
+        <rect x="52" y="78" width="136" height="64" rx="14" class="sponge"/>
+        <g class="pore"><circle cx="72" cy="96" r="3"/><circle cx="96" cy="118" r="4"/><circle cx="120" cy="92" r="2.5"/><circle cx="150" cy="126" r="3.5"/><circle cx="170" cy="100" r="3"/><circle cx="84" cy="130" r="2.5"/><circle cx="136" cy="108" r="2"/></g>
+        <text x="120" y="172" class="s">几万个小三角形 + 颜色贴图</text><text x="120" y="190" class="s">只管好不好看</text></g>
+      <g class="panel"><rect class="bg" x="248" y="8" width="224" height="194" rx="8"/><text x="360" y="32" class="h">② 碰的 collision shape</text>
+        <rect x="292" y="78" width="136" height="64" class="coll"/>
+        <text x="360" y="172" class="s">简化形状：盒子、凸块、小球</text><text x="360" y="190" class="s">只管"有没有碰到"</text></g>
+      <g class="panel"><rect class="bg" x="488" y="8" width="224" height="194" rx="8"/><text x="600" y="32" class="h">③ 算的</text>
+        <g class="grid">
+          <path d="M532 78h136M532 99h136M532 120h136M532 141h136M532 78v63M566 78v63M600 78v63M634 78v63M668 78v63"/>
+        </g>
+        <g class="node"><circle cx="532" cy="78" r="3.5"/><circle cx="566" cy="78" r="3.5"/><circle cx="600" cy="78" r="3.5"/><circle cx="634" cy="78" r="3.5"/><circle cx="668" cy="78" r="3.5"/><circle cx="532" cy="99" r="3.5"/><circle cx="566" cy="99" r="3.5"/><circle cx="600" cy="99" r="3.5"/><circle cx="634" cy="99" r="3.5"/><circle cx="668" cy="99" r="3.5"/><circle cx="532" cy="120" r="3.5"/><circle cx="566" cy="120" r="3.5"/><circle cx="600" cy="120" r="3.5"/><circle cx="634" cy="120" r="3.5"/><circle cx="668" cy="120" r="3.5"/><circle cx="532" cy="141" r="3.5"/><circle cx="566" cy="141" r="3.5"/><circle cx="600" cy="141" r="3.5"/><circle cx="634" cy="141" r="3.5"/><circle cx="668" cy="141" r="3.5"/></g>
+        <text x="600" y="172" class="s">刚体：1 个位置 + 1 个朝向</text><text x="600" y="190" class="s">软体：很多个点（这里 20 个）</text></g>
+    </svg>
+  </figure>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>身体</th><th>干什么</th><th>长什么样</th><th>r2s-lite 里对应什么</th></tr>
+    <tr><td><b>① 看的</b><br><span class="muted">visual mesh</span></td><td>给相机和人看</td><td>很多三角形 + 颜色</td><td>每个物体的 GLB</td></tr>
+    <tr><td><b>② 碰的</b><br><span class="muted">collision shape</span></td><td>判断有没有碰到、碰在哪</td><td>简化的形状</td><td>CoACD 切出的凸块</td></tr>
+    <tr><td><b>③ 算的</b><br><span class="muted">simulation body</span></td><td>公式真正更新的东西</td><td>刚体：一个整体；软体：很多点</td><td>Isaac 里的 rigid body（我们没有软体）</td></tr>
+  </table></div>
+  <p class="crux"><b>规则：</b>③ 动了，① 和 ② 跟着动。刚体是整体搬过去；软体靠"绑定"让皮跟着点走（第 5 节）。</p>
+</section>
+
+<section id="rigid">
+  <p class="eyebrow">3 · 刚体</p>
+  <h2>刚体：不会变形，只会移动和转动</h2>
+  <ul class="tight">
+    <li><b>要算的只有 12 个数：</b>位置 3 个、朝向 3 个、移动速度 3 个、转动速度 3 个。桌子、锅、杯子、机械臂的每一节都是刚体。</li>
+    <li><b>它的参数只回答"多重、重心在哪、多难转起来"：</b></li>
+  </ul>
+  <div class="table-wrap"><table class="grid params">
+    <tr><th>参数</th><th>直觉</th><th>单位</th><th>设小了</th><th>设大了</th></tr>
+    <tr><td><b>质量</b> mass<br><span class="muted">或密度 density × 体积</span></td><td>多重</td><td>kg（kg/m³）</td><td>一碰就飞</td><td>机器人推不动、夹起来会滑</td></tr>
+    <tr><td><b>质心</b> center of mass</td><td>重心在哪</td><td>m</td><td colspan="2">放错了，物体会往一边倒；拎起来会歪</td></tr>
+    <tr><td><b>转动惯量</b> inertia</td><td>多难转起来</td><td>kg·m²</td><td>一碰就打转</td><td>怎么拧都转不动</td></tr>
+  </table></div>
+  <p class="note">这三样都看不见。Scalable Real2Sim 用机械臂关节力矩去测，质量和质心能测准到百分之几，转动惯量误差 358.6%。大多数系统直接用 体积 × 猜的密度。</p>
+</section>
+
+<section id="contact">
+  <p class="eyebrow">4 · 接触</p>
+  <h2>接触：碰到以后发生的四件事</h2>
+  <div class="flow"><pre>
+flowchart LR
+  A["<b>1 找重叠</b><br/><span class='ex'>两个 ② 有没有交叉</span>"] --> B["<b>2 推开</b><br/><span class='ex'>法向力 N</span>"]
+  B --> C["<b>3 摩擦</b><br/><span class='ex'>最多 μ × N</span>"]
+  C --> D["<b>4 弹不弹</b><br/><span class='ex'>恢复系数 e</span>"]
+  </pre></div>
+  <div class="table-wrap"><table class="grid params">
+    <tr><th>参数</th><th>直觉</th><th>单位</th><th>设小了</th><th>设大了</th></tr>
+    <tr><td><b>摩擦系数</b> μ<br><span class="muted">static 静摩擦 / dynamic 动摩擦</span></td><td>多滑；有的仿真器只有一个 μ（RoboSimStudio 底层的 Newton 就是）</td><td>无单位，常见 0.2–1</td><td>像冰面，夹不住</td><td>粘住、推不动</td></tr>
+    <tr><td><b>恢复系数</b> restitution e</td><td>多弹</td><td>0–1</td><td>掉下来"啪"一声停住</td><td>像皮球一样弹</td></tr>
+    <tr><td><b>接触刚度</b> contact stiffness<br><span class="muted">常写作 ke</span></td><td>碰上以后推开得多硬</td><td>N/m</td><td>会陷进对方里</td><td>要更小的 Δt，否则抖或炸</td></tr>
+    <tr><td><b>接触阻尼</b> contact damping<br><span class="muted">常写作 kd</span></td><td>推开时吸掉多少能量</td><td>N·s/m</td><td>碰完一直抖</td><td>像碰到胶水</td></tr>
+    <tr><td><b>接触余量</b> margin</td><td>还差多远就当作碰到</td><td>m</td><td>快速运动时直接穿过去</td><td>隔空就被挡住</td></tr>
+    <tr><td><b>求解迭代次数</b> solver iterations</td><td>每一步把所有接触来回解几遍</td><td>次</td><td>叠起来的东西慢慢下沉、抖</td><td>慢</td></tr>
+  </table></div>
+  <div class="setup">
+    <p class="eyebrow">算一下：夹爪夹锅盖</p>
+    <p>两根手指各压 N = 10 N，摩擦系数 μ = 0.5。每根手指最多能提供 μ × N = 5 N 的摩擦，两根加起来 10 N，大约能提起 <span class="ex">1 kg</span>。μ 设成 0.1，就只能提起 <span class="ex">0.2 kg</span>：同一个动作，换个参数就从"拿起来"变成"滑掉"。</p>
+  </div>
+</section>
+
+<section id="soft">
+  <p class="eyebrow">5 · 软体</p>
+  <h2>软体：把一个物体拆成很多点，让点之间互相拉扯</h2>
+  <p>刚体只有一个位置；软体要知道"每一小块"在哪。所以第一步总是：<b>把物体切成很多小块</b>，再规定小块之间怎么互相拉扯。四种常见的切法：</p>
+  <div class="flow"><pre>
+flowchart TD
+  M["<b>一个物体的 mesh</b><br/><span class='ex'>海绵、绳子、布</span>"]:::example --> S1["<b>弹簧质点</b><br/><span class='ex'>点 + 弹簧</span>"]
+  M --> S2["<b>有限元 FEM</b><br/><span class='ex'>切成小四面体</span>"]
+  M --> S3["<b>物质点法 MPM</b><br/><span class='ex'>粒子 + 背景格子</span>"]
+  M --> S4["<b>杆和壳</b><br/><span class='ex'>中心线 / 薄片</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  </pre></div>
+  <p class="flow-hint">点方块展开。下面的演示用的就是第一种。</p>
+
+  <details class="stage" id="stage-1">
+    <summary><span class="stage-n">切法 1</span><span class="stage-name">弹簧质点 mass-spring</span><span class="stage-io">mesh 的顶点 → 质点，边 → 弹簧</span></summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>怎么变：</b>每根弹簧按胡克定律 F = k ×（现在长度 − 原长）拉或推两头的点。</li>
+        <li><b>参数：</b>每根弹簧的刚度 k（N/m）、阻尼 c、每个点的质量。</li>
+        <li><b>好处：</b>最简单、最快，好拟合。<b>坏处：</b>k 没有统一的物理意义，换一种切法，同一个 k 软硬就不一样。</li>
+        <li><b>谁在用：</b>PhysTwin（绳子、毛绒玩具，一根根弹簧的 k 从视频里拟合）、下面的演示。RoboSimStudio 的海绵不用这种。</li>
+      </ul>
+    </div>
+  </details>
+  <details class="stage" id="stage-2">
+    <summary><span class="stage-n">切法 2</span><span class="stage-name">有限元 FEM</span><span class="stage-io">实心的体积 → 很多小四面体</span></summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>怎么变：</b>每个小四面体被压扁或拉长时，按材料定律产生回弹的力。顶点就是要算的点。</li>
+        <li><b>参数：</b>杨氏模量 E、泊松比 ν、密度、阻尼（表在下面）。这些是真正的材料参数，可以查手册。</li>
+        <li><b>好处：</b>参数有物理意义，弹性体（橡胶、海绵、肌肉）算得准。<b>坏处：</b>要先把 mesh 切成四面体（tetrahedralization），mesh 有洞或不封闭就切不了。</li>
+        <li><b>RoboSimStudio 的海绵就是这种：</b>SuperDex 的 neo-Hookean 有限元。四面体从长方体格子切出来，每格 5 个；代码里没有把任意表面 mesh 切成四面体的步骤。</li>
+      </ul>
+    </div>
+  </details>
+  <details class="stage" id="stage-3">
+    <summary><span class="stage-n">切法 3</span><span class="stage-name">物质点法 MPM</span><span class="stage-io">物体 → 很多粒子，外加一张固定的背景格子</span></summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>怎么变：</b>每一步，粒子把质量和速度"交"给附近的格子；在格子上算力和速度；再"拿回"粒子，粒子跟着走。</li>
+        <li><b>参数：</b>E、ν、密度，外加塑性和屈服（压过以后回不回得来）、粒子和格子的大小。</li>
+        <li><b>好处：</b>能算断开、撕裂、沙子、泥、面团。<b>坏处：</b>慢；格子越细越准也越慢。</li>
+        <li><b>RoboSimStudio：</b>沙子、液体、面团用 Newton 的隐式 MPM，格子 4 mm，粒子间距 2.5 mm。</li>
+      </ul>
+    </div>
+  </details>
+  <details class="stage" id="stage-4">
+    <summary><span class="stage-n">切法 4</span><span class="stage-name">杆 rod 和壳 shell</span><span class="stage-io">细长的 → 一条中心线；薄片 → 一张面</span></summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>怎么变：</b>杆（绳子、线缆）只算中心线上的点，加上弯曲和扭转的刚度；壳（布、纸）只算一张面，加上拉伸和弯曲的刚度。</li>
+        <li><b>好处：</b>又细又长、又薄又大的东西，用体积去切会切出几百万个小块，这样省很多。</li>
+        <li><b>谁在用：</b>Vid2Sid 的硅胶触手（Cosserat 杆），CoDimRecon 把线表示成"中心线 + 半径"。RoboSimStudio 的布和线用 VBD：按点、三角形（拉伸）和边（弯曲）算。</li>
+      </ul>
+    </div>
+  </details>
+
+  <h3 class="sub">材料参数：软体比刚体多出来的那几个</h3>
+  <div class="table-wrap"><table class="grid params">
+    <tr><th>参数</th><th>直觉</th><th>单位</th><th>数量级（常见材料）</th></tr>
+    <tr><td><b>杨氏模量</b> Young's modulus E</td><td>多硬：拉长或压扁有多费劲</td><td>Pa</td><td>海绵泡沫 10⁴–10⁶，橡胶 10⁶–10⁸，塑料 ~10⁹，钢 ~2×10¹¹</td></tr>
+    <tr><td><b>泊松比</b> Poisson's ratio ν</td><td>压扁时往旁边胖多少</td><td>0–0.5</td><td>海绵接近 0（压扁不变胖），橡胶接近 0.5（体积几乎不变）</td></tr>
+    <tr><td><b>密度</b> density</td><td>多重</td><td>kg/m³</td><td>海绵 ~20–100，水 1000</td></tr>
+    <tr><td><b>阻尼</b> damping</td><td>晃动多久停下来</td><td>看模型</td><td>果冻小，海绵大</td></tr>
+    <tr><td><b>塑性 / 屈服</b> plasticity, yield</td><td>压过以后能不能弹回原样</td><td>Pa</td><td>橡皮泥、面团会留下凹坑</td></tr>
+  </table></div>
+  <p class="note">数量级是常识范围，不是 RoboSimStudio 的设置；它实际用的值在第 7 节。</p>
+
+  <h3 class="sub">看的皮怎么跟着变：绑定 embedding</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 720 170" role="img" aria-label="左图：一个三角形里有一个皮上的顶点，权重 0.2、0.5、0.3；右图：三角形被压扁后，这个顶点按同样的权重跟着移动">
+      <g class="panel"><rect class="bg" x="8" y="8" width="340" height="154" rx="8"/>
+        <text x="178" y="30" class="h">变形前</text>
+        <polygon points="70,140 290,140 170,48" class="tri"/>
+        <g class="node"><circle cx="70" cy="140" r="5"/><circle cx="290" cy="140" r="5"/><circle cx="170" cy="48" r="5"/></g>
+        <circle cx="178" cy="112" r="5" class="skin"/>
+        <text x="60" y="158" class="s">A 0.2</text><text x="296" y="158" class="s" text-anchor="start">B 0.5</text><text x="170" y="44" class="s">C 0.3</text>
+        <text x="200" y="108" class="s" text-anchor="start">皮上的点</text></g>
+      <g class="panel"><rect class="bg" x="372" y="8" width="340" height="154" rx="8"/>
+        <text x="542" y="30" class="h">压扁以后</text>
+        <polygon points="420,140 680,140 560,96" class="tri"/>
+        <g class="node"><circle cx="420" cy="140" r="5"/><circle cx="680" cy="140" r="5"/><circle cx="560" cy="96" r="5"/></g>
+        <circle cx="592" cy="127" r="5" class="skin"/>
+        <text x="542" y="70" class="s">权重不变，位置 = 0.2A + 0.5B + 0.3C</text></g>
+    </svg>
+  </figure>
+  <ul class="tight">
+    <li>开始时，皮上的每个顶点记住自己落在哪个小块（三角形、四面体或格子）里，以及离这个小块每个角有多近（权重，加起来是 1）。</li>
+    <li>之后每一步：顶点位置 = 各个角的新位置 × 各自的权重，再相加。算的点怎么动，皮就怎么跟。</li>
+    <li>下面演示里海绵上的小孔就是这样跟着变形的：把"算的点"关掉，只看皮，也能看出它在被压扁。</li>
+    <li><b>RoboSimStudio 的海绵不用绑定：</b>它直接把四面体网格的外表面画出来，看的皮就是算的网格（第 8 节）。外观要比算的网格更细时，才需要绑定。</li>
+  </ul>
+</section>
+
+<section id="demo">
+  <p class="eyebrow">6 · 自己玩</p>
+  <h2>一块 45 个点、140 根弹簧的海绵</h2>
+  <p class="demo-lead">海绵以 0.9 m/s 的速度斜着掉到桌上。按住任意一个点可以拖它、压它。换一个预设或拖动滑块，再点"重新掉落"。</p>
+  <div class="demo">
+    <div class="demo-stage">
+      <canvas id="sim-canvas" aria-label="软体海绵的物理仿真动画，可以用鼠标或手指拖动"></canvas>
+      <div id="boom" class="boom" hidden><b>炸了。</b>步长 Δt 相对这么硬的弹簧太大，算过头的误差越滚越大。把 Δt 调小或把 k 调小。<button type="button" id="btn-boom-reset">重新掉落</button></div>
+      <div class="readout"><span>时间 <b id="t-v">0 s</b></span><span>最大变形 <b id="strain-v">0%</b></span><span>点 <b id="pts-v">45</b> · 弹簧 <b id="springs-v">140</b></span><span>每帧 <b id="sub-v">33</b> 小步</span></div>
+    </div>
+    <div class="demo-controls">
+      <div class="presets"><span>预设</span>
+        <button type="button" data-preset="sponge">海绵</button><button type="button" data-preset="jelly">果冻</button>
+        <button type="button" data-preset="rubber">橡胶块</button><button type="button" data-preset="ice">冰块（近似刚体）</button>
+        <button type="button" data-preset="boom">炸给你看</button></div>
+      <label for="p-k">弹簧刚度 k <output id="p-k-v"></output><small>多硬</small></label><input id="p-k" type="range" min="1" max="4.3" step="0.01" value="2.176">
+      <label for="p-c">阻尼 c <output id="p-c-v"></output><small>晃多久停</small></label><input id="p-c" type="range" min="0" max="1.5" step="0.01" value="0.15">
+      <label for="p-m">总质量 <output id="p-m-v"></output><small>多重</small></label><input id="p-m" type="range" min="0.01" max="0.5" step="0.01" value="0.05">
+      <label for="p-mu">桌面摩擦 μ <output id="p-mu-v"></output><small>多滑</small></label><input id="p-mu" type="range" min="0" max="1.5" step="0.01" value="0.9">
+      <label for="p-e">恢复系数 e <output id="p-e-v"></output><small>多弹</small></label><input id="p-e" type="range" min="0" max="0.9" step="0.01" value="0.05">
+      <label for="p-dt">时间步长 Δt <output id="p-dt-v"></output><small>每一小步多久</small></label><input id="p-dt" type="range" min="-4" max="-2.3" step="0.01" value="-3.301">
+      <p id="dt-hint" class="hint"></p>
+      <div class="toggles"><label><input id="p-pts" type="checkbox" checked> 显示算的点和弹簧</label><label><input id="p-skin" type="checkbox" checked> 显示看的皮</label></div>
+      <div class="buttons"><button type="button" id="btn-reset" class="primary">重新掉落</button><button type="button" id="btn-pause">暂停</button></div>
+    </div>
+  </div>
+  <ul class="tight">
+    <li><b>试 1：</b>摩擦 μ 拉到 0，海绵落地后一直滑到墙；拉到 1.5，几乎原地停住。</li>
+    <li><b>试 2：</b>点"果冻"，k 小、阻尼小，落地后会一直颤；把阻尼拉大，颤动很快停下。</li>
+    <li><b>试 3：</b>点"炸给你看"：k 很大、Δt = 3 ms，几步之内就炸了。只把 Δt 拉回 0.1 ms，同样的硬度就稳了。这就是为什么硬的东西算得慢。</li>
+  </ul>
+  <p class="note">这是二维的弹簧质点模型，用半隐式欧拉法积分，桌面用库仑摩擦，碰撞用最简单的"推出来再反弹"。真实的仿真器在三维里算，接触也更讲究，但循环和参数的意思一样。</p>
+</section>
+
+<section id="coupling">
+  <p class="eyebrow">7 · 耦合</p>
+  <h2>一个场景，几个仿真器一起算</h2>
+  <p>没有一个仿真器什么都算得好。RoboSimStudio 的做法是让每类物体去最擅长的仿真器，再让它们定时交换信息。</p>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>物体</th><th>交给谁</th><th>为什么</th></tr>
+    <tr><td>机器人、带关节的东西</td><td><b>MuJoCo-Warp</b></td><td>关节、驱动、夹取算得稳</td></tr>
+    <tr><td>海绵这类软块</td><td><b>SuperDex</b>（四面体有限元）</td><td>能算挤压变形和接触压力</td></tr>
+    <tr><td>布、线</td><td><b>VBD</b></td><td>又薄又长，按点、三角形和边算</td></tr>
+    <tr><td>沙子、液体、面团</td><td><b>MPM</b></td><td>粒子加格子，能断能流</td></tr>
+    <tr><td>其余自由刚体</td><td>默认配置 <code>GENERIC</code> 里是 VBD</td><td>代码文档自己说这样"能推、不能夹"；作者的演示和我们 3 次运行都改成了 MuJoCo</td></tr>
+  </table></div>
+
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-07-SimulationBasics/rss-fig3.jpg" alt="五个任务：上排是渲染图，下排按求解器上色：紫色 MuJoCo-Warp，绿色 FEM，橙色 VBD"></div>
+    <figcaption><b>Fig. 3</b>（RoboSimStudio 论文，作者原图）同一个场景里，每个物体交给哪个求解器。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>上排 Task：</b>五个任务渲染出来的样子：擦海绵、布线缆、撕膜、拿毛巾、热转印。</li>
+    <li><b>下排 Multi-physics：</b>同一画面按求解器上色。<b>紫色 MuJoCo-Warp</b> 是机械臂、横杆、桌子这类刚体；<b>绿色 FEM</b> 只有擦海绵里的海绵；<b>橙色 VBD</b> 是线缆、膜、毛巾、转印纸这类又薄又长的东西。</li>
+    <li><b>要点：</b>每张图里至少有两种颜色，也就是至少两个仿真器在同时算、互相交换信息，下面讲怎么交换。</li>
+  </ol>
+  <h3 class="sub">海绵和机械臂怎么一起算</h3>
+  <div class="flow"><pre>
+flowchart TD
+  A["<b>1 MuJoCo 先走 16 小步</b><br/><span class='ex'>每步 1.04 ms，算机械臂</span>"] --> B["<b>2 把刚体位置交出去</b><br/><span class='ex'>夹爪、桌子、横杆在哪</span>"]
+  B --> C["<b>3 SuperDex 走 2 步</b><br/><span class='ex'>每步 8.3 ms，算海绵</span>"]
+  C --> D["<b>4 把接触力交回来</b><br/><span class='ex'>平滑、限幅</span>"]
+  D --> E["<b>5 下一轮才用上这个力</b><br/><span class='ex'>慢一拍：16.7 ms</span>"]
+  E -->|"每秒 60 轮"| A
+  </pre></div>
+  <ul class="tight">
+    <li><b>像两个人轮流画同一本翻页书：</b>A 先画 16 页机械臂，告诉 B "手现在在这"；B 画 2 页海绵，告诉 A "海绵往回推了这么大的力"；A 下一轮才把这个力加上。</li>
+    <li><b>交出去的是位置：</b>刚体在 SuperDex 里有一个"替身"，按位置被拖着走，两次交换之间做线性插值，这样摩擦看到的是连续滑过去，不是瞬移。</li>
+    <li><b>交回来的是力：</b>接触力先做平滑（上升时用 0.35 的指数平均），再限幅：一步加给刚体的速度最多 0.5 m/s。作者的海绵演示把这个上限放宽到 5 m/s。</li>
+    <li><b>代价是慢一拍：</b>海绵的反作用力晚 16.7 ms 才作用到手上。动作慢的时候没关系，快速撞击时会有误差（我的推断）。</li>
+  </ul>
+</section>
+
+
+
+<section id="rss">
+  <p class="eyebrow">8 · RoboSimStudio</p>
+  <h2>RoboSimStudio 里具体有哪些参数</h2>
+  <p class="note">下面是代码（commit d474a18）里的默认值，以及它底层的 Newton 1.7.0 在不填时用的值。<b>没有一个是实测的</b>：海绵预设的代码注释写着"the foams were not measured here"。</p>
+
+  <h3 class="sub">时间</h3>
+  <div class="table-wrap"><table class="grid params">
+    <tr><th>参数</th><th>默认</th><th>意思</th></tr>
+    <tr><td><code>control_hz</code></td><td>50 Hz（<code>GENERIC</code> 用 60）</td><td>每秒发几次控制命令</td></tr>
+    <tr><td><code>substeps</code></td><td>4（<code>GENERIC</code> 用 16）</td><td>每次控制之间切几小步；60 × 16 = 960 Hz，每步约 1.04 ms</td></tr>
+    <tr><td><code>gravity</code></td><td>−9.81 m/s²</td><td>沿 −z</td></tr>
+  </table></div>
+
+  <h3 class="sub">刚体</h3>
+  <div class="table-wrap"><table class="grid params">
+    <tr><th>参数</th><th>默认</th><th>意思</th></tr>
+    <tr><td><code>density</code></td><td>1000 kg/m³</td><td>质量 = 密度 × 碰撞体体积；1000 是水的密度。碰撞体是凸包时，碗的空心也算进体积，会偏重（我的推断）</td></tr>
+    <tr><td><code>mass</code></td><td>不填</td><td>填了就覆盖，转动惯量跟着按比例缩放；惯量本身不能直接填</td></tr>
+    <tr><td><code>mu</code>（friction）</td><td>1.0</td><td><b>只有一个摩擦系数</b>，不分静摩擦和动摩擦</td></tr>
+    <tr><td><code>mu_torsional</code></td><td>0.005 m</td><td>原地打转的阻力</td></tr>
+    <tr><td><code>mu_rolling</code></td><td>0.0001 m</td><td>滚动的阻力</td></tr>
+    <tr><td><code>restitution</code></td><td>0</td><td>完全不弹</td></tr>
+    <tr><td>关节驱动 <code>target_ke</code> / <code>target_kd</code></td><td>100 / 10</td><td>关节"拉回目标角度"的弹簧和阻尼</td></tr>
+    <tr><td>Panda 机械臂增益</td><td>650 / 100</td><td>同上，单位 N·m/rad；Robotiq 夹爪 20 / 1</td></tr>
+  </table></div>
+
+  <h3 class="sub">接触</h3>
+  <div class="table-wrap"><table class="grid params">
+    <tr><th>参数</th><th>默认</th><th>意思</th></tr>
+    <tr><td><code>ke</code></td><td>2500 N/m</td><td>接触刚度：穿进去 1 mm，推回 2.5 N</td></tr>
+    <tr><td><code>kd</code></td><td>100 N·s/m</td><td>接触阻尼</td></tr>
+    <tr><td><code>kf</code></td><td>1000</td><td>摩擦的增益</td></tr>
+    <tr><td><code>rigid_gap</code></td><td>0.1 m</td><td>离多远就开始检测（不是推开的距离）</td></tr>
+    <tr><td><code>margin</code></td><td>0</td><td>碰撞面往外加厚多少</td></tr>
+    <tr><td>MuJoCo-Warp <code>iterations</code></td><td>20</td><td>每步解几遍接触；作者演示用 100</td></tr>
+    <tr><td><code>cone</code> / <code>impratio</code></td><td>elliptic / 10</td><td>摩擦锥的形状，摩擦和法向的比例</td></tr>
+    <tr><td>预设 <code>MUJOCO_500HZ</code></td><td>ke 6×10⁴，kd 500，gap 2 mm</td><td>我们 3 次运行都用这个预设</td></tr>
+  </table></div>
+
+  <h3 class="sub">海绵（SuperDex 四面体有限元）</h3>
+  <div class="table-wrap"><table class="grid params">
+    <tr><th>参数</th><th>默认</th><th>意思</th></tr>
+    <tr><td><code>young</code></td><td>2×10⁴ Pa</td><td>杨氏模量，多硬；作者演示用 8×10⁴，论文扫了 6、20、100 kPa</td></tr>
+    <tr><td><code>poisson</code></td><td>0.25</td><td>泊松比，压扁时往旁边胖多少</td></tr>
+    <tr><td><code>density</code></td><td>60 kg/m³</td><td>默认大小 10 × 7 × 3.5 cm，算下来约 14.7 g（我的计算）</td></tr>
+    <tr><td><code>stiffness_damping</code></td><td>5×10⁻³ s</td><td>让放开的海绵别一直晃</td></tr>
+    <tr><td><code>mass_damping</code></td><td>0</td><td>像空气阻力，也会拖慢自由落体</td></tr>
+    <tr><td><code>friction</code></td><td>0.9</td><td>和对面物体的摩擦取几何平均</td></tr>
+    <tr><td><code>friction_falloff</code></td><td>10 mm/s</td><td>滑动比这慢时，摩擦随速度变小，所以<b>没有静摩擦</b>；作者演示改成 0.1 mm/s</td></tr>
+    <tr><td><code>contact_penalty</code></td><td>8×10⁷ Pa/m</td><td>海绵陷进对方 1 mm，接触压力多 80 kPa（我的计算）；代码注释说设成 10⁹ 时轻泡沫会抖</td></tr>
+    <tr><td><code>contact_padding</code></td><td>2 mm</td><td>防止穿过去的余量</td></tr>
+    <tr><td><code>size</code> / <code>cells</code></td><td>10×7×3.5 cm / 10×7×4 格</td><td>440 个节点、1400 个四面体</td></tr>
+    <tr><td>积分</td><td>后向欧拉，非线性迭代 4 次</td><td>隐式积分，比演示里的显式积分稳，可以用大步长</td></tr>
+  </table></div>
+  <p class="note">代码里海绵没有塑性和屈服参数；塑性只在 MPM（沙子、面团）里有。布（VBD）的主要参数：拉伸 <code>tri_ke</code> 1×10⁴ N/m、弯曲 <code>edge_ke</code> 0.1 N·m/rad、面密度 0.3 kg/m²、摩擦 0.2。</p>
+
+  <h3 class="sub">看的、碰的、算的，在 RoboSimStudio 里分别是什么</h3>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>物体</th><th>算的</th><th>碰的</th><th>看的</th></tr>
+    <tr><td><b>刚体</b></td><td>一个刚体</td><td>默认就是那份 mesh；可以换成包围盒、凸包、单独的代理 mesh，或 SDF</td><td>原始 mesh（换了碰撞体后仍保留）</td></tr>
+    <tr><td><b>机器人指尖</b></td><td>关节链的一节</td><td>CoACD 切出的凸块</td><td>原始 mesh</td></tr>
+    <tr><td><b>海绵</b></td><td>四面体网格的节点</td><td>同一个四面体网格</td><td><b>就是四面体网格的外表面</b>，直接画，不用"绑定"</td></tr>
+    <tr><td><b>布</b></td><td>点、三角形、边</td><td>同一组三角形</td><td>同一组三角形，外加只用来看的绒毛、织纹层</td></tr>
+  </table></div>
+  <ul class="tight">
+    <li><b>海绵只能是长方体格子，或现成的四面体文件。</b>代码里没有"把任意表面 mesh 切成四面体"的步骤，所以从视频里得到一个形状不规则的软物体，还得另外找工具去切。</li>
+    <li><b>所以第 5 节说的"绑定"它用不上：</b>海绵的外观就是格子的外表面，一格一格的；更细的外观要靠更细的格子。</li>
+  </ul>
+
+  <h3 class="sub">谁改了哪些参数</h3>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>谁</th><th>改了什么</th></tr>
+    <tr><td>论文（作者）</td><td>海绵 E 扫 6、20、100 kPa；真机失败后，agent 把横杆支架从固定改成可动刚体。其余数值论文没给</td></tr>
+    <tr><td>仓库里的海绵演示（作者手调）</td><td>泡沫 E 20 → 80 kPa（"20 kPa 的软泡沫会从两指之间挤出去"）；<code>friction_falloff</code> 10 → 0.1 mm/s；力的限幅 0.5 → 5 m/s；机械臂增益改成 1600/70；MuJoCo 迭代 20 → 100；接触 ke/kd 6×10⁴ / 500；加了一个把海绵钉在手上的 latch。README 里列了 30 多次被否掉的尝试</td></tr>
+    <tr><td>我们 3 次 DROID 运行（Codex）</td><td>都从 <code>GENERIC</code> 换成 <code>MUJOCO_500HZ</code>，改成 60 Hz × 16 小步；质量和摩擦全是假设值，比如方块 35 g、摩擦 0.8，甜甜圈 45 g、摩擦 1.1；rail-105805 把接触 ke 从 2500 提到 10⁵。报告原话："Neither is identifiable precisely from these RGB videos"</td></tr>
+  </table></div>
+</section>
+
+
+
+<section id="pitfalls">
+  <p class="eyebrow">9 · 常见的坑</p>
+  <h2>仿真出错时，通常是这五种</h2>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>症状</th><th>原因</th><th>怎么办</th></tr>
+    <tr><td><b>炸了</b>：东西突然飞走、数字变成 NaN</td><td>Δt 相对刚度太大，误差越滚越大</td><td>减小 Δt 或加 substep；或者降低刚度</td></tr>
+    <tr><td><b>穿模</b>：东西穿过桌子或手指</td><td>一步之内移动的距离比物体还厚，碰撞检测没抓到</td><td>减小 Δt、加大 margin、用连续碰撞检测（CCD）</td></tr>
+    <tr><td><b>抖</b>：放着不动的东西一直微微颤</td><td>接触太硬、阻尼太小、迭代次数太少</td><td>加接触阻尼、加迭代次数</td></tr>
+    <tr><td><b>参数对不上真实</b>：看起来动得对，换个动作就错</td><td>一段视频分不开质量和摩擦，很多组参数都能"对上"</td><td>多拍几种动作；或者用传感器直接测</td></tr>
+    <tr><td><b>全是默认值</b>：没人调过</td><td>摩擦 0.5、密度 1000 这类默认值随处可见</td><td>至少标清楚哪些是测的、哪些是猜的</td></tr>
+  </table></div>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For r2s-lite</p>
+  <h2>对照我们自己</h2>
+  <ul class="tight">
+    <li><b>我们只有刚体。</b>海绵、布、绳子在 r2s-lite 里都会被当成一块不会变形的东西；要做软体，得换求解器，或者在 Isaac 里用它的软体模块，第 5 节的四种切法要选一种。</li>
+    <li><b>我们的质量和摩擦都是"猜的"。</b>质量是 体积 × 假设密度，摩擦是假设值；夹爪指垫摩擦设成 2.0、取两边较大值，所以改物体摩擦影响不到夹持。</li>
+    <li><b>回放会放大第 4 节的问题。</b>录下的动作一帧不改，摩擦或接触差一点，物体就滑掉或被推走，没有闭环去补救。</li>
+  </ul>
+</section>
+</main>
+
+<footer><div class="frame">讲解页 · RoboSimStudio 细节来自论文、代码 d474a18 和我们的 DROID 运行 · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+<script>
+// A soft block made of particles and springs (a 2D mass-spring model), dropped on a table.
+// Semi-implicit Euler with substeps, a floor with Coulomb friction and restitution, drag with the pointer.
+(() => {
+  const cv = document.getElementById('sim-canvas');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const $ = id => document.getElementById(id);
+  const NX = 9, NY = 5, W = 0.16, H = 0.08, G = 9.81, VIEW_W = 0.6, VIEW_H = 0.24;
+  const P = {};          // the current parameters, read from the sliders
+  let pts, springs, pores, t, exploded, drag = null, running = true;
+
+  // slider id -> [parameter name, value from slider position, text shown]
+  const SL = {
+    'p-k':   ['k',   v => 10 ** v, x => `${fmt(x)} N/m`],
+    'p-c':   ['c',   v => +v, x => `${x.toFixed(2)} N·s/m`],
+    'p-m':   ['m',   v => +v, x => `${(x * 1000).toFixed(0)} g`],
+    'p-mu':  ['mu',  v => +v, x => x.toFixed(2)],
+    'p-e':   ['e',   v => +v, x => x.toFixed(2)],
+    'p-dt':  ['dt',  v => 10 ** v, x => `${(x * 1000).toFixed(2)} ms`],
+  };
+  const fmt = x => x >= 1000 ? `${(x / 1000).toFixed(x >= 10000 ? 0 : 1)}k` : x.toFixed(0);
+  const PRESETS = {
+    sponge: { 'p-k': Math.log10(150), 'p-c': 0.15, 'p-m': 0.05, 'p-mu': 0.9, 'p-e': 0.05, 'p-dt': Math.log10(0.0005) },
+    jelly:  { 'p-k': Math.log10(60),  'p-c': 0.02, 'p-m': 0.15, 'p-mu': 0.6, 'p-e': 0.3,  'p-dt': Math.log10(0.0005) },
+    rubber: { 'p-k': Math.log10(3000), 'p-c': 0.05, 'p-m': 0.15, 'p-mu': 0.8, 'p-e': 0.7, 'p-dt': Math.log10(0.0002) },
+    ice:    { 'p-k': Math.log10(20000), 'p-c': 0.8, 'p-m': 0.3, 'p-mu': 0.03, 'p-e': 0.1, 'p-dt': Math.log10(0.0001) },
+    boom:   { 'p-k': Math.log10(20000), 'p-c': 0.1, 'p-m': 0.05, 'p-mu': 0.8, 'p-e': 0.1, 'p-dt': Math.log10(0.003) },
+  };
+
+  function readSliders() {
+    for (const [id, [name, f, show]] of Object.entries(SL)) {
+      P[name] = f($(id).value);
+      $(id + '-v').textContent = show(P[name]);
+    }
+    P.show_pts = $('p-pts').checked; P.show_skin = $('p-skin').checked;
+    // rough stability limit of explicit integration: dt < 2 / omega, omega = sqrt(n k / m_particle)
+    const mp = P.m / (NX * NY), omega = Math.sqrt(8 * P.k / mp), lim = 2 / omega;
+    const ok = P.dt < lim;
+    $('dt-hint').textContent = `粗估安全步长 < ${(lim * 1000).toFixed(2)} ms，现在 ${(P.dt * 1000).toFixed(2)} ms`;
+    $('dt-hint').className = ok ? 'hint ok' : 'hint bad';
+    $('sub-v').textContent = Math.max(1, Math.round((1 / 60) / P.dt));
+  }
+
+  function reset() {
+    pts = []; springs = []; pores = []; t = 0; exploded = false; $('boom').hidden = true;
+    const dx = W / (NX - 1), dy = H / (NY - 1), tilt = -0.25, cx = -0.15, cy = 0.15;
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+      const lx = i * dx - W / 2, ly = j * dy - H / 2;
+      pts.push({ x: cx + lx * Math.cos(tilt) - ly * Math.sin(tilt), y: cy + lx * Math.sin(tilt) + ly * Math.cos(tilt), vx: 0.9, vy: 0 });
+    }
+    const id = (i, j) => j * NX + i;
+    const add = (a, b) => springs.push([a, b, Math.hypot(pts[a].x - pts[b].x, pts[a].y - pts[b].y)]);
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+      if (i + 1 < NX) add(id(i, j), id(i + 1, j));                 // structural
+      if (j + 1 < NY) add(id(i, j), id(i, j + 1));
+      if (i + 1 < NX && j + 1 < NY) { add(id(i, j), id(i + 1, j + 1)); add(id(i + 1, j), id(i, j + 1)); } // shear
+    }
+    // pores of the visual skin: fixed (u, v) inside one grid cell, moved with the cell's 4 corners (bilinear weights)
+    let s = 7;
+    const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    for (let n = 0; n < 70; n++) {
+      const i = Math.floor(rnd() * (NX - 1)), j = Math.floor(rnd() * (NY - 1));
+      pores.push({ c: [id(i, j), id(i + 1, j), id(i, j + 1), id(i + 1, j + 1)], u: rnd(), v: rnd(), r: 0.0012 + rnd() * 0.0022 });
+    }
+    $('springs-v').textContent = springs.length;
+    $('pts-v').textContent = pts.length;
+  }
+
+  function step(dt) {
+    const mp = P.m / pts.length;
+    const fx = new Float64Array(pts.length), fy = new Float64Array(pts.length).fill(-G * mp);
+    for (const [a, b, L0] of springs) {
+      const pa = pts[a], pb = pts[b], dx = pb.x - pa.x, dy = pb.y - pa.y, L = Math.hypot(dx, dy) || 1e-9;
+      const nx = dx / L, ny = dy / L, rel = (pb.vx - pa.vx) * nx + (pb.vy - pa.vy) * ny;
+      const f = P.k * (L - L0) + P.c * rel;         // Hooke's law plus damping along the spring
+      fx[a] += f * nx; fy[a] += f * ny; fx[b] -= f * nx; fy[b] -= f * ny;
+    }
+    if (drag) { const p = pts[drag.i]; fx[drag.i] += 40 * (drag.x - p.x) - 1.5 * p.vx; fy[drag.i] += 40 * (drag.y - p.y) - 1.5 * p.vy; }
+    for (let n = 0; n < pts.length; n++) {
+      const p = pts[n];
+      p.vx += fx[n] / mp * dt; p.vy += fy[n] / mp * dt;   // velocity first, then position (semi-implicit Euler)
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.y < 0) {                                     // floor: push out, bounce, then Coulomb friction
+        p.y = 0;
+        if (p.vy < 0) {
+          const dvn = (1 + P.e) * -p.vy; p.vy = -P.e * p.vy;
+          const dvt = Math.min(Math.abs(p.vx), P.mu * dvn); p.vx -= Math.sign(p.vx) * dvt;
+        }
+      }
+      for (const wall of [-VIEW_W / 2 + 0.005, VIEW_W / 2 - 0.005]) {
+        if ((wall < 0 && p.x < wall) || (wall > 0 && p.x > wall)) { p.x = wall; p.vx = -0.3 * p.vx; }
+      }
+      if (!Number.isFinite(p.x) || Math.abs(p.vx) + Math.abs(p.vy) > 60) exploded = true;
+    }
+  }
+
+  function strain() {
+    let worst = 0;
+    for (const [a, b, L0] of springs) worst = Math.max(worst, Math.abs(Math.hypot(pts[a].x - pts[b].x, pts[a].y - pts[b].y) - L0) / L0);
+    return worst;
+  }
+
+  function draw() {
+    const css = getComputedStyle(document.documentElement), tok = n => css.getPropertyValue(n).trim();
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = w * VIEW_H / VIEW_W;
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const s = w / VIEW_W, X = x => (x + VIEW_W / 2) * s, Y = y => h - 18 - y * s;
+    ctx.fillStyle = tok('--table'); ctx.fillRect(0, Y(0), w, 18);
+    ctx.strokeStyle = tok('--muted'); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, Y(0)); ctx.lineTo(w, Y(0)); ctx.stroke();
+    ctx.fillStyle = tok('--muted'); ctx.font = '11px ' + tok('--f-mono');
+    ctx.fillText('桌面 · 摩擦 μ = ' + P.mu.toFixed(2), 8, h - 5);
+    ctx.fillText('10 cm', X(VIEW_W / 2 - 0.12) + 4, 16); ctx.fillRect(X(VIEW_W / 2 - 0.12), 20, 0.1 * s, 2);
+    if (P.show_skin) {                                   // the visual mesh: outline of the boundary, filled
+      const ring = [];
+      for (let i = 0; i < NX; i++) ring.push(pts[i]);
+      for (let j = 1; j < NY; j++) ring.push(pts[j * NX + NX - 1]);
+      for (let i = NX - 2; i >= 0; i--) ring.push(pts[(NY - 1) * NX + i]);
+      for (let j = NY - 2; j > 0; j--) ring.push(pts[j * NX]);
+      ctx.beginPath();
+      ring.forEach((p, n) => { const q = ring[(n + 1) % ring.length], mx = (X(p.x) + X(q.x)) / 2, my = (Y(p.y) + Y(q.y)) / 2;
+        n ? ctx.quadraticCurveTo(X(p.x), Y(p.y), mx, my) : ctx.moveTo(mx, my); });
+      ctx.closePath(); ctx.fillStyle = tok('--sponge'); ctx.fill();
+      ctx.fillStyle = tok('--pore');
+      for (const q of pores) {
+        const [a, b, c, d] = q.c.map(i => pts[i]), u = q.u, v = q.v;
+        const x = (1 - u) * (1 - v) * a.x + u * (1 - v) * b.x + (1 - u) * v * c.x + u * v * d.x;
+        const y = (1 - u) * (1 - v) * a.y + u * (1 - v) * b.y + (1 - u) * v * c.y + u * v * d.y;
+        ctx.beginPath(); ctx.arc(X(x), Y(y), q.r * s, 0, 7); ctx.fill();
+      }
+    }
+    if (P.show_pts) {                                    // the simulated mesh: particles and springs
+      ctx.strokeStyle = tok('--spring'); ctx.lineWidth = 1;
+      ctx.beginPath(); for (const [a, b] of springs) { ctx.moveTo(X(pts[a].x), Y(pts[a].y)); ctx.lineTo(X(pts[b].x), Y(pts[b].y)); } ctx.stroke();
+      ctx.fillStyle = tok('--node');
+      for (const p of pts) { ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 3, 0, 7); ctx.fill(); }
+    }
+    if (drag) { ctx.strokeStyle = tok('--accent'); ctx.setLineDash([4, 3]); ctx.beginPath();
+      ctx.moveTo(X(pts[drag.i].x), Y(pts[drag.i].y)); ctx.lineTo(X(drag.x), Y(drag.y)); ctx.stroke(); ctx.setLineDash([]); }
+    $('t-v').textContent = t.toFixed(2) + ' s';
+    $('strain-v').textContent = (strain() * 100).toFixed(0) + '%';
+    cv._map = { s, h, w };
+  }
+
+  function frame() {
+    if (running && !exploded) {
+      const n = Math.max(1, Math.round((1 / 60) / P.dt));
+      for (let i = 0; i < n && !exploded; i++) step(P.dt);
+      t += n * P.dt;
+      if (exploded) $('boom').hidden = false;
+    }
+    if (!exploded) draw();
+    requestAnimationFrame(frame);
+  }
+
+  const toSim = e => { const r = cv.getBoundingClientRect(), m = cv._map;
+    return { x: (e.clientX - r.left) / m.s - VIEW_W / 2, y: (m.h - 18 - (e.clientY - r.top)) / m.s }; };
+  cv.addEventListener('pointerdown', e => {
+    const q = toSim(e); let best = -1, bd = 0.04;
+    pts.forEach((p, i) => { const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; best = i; } });
+    if (best >= 0) { drag = { i: best, ...q }; cv.setPointerCapture(e.pointerId); e.preventDefault(); }
+  });
+  cv.addEventListener('pointermove', e => { if (drag) Object.assign(drag, toSim(e)); });
+  const end = () => { drag = null; };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+
+  for (const id of [...Object.keys(SL), 'p-pts', 'p-skin']) $(id).addEventListener('input', readSliders);
+  $('btn-reset').addEventListener('click', reset);
+  $('btn-boom-reset').addEventListener('click', reset);
+  $('btn-pause').addEventListener('click', () => { running = !running; $('btn-pause').textContent = running ? '暂停' : '继续'; });
+  document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+    for (const [id, v] of Object.entries(PRESETS[b.dataset.preset])) $(id).value = v;
+    readSliders(); reset();
+  }));
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { running = false; $('btn-pause').textContent = '继续'; }
+  readSliders(); reset(); draw(); requestAnimationFrame(frame);
+})();
+
+</script>
+</body>
+</html>

@@ -187,6 +187,10 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
   .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
   .crumb .proj { display: none; }
 }
+
+h3.sub { margin: 1.6rem 0 .4rem; }
+table.five { min-width: 760px; }
+table.five td:first-child { white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -196,7 +200,7 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
     <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
     <div class="jump">
       <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
-      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#pipeline">代码细节</a><a href="#results">Results</a>
       <a href="#limits">Limits</a><a href="#for-you">For you</a>
     </div>
   </div>
@@ -527,6 +531,57 @@ flowchart LR
       </table>
     </div>
   </details>
+</section>
+
+<section id="pipeline">
+  <p class="eyebrow">Code details · 2026-11-07 补充</p>
+  <h2>代码里的完整流程：没有重建模型，是 agent 看图手写场景</h2>
+  <p class="note">来源分三种：论文（§、Fig.）、官方代码（commit d474a18）、我们 2026-11-04 在 3 段 DROID 上的运行。我们的运行里 agent 是 Codex（gpt-6-astra），输入是 DROID 的 3 路 ZED 视频和录下的轨迹，不是手机视频。</p>
+  <div class="flow"><pre>
+flowchart TD
+  I["<b>1 输入</b><br/><span class='ex'>视频 + 一句 prompt</span>"]:::example --> N["<b>2 开 twin</b><br/><span class='ex'>ctl new，开网页</span>"]
+  N --> F["<b>3 抽帧</b><br/><span class='ex'>截图 + 时间线</span>"]
+  F --> G["<b>4 估尺寸和位置</b><br/><span class='ex'>agent 看图手写</span>"]:::gap
+  G --> C["<b>5 相机</b><br/><span class='ex'>视角、位置手填</span>"]:::gap
+  C --> R["<b>6 机器人</b><br/><span class='ex'>注册好的型号</span>"]
+  R --> A["<b>7 物体</b><br/><span class='ex'>基本形状、程序 mesh</span>"]
+  A --> P["<b>8 物理</b><br/><span class='ex'>每类物体一个求解器</span>"]
+  P --> V["<b>9 对照</b><br/><span class='ex'>颜色抠图 + IoU</span>"]
+  V -->|"不像就改 scene.py"| G
+  V --> K["<b>10 gate</b><br/><span class='ex'>不穿插、放得稳</span>"]
+  K --> T["<b>11 动起来</b><br/><span class='ex'>play --record</span>"]
+  T -->|"动得不对就改物理"| P
+  T --> D["<b>12 报告</b><br/><span class='ex'>REPORT.md</span>"]
+  </pre></div>
+  <p class="flow-hint">红框的两步没有任何模型或工具，全靠 agent 看截图判断。第 9 步的"抠图"是按颜色阈值（HSV），代码注释原话："Keying is what the agent does instead of segmenting"。</p>
+  <div class="flow"><pre>
+flowchart TD
+  D["<b>12 验证过的 twin</b><br/><span class='ex'>论文：56 分钟</span>"]:::example --> V["<b>13 变体</b><br/><span class='ex'>E 6/20/100 kPa，30 布局</span>"]
+  V --> G["<b>14 GaP 学策略</b><br/><span class='ex'>擦拭 0% → 100%，14 轮</span>"]
+  G --> R["<b>15 上真机</b><br/><span class='ex'>双臂 YAM</span>"]
+  R -->|"失败视频 + 一句描述"| X["<b>agent 改仿真</b><br/><span class='ex'>支架 固定 → 可动</span>"]
+  X --> G
+  </pre></div>
+  <p class="flow-hint">第 13–15 步的代码都不在仓库里：30 种布局的生成、刚度扫描、GaP 的迭代循环、真机部署都没有发布。</p>
+
+  <h3 class="sub">五个问题，三个来源</h3>
+  <div class="table-wrap"><table class="grid five">
+    <tr><th>问题</th><th>论文说</th><th>代码做</th><th>我们 3 次 DROID 运行</th></tr>
+    <tr><td><b>软体</b></td><td>海绵用 SuperDex，和 MuJoCo-Warp 联合仿真（§4.3）；E 取 6、20、100 kPa（Fig. 7e）</td><td>四面体有限元（neo-Hookean），从长方体格子切出来，每格 5 个四面体；默认 10×7×4 格 = 440 个节点、1400 个四面体；默认 E 2×10⁴ Pa、ν 0.25、60 kg/m³，代码注明"没有实测"</td><td>没有软体，全是刚体</td></tr>
+    <tr><td><b>重建</b></td><td>"agent 从视频估计场景几何"，没写用什么（§4.3）</td><td><b>没有任何重建模型</b>：没有分割、深度、SfM、位姿估计。agent 看截图写 <code>scene.py</code>，再用颜色抠图和渲染图对比（IoU、尺寸比、像素偏移）</td><td>agent 自己写 OpenCV 脚本：按颜色抠图、手点像素、两视角三角化、最小二乘拟合盒子和圆；没读 DROID 的深度</td></tr>
+    <tr><td><b>Mesh</b></td><td>"不需要 CAD 模型"，没写怎么做</td><td>基本形状（盒、球、胶囊、圆柱）或导入现成 mesh 文件；碰撞体可换成包围盒、凸包、单独的代理 mesh 或 SDF；CoACD 只用在机器人指尖</td><td>全是 agent 写的程序 mesh：盒子、旋转体（甜甜圈、碗、马克笔）、挤出多边形（拱门）；碗的碰撞体是手工拼的 32 块楔形 + 底</td></tr>
+    <tr><td><b>相机</b></td><td>"不需要标定相机"，没写怎么定</td><td><b>没有标定代码</b>。内参是视场角 45°（或 fx、fy、cx、cy），位姿是 eye / look_at，agent 改数字、看对比图，反复调；gate 只查画面宽高比</td><td>内参直接用 ZED 出厂值；外参 2 次运行用手点的夹爪像素做最小二乘重拟合，最大改了 117.5 mm、18.76°；iris-101439 直接用录制值</td></tr>
+    <tr><td><b>去噪</b></td><td>没有</td><td><b>没有</b>。流程里没有深度、点云或估计出的轨迹，也就没什么可去噪的。唯一的清理在对比工具里：抠图后做一次形态学开运算、只留最大连通块</td><td>没有。录下的轨迹按线性插值直接回放，没平滑</td></tr>
+  </table></div>
+
+  <h3 class="sub">论文和代码对不上的四处</h3>
+  <ul class="tight">
+    <li><b>刚体求解器：</b>论文说刚体用 MuJoCo-Warp；代码默认配置 <code>GENERIC</code> 把自由刚体放在 VBD 上，代码文档自己说这样"能推、不能夹"。作者的海绵演示和我们 3 次运行都手动改回了 MuJoCo。</li>
+    <li><b>UR5e：</b>论文列了，代码没带。</li>
+    <li><b>"时空反馈"：</b>论文说 agent 收到接触、滑动、进度这类结构化反馈；agent 的命令工具实际只给对比图、gate 结果和一句运动描述，接触和抓取要去 GaP 的工具里读。这个词在代码里一次也没出现。</li>
+    <li><b>海绵演示：</b>仓库里的海绵演示是作者手调的（泡沫 E 80 kPa、手臂增益 1600/70），还用一个"latch"把海绵钉在手上；agent 的规则明确禁止这样做。论文里 agent 建的那个海绵仿真没有发布。</li>
+  </ul>
+  <p class="note">每个参数的具体名字和默认值见 <a href="../../Sim-robot-learning/artifact/2026-11-07-SimulationBasics.html#rss">仿真从零讲起 · 第 8 节</a>。</p>
 </section>
 
 <section id="results">
