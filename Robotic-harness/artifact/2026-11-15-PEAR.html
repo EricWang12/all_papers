@@ -377,6 +377,7 @@ flowchart LR
         <li><b>Prefix cache：</b>H100 上用 LMCache 把前缀 KV cache 卸到 CPU 内存，限制并发让命中率 ≥ 约 95%：160k cap 时每 engine 64 条，256k cap 时 32 条。GB300 主机内存小，不用 LMCache。</li>
         <li><b>吞吐：</b>8×H100 节点和 4×GB300 节点各约 2,000–3,000 tokens/s；MTP 因为 bug 没开。</li>
         <li><b>Reward：</b>episode 结束时仿真报成功 = 1，否则 0。</li>
+        <li><b>训练里不加任何输入噪声：</b>论文和 <span class="win">repo</span> 的训练配置里都没有 domain randomization、图像增强或 dropout。变化只来自两处：temperature 1.0 在完整分布上采样，以及任务和初始状态不同（LIBERO 前三个 suite 是 3 × 10 个任务 × 50 个初始状态）。鲁棒性是事后在 LIBERO-Plus 和真机上测出来的（E2、E4）。</li>
         <li><b>没有新仿真器，也没有从零写 RL 框架：</b>PEAR 是把现成的仿真 benchmark 接到现成的 LLM-RL 栈上，再把这条链路调到能跑 256k token 的 episode。</li>
       </ul>
       <div class="table-wrap">
