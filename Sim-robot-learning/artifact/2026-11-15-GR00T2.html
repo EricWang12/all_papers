@@ -450,6 +450,15 @@ flowchart TD
   C --> R["<b>YAM 上执行</b><br/><span class='ex'>Dumptruck SR 60%<br/>Prog. 96</span>"]
       </pre></div>
 
+      <p class="eyebrow">Co-training 里的两类样本，以 top 这一路相机为例</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>样本</th><th>top 这一路里拍到什么</th><th>教给模型什么</th></tr>
+          <tr><td><b>UMI 示范</b><br><span class="muted">装 Dumptruck，75 条</span></td><td>示范者头上的广角相机：桌面、玩具车、人的手臂和蓝色夹爪</td><td>任务：装轮子、上螺丝、电钻拧紧、翻面</td></tr>
+          <tr><td><b>YAM play data</b><br><span class="muted">别的任务</span></td><td>YAM 工位顶上的固定相机：YAM 的两条手臂</td><td>身体：YAM 长什么样、怎么动</td></tr>
+          <tr><td><b>部署时</b><br><span class="muted">训练里没有这种组合</span></td><td>YAM 顶部相机，画面里是玩具车零件</td><td>模型要把上面两样拼起来；Fig. 14 检验的就是这一步</td></tr>
+        </table>
+      </div>
       <figure class="paper-fig">
         <div class="mat"><img src="2026-11-15-GR00T2/fig14.jpg" alt="同一帧 YAM 俯视画面出发，上排只用 UMI 数据训练的模型预测出人手和蓝色 UMI 手指，下排加了 YAM co-training 的模型预测出 YAM 的手臂"></div>
         <figcaption><b>Fig. 14</b>（作者原图）GR00T 2 在 YAM 上生成的未来帧，不加和加 YAM co-training。</figcaption>
@@ -622,15 +631,15 @@ flowchart TD
       </ol>
       <figure class="paper-fig">
         <div class="mat"><video src="2026-11-15-GR00T2/web-agent-tractor.mp4" autoplay muted loop playsinline controls></video></div>
-        <figcaption><b>项目页</b> <a href="https://research.nvidia.com/labs/gear/gr00t-2/#agentic-control">Agentic Control</a>：Toy Tractor 连续运行的第 10 轮，16× 播放。左上是 agent 的日志，左下的状态依次是 WAM EXECUTING → THINKING → CaP EXECUTING。</figcaption>
+        <figcaption><b>项目页</b> <a href="https://research.nvidia.com/labs/gear/gr00t-2/#agentic-control">Agentic Control</a>：Toy Tractor 连续运行的第 10 轮，16× 播放。左上是 agent 的日志，左下的状态依次是 WAM EXECUTING → THINKING → CaP EXECUTING。日志时间 01:59:25 <code>wam_act</code>，02:04:44 <code>stop_wam</code>，02:05:05 起 CaP skill，约 02:07:35 交还，02:08:11 确认螺丝拧好。</figcaption>
       </figure>
       <div class="flow"><pre>
 flowchart TD
   O["<b>Observe</b><br/><span class='ex'>get_image<br/>get_robot_state</span>"] --> R["<b>Reason</b><br/><span class='ex'>小轮装好了，螺丝横躺在轮毂上</span>"]
   R --> A1["<b>Act · stop_wam</b><br/><span class='ex'>停掉 GR00T 2 的重复插入</span>"]:::win
   A1 --> A2["<b>Act · CaP skill</b><br/><span class='ex'>cap_program_approach_<br/>screw_on_tractor</span>"]:::win
-  A2 --> V["<b>Verify</b><br/><span class='ex'>看修好没有</span>"]
-  V --> W["<b>Act · wam_act</b><br/><span class='ex'>交还 GR00T 2 继续装</span>"]
+  A2 --> V["<b>Verify</b><br/><span class='ex'>手腕已到螺丝上方，没抓<br/>车身稳、两手空</span>"]
+  V --> W["<b>Act · wam_act</b><br/><span class='ex'>GR00T 2 自己把螺丝<br/>摆正、插入、拧紧</span>"]
   W --> O
       </pre></div>
 
