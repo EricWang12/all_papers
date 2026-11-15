@@ -284,7 +284,7 @@ flowchart LR
     <li><b>左上 Input：</b>task instruction + robot description + observation（camera frames, arm state）——例子里是推方块的指令、双臂 YAM、3 路相机。</li>
     <li><b>中间 Robot-Use Agent（observe → reason → act）：</b>就是 reasoning model 本身，没有别的模块。</li>
     <li><b>右上 Output：</b>一个 JSON 的 end-effector pose，交给 IK + controller 去动臂。</li>
-    <li><b>左 Robot-use RL in simulation：</b>仿真器给 rollouts 和 reward；小图是 LIBERO 训练曲线 1.6% → 74.4%。</li>
+    <li><b>左 Robot-use RL in simulation：</b>仿真器给 rollouts 和 reward；小图是 LIBERO 训练曲线 1.6% → 74.4%。那些 logo 只是举例，实际只在 LIBERO 和 RoboDojo 里训；仿真器和 RL 框架都是现成的，PEAR 是中间的接线层（<a href="#stage-2">Stage 2</a>）。</li>
     <li><b>右 Real-world deployment：</b>训好的模型 sim to real，直接上真机（图里是画《星夜》的 demo）。</li>
     <li><b>底部五格：</b>LIBERO、instruction following、robustness、transfer、general capabilities——对应下面 <a href="#results">Results</a> 的 E1–E5。</li>
   </ol>
@@ -377,7 +377,19 @@ flowchart LR
         <li><b>Prefix cache：</b>H100 上用 LMCache 把前缀 KV cache 卸到 CPU 内存，限制并发让命中率 ≥ 约 95%：160k cap 时每 engine 64 条，256k cap 时 32 条。GB300 主机内存小，不用 LMCache。</li>
         <li><b>吞吐：</b>8×H100 节点和 4×GB300 节点各约 2,000–3,000 tokens/s；MTP 因为 bug 没开。</li>
         <li><b>Reward：</b>episode 结束时仿真报成功 = 1，否则 0。</li>
+        <li><b>没有新仿真器，也没有从零写 RL 框架：</b>PEAR 是把现成的仿真 benchmark 接到现成的 LLM-RL 栈上，再把这条链路调到能跑 256k token 的 episode。</li>
       </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>层</th><th>复用的</th><th>PEAR 自己加的 <span class="win">repo</span></th></tr>
+          <tr><td>仿真器</td><td>LIBERO（MuJoCo）；RoboDojo、RoboLab（Isaac Sim）</td><td>每个环境一个 adapter：<code>env.py</code> + <code>controller.py</code> + <code>environment_prompt.md</code> + 任务列表（<code>pear/envs/</code>，5 个 family）</td></tr>
+          <tr><td>Agent loop</td><td>veRL 的 multi-turn tool 接口</td><td><code>EnvironmentTool</code>：把仿真器包成一个 tool，只有 open / step / close（<code>pear/envs/tool.py</code>、<code>pear/agent_loop/</code>）</td></tr>
+          <tr><td>RL 训练</td><td>veRL</td><td>43 个 patch（score centering、HSDP、activation offload、checkpoint…）+ <code>pear/trainer/</code> 的 trainer 和 replay buffer</td></tr>
+          <tr><td>推理</td><td>vLLM + LMCache</td><td>LMCache 4 个 patch + rollout server（<code>pear/rollout/</code>）</td></tr>
+          <tr><td>调度</td><td>Ray</td><td>节点分 trainer / rollout / sim 三种角色；sim 的 server 和 client（<code>pear/sim/</code>）</td></tr>
+        </table>
+      </div>
+      <p class="note">表来自 repo 在 <code>f32aa1f</code> 的目录结构、<code>tool_config.yaml</code> 和 docstring，我没有通读源码。一个细节：<code>LiberoEnv</code> 是 stateless 的——每次调用从初始状态不渲染地重放这条 episode 已有的 native action，再执行新 action（docstring）；RoboDojo 则是一个 Isaac App 跑一条 episode。</p>
       <div class="flow"><pre>
 flowchart LR
   a["<b>vLLM engine</b><br/><span class='ex'>TP4 · 32–64 条并发<br/>LMCache 前缀命中 95%+</span>"] -- "action JSON" --> b["<b>Simulator</b><br/><span class='ex'>MuJoCo on CPU<br/>Isaac on GPU 节点</span>"]
