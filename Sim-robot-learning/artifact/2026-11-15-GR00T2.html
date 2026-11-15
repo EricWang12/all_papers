@@ -674,7 +674,8 @@ flowchart LR
         <li><b>去掉重复计算：</b>指令不变就复用 text feature；timestep conditioning 预先算好；只更新动作的去噪步复用上一次视频步的 attention key/value。</li>
         <li><b>编译和量化：</b>VAE encoder 和 transformer 编成 TensorRT engine，用 CUDA graph 回放；部分层用 FP8；减少去噪步数。</li>
         <li><b>服务路径：</b>streaming VAE 和 prefetch，把视频编码挪到预测请求之前。</li>
-        <li><b>动作怎么到 30 Hz：</b>模型大约每秒才推理一次，但每次出一整段 chunk，里面每一步就是 30 Hz 的一个控制周期（训练轨迹本身是 30 Hz）。Client 把 chunk 缓存起来，按控制器的频率逐条下发，同时异步请求下一段（§K.5.3）。</li>
+        <li><b>动作怎么到 30 Hz：</b>模型大约每秒才推理一次。每次出 48 步的 chunk（1.6 s），每一步是 30 Hz 的一个控制周期（训练轨迹本身是 30 Hz）；只执行前 30 步（正好 1 s），后 18 步不执行。Client 把 chunk 缓存起来，按控制器的频率逐条下发，同时异步请求下一段（§K.5.3）。</li>
+        <li><b>为什么 video model 跟得上：</b>去噪步数很少（YAM 是视频 2 步、动作 4 步）；未来视频只在 latent 里去噪，VAE decoder 只在可视化时才用，不算进预测延迟（Fig. 60）。</li>
         <li><b>Noisy-prefix RTC：</b>新 chunk 以已经承诺执行的动作前缀为条件，所以两段接得上；fine-tune 时给前缀加高斯噪声（σ = 0.1），只多训 5k 步。</li>
         <li><b>分阶段提速：</b>agent 给 reach、grasp、transport、screw 这些阶段各找一个速度；一个轻量 subtask predictor 判断 chunk 落在哪些阶段，再按速度表重定时。Dexter 三个任务的完成时间 95 → 81 s、80 → 66 s、184 → 137 s（Tab. 29）。</li>
       </ul>
