@@ -249,11 +249,11 @@ flowchart LR
   IN --> B1["<b>闭源 frontier RUA</b><br/>GPT-6 Astra / 6.1 Sol"]
   B1 --> BX["能做，但权重不开放<br/><span class='ex'>LIBERO 80.6 / 76.2</span>"]:::gap
   IN --> C1["<b>加 harness</b><br/>SAM 3 · skill · primitive"]
-  C1 --> CX["动作空间被限制<br/><span class='ex'>有些任务做不了</span>"]:::gap
+  C1 --> CX["可能收窄动作空间<br/><span class='ex'>§1 的说法 · 无实验</span>"]:::gap
   IN --> D1["<b>VLA + demo SFT</b><br/>π0.5"]
   D1 --> DX["照着示范的动作做<br/><span class='ex'>同场景换任务 0.75%</span>"]:::gap
   </pre></div>
-  <p class="note">只有第一条 lane 真在这个例子上跑过（Table 7）。后三条论文没在真机上测：frontier 的数字是 LIBERO max effort（Fig. 3b），harness 的问题是 §1 的定性说法、没有数字，π0.5 的 0.75% 是 LIBERO-Pro task perturbation（Fig. 4b）——放到这个例子上是我的推断。</p>
+  <p class="note">只有第一条 lane 真在这个例子上跑过（Table 7）。后三条论文没在真机上测：frontier 的数字是 LIBERO max effort（Fig. 3b），harness 的问题只有 §1 一句 “may restrict their action space and thereby make other tasks infeasible”，全文没有任何 harness baseline；frontier 模型 max effort 仍高于本文（80.6 / 76.2 vs 74.4）；π0.5 的 0.75% 是 LIBERO-Pro task perturbation（Fig. 4b）——放到这个例子上是我的推断。</p>
   <p class="crux"><b>根本问题：</b>“会用机器人”这项能力不在开源模型里，harness 和 demo 只是从外面补，补的同时限制了动作或绑死了动作。　<b>这篇的切入点：</b>把能力直接训进模型——仿真里纯 RL、零 demo、无 harness，配方照搬 computer-use agent。</p>
   <h3 id="related">Related work</h3>
   <div class="table-wrap">
