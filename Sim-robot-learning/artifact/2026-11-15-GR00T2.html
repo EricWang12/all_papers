@@ -353,6 +353,7 @@ flowchart TD
         <li><b>State 和 action：</b>每种身体一组小 MLP 把 state 和带噪的 action chunk 投进 transformer，一个 decoder 把输出 token 变回动作。</li>
         <li><b>Attention：</b>video token 跨时间、跨相机互相看；action token 看全部 video token，包括正在生成的未来帧，所以动作跟着想象出来的未来走。</li>
         <li><b>训练和推理：</b>未来视频 latent 和动作各一个 flow matching loss；推理时视频去噪 1–2 步，动作 2–4 步。</li>
+        <li><b>视频稀，动作密：</b>视频是 5 fps（0.8 s 历史 5 帧；Fig. 14 里未来 8 步，每步 0.2 s），动作是 30 Hz（48 步），两者覆盖同一段 1.6 s。</li>
         <li><b>Turbo 变体：</b>同一个 2B transformer，换成 Wan 2.2 VAE（空间每维压 16×），latent 网格小 4 倍，action horizon 不变。</li>
       </ul>
       <figure class="paper-fig">
@@ -436,6 +437,7 @@ flowchart LR
         <li><b>Why：</b>遥操作每加一个任务都要占机器人、工位和操作员，而且动作慢，抛投这类动作根本示范不出来。</li>
         <li><b>配方：</b>示范给任务，目标机器人的 task-agnostic play data 给身体，cross-embodiment pretraining 把两者接上。</li>
         <li><b>Co-training</b>（补外观和场景）：UMI 示范和 4 个通用 YAM 语料按 0.6 : 0.4 混着 post-train；YAM 语料里没有目标任务。</li>
+        <li><b>Top view 从哪来：</b>这里的 Gripper UMI 不只有腕部相机，还带一个广角 head camera 和一个 trigger camera；UMI 的 head、wrist、bottom 相机分别填 YAM 的 top、wrist、bottom 槽位（§E.3.1、Tab. 16）。Head 和 top 的差别没有做几何对齐，靠 co-training 吸收；论文没有单独消融这一路。</li>
         <li><b>腕部视角对齐</b>（补 sensing 的几何部分）：把 UMI 的 fisheye 重渲染成模仿 YAM wrist camera 的虚拟 pinhole 视角。</li>
         <li><b>共享 action head</b>（补 actuation）：UMI 动作改写成 YAM 的写法（抓取点位姿、归一化夹爪宽度），放进 YAM 那一行 action head 的前 20 维。</li>
       </ul>
@@ -590,12 +592,21 @@ flowchart TD
     <div class="stage-body">
       <ul class="tight">
         <li><b>Why：</b>长任务里误差会累积，会出现没见过的状态；语言也常说不清是哪个物体、放哪、用哪只手。</li>
-        <li><b>分工：</b>agent（S2）决定做什么：拆步骤、看进度、写代码。GR00T 2（S1）决定怎么做：难以脚本化的接触操作。</li>
+        <li><b>分工：</b>agent（S2）决定做什么：拆步骤、看进度、写代码。GR00T 2（S1）决定怎么做：难以脚本化的接触操作。S2 不在 GR00T 2 模型里，是外接的。</li>
         <li><b>真机：</b>GR00T 2 是默认执行者；agent 发现掉件或卡住，就停掉它，用 code-as-policy（CaP）skill 修好，验证，再交还。</li>
         <li><b>仿真：</b>ASPIRE 先找出 task-level program，把 GR00T 2 调用和感知、几何推理、CaP primitive 串起来；每个任务在 dev seed 上选“程序”还是“GR00T 2 单独跑”当默认执行者。</li>
         <li><b>执行权：</b>只有一个 control worker 发指令，GR00T 2 和 CaP 不会同时控制机器人。</li>
         <li><b>加 skill 不用重训：</b>CaP skill 可以在测试时加进去；真机上的 skill 由 ASPIRE 在真机上学，或在仿真里学完再迁过来。</li>
       </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>层</th><th>是谁</th><th>管什么</th><th>多久动一次</th></tr>
+          <tr><td><b>System 2</b></td><td>外接的 reasoning agent：§G.1 是一个 frontier multimodal coding agent，§G.2 是 GPT-6 Astra；Fig. 9 写明可选，也可以是脚本或人</td><td>拆步骤、看进度、判断每步做完没有、写 CaP 代码、出错时接管</td><td>按需：每次 tool call，或每步结束时问一次（垃圾分类一个 episode 中位数 9 轮）</td></tr>
+          <tr><td><b>Harness</b></td><td>夹在中间的规则程序（§G.2）</td><td>把 S2 的指令和点传给 S1，决定什么时候再问 S2</td><td>跟着 S1 的每步</td></tr>
+          <tr><td><b>System 1</b></td><td>GR00T 2 本身，那个 2B 的 WAM（G1 上是 Turbo）</td><td>按当前指令做接触操作，出 action chunk</td><td>YAM、Dexter：一次出 48 步（30 Hz，1.6 s），执行前 30 步后换下一段</td></tr>
+          <tr><td><b>System 0</b></td><td>只在 G1 上有：SONIC whole-body controller</td><td>把 latent token 变成关节目标，管平衡</td><td>50 Hz；再下面是 1000 Hz 的关节 PD</td></tr>
+        </table>
+      </div>
       <figure class="paper-fig">
         <div class="mat"><img src="2026-11-15-GR00T2/fig6.jpg" alt="Agentic runtime 的四栏：Agent、MCP Server、Execution、Environment"></div>
         <figcaption><b>Fig. 6</b>（作者原图）Agentic runtime architecture。</figcaption>
@@ -606,7 +617,8 @@ flowchart TD
         <li><b>② MCP Server：</b>三组 tool。WAM：<code>wam_act</code>、<code>stop_wam</code>。OBSERVE：<code>get_image</code>、<code>get_robot_state</code>、<code>localize_object</code>。CaP：<code>move_to_pose</code>、<code>move_to_joints</code>、<code>set_gripper</code>；虚线下面是任务专用 skill，如 <code>drop_any_object</code>、<code>flip_tractor</code>。</li>
         <li><b>③ Execution：</b>要么是 π<sub>WAM</sub>（GR00T 2），要么是一段 CaP program，图里的例子是 <code>p = localize_object("wheel")</code>，<code>move_to_pose(p.grasp)</code>，<code>set_gripper(0.0)</code>。Backend 是 WAM Server 和 CaP Providers（SAM3、cuRobo）。</li>
         <li><b>④ Environment：</b>Real 和 Sim 用同一套接口；下面是 Controller（joint PD control）和 Robot Service（cameras · arms）。</li>
-        <li><b>两条蓝色虚线：</b>上面 “streamed · 30 Hz” 是 policy 的控制流；下面 “on demand · per tool call” 是 agent 的调用。</li>
+        <li><b>两条蓝线都是观测的去向：</b>实线 “streamed · 30 Hz” 从 Environment 指向 π<sub>WAM</sub> 上方的观测缓冲，policy 一直拿到 30 Hz 的观测；虚线 “on demand · per tool call” 指向 MCP Server，agent 调 tool 时才取一次。</li>
+        <li><b>动作走灰线：</b>π<sub>WAM</sub> 右下角的绿色方块是 action chunk，它和 CaP program 的指令汇成一路进 Environment 的 Controller。</li>
       </ol>
       <figure class="paper-fig">
         <div class="mat"><video src="2026-11-15-GR00T2/web-agent-tractor.mp4" autoplay muted loop playsinline controls></video></div>
@@ -662,7 +674,8 @@ flowchart LR
         <li><b>去掉重复计算：</b>指令不变就复用 text feature；timestep conditioning 预先算好；只更新动作的去噪步复用上一次视频步的 attention key/value。</li>
         <li><b>编译和量化：</b>VAE encoder 和 transformer 编成 TensorRT engine，用 CUDA graph 回放；部分层用 FP8；减少去噪步数。</li>
         <li><b>服务路径：</b>streaming VAE 和 prefetch，把视频编码挪到预测请求之前。</li>
-        <li><b>Noisy-prefix RTC：</b>新 chunk 以已经承诺执行的动作前缀为条件；fine-tune 时给前缀加高斯噪声（σ = 0.1），只多训 5k 步。</li>
+        <li><b>动作怎么到 30 Hz：</b>模型大约每秒才推理一次，但每次出一整段 chunk，里面每一步就是 30 Hz 的一个控制周期（训练轨迹本身是 30 Hz）。Client 把 chunk 缓存起来，按控制器的频率逐条下发，同时异步请求下一段（§K.5.3）。</li>
+        <li><b>Noisy-prefix RTC：</b>新 chunk 以已经承诺执行的动作前缀为条件，所以两段接得上；fine-tune 时给前缀加高斯噪声（σ = 0.1），只多训 5k 步。</li>
         <li><b>分阶段提速：</b>agent 给 reach、grasp、transport、screw 这些阶段各找一个速度；一个轻量 subtask predictor 判断 chunk 落在哪些阶段，再按速度表重定时。Dexter 三个任务的完成时间 95 → 81 s、80 → 66 s、184 → 137 s（Tab. 29）。</li>
       </ul>
       <div class="flow"><pre>
