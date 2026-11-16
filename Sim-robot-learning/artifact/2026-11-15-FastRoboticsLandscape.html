@@ -1,0 +1,1013 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>FastRobotics 全景</title>
+<meta name="description" content="从 Flash ALOHA 出发的调研：32 篇近两年让机器人动得快、控得快的工作，按“速度丢在哪一环”分五类，每篇一张图、三行字，供挑选精读。">
+<meta name="paper:title" content="高速 / 高频控制的机器人学习系统：近两年的地图（综述页，不是单篇论文）">
+<meta name="paper:source" content="https://johnyao93.github.io/flash-aloha/">
+<meta name="paper:venue" content="Literature map, 2026-11-15">
+<meta name="paper:pdf" content="https://johnyao93.github.io/static/files/flash-aloha.pdf?v=2">
+<meta name="paper:date" content="2026-11-15">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+
+/* landscape page: one card per work (number, one figure, three lines) */
+.cards { display: grid; gap: .8rem; margin-top: 1rem; }
+.card { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 1rem; background: var(--bg); border: 1px solid var(--rule); border-radius: 8px; padding: .8rem; scroll-margin-top: 3.5rem; }
+.card .paper-fig { margin: 0; align-self: start; }
+.card .paper-fig img { max-height: 300px; }
+.card .paper-fig figcaption { font-size: .78rem; }
+.card h3 { display: flex; flex-wrap: wrap; gap: .25rem .5rem; align-items: baseline; }
+.num { font: 500 .8rem var(--f-mono); color: var(--surface); background: var(--accent); border-radius: 4px; padding: .05rem .45rem; }
+.tag-new { font: 500 .7rem var(--f-mono); color: var(--win); border: 1px solid var(--win); border-radius: 3px; padding: 0 .3rem; }
+.tag-old { font: 500 .7rem var(--f-mono); color: var(--muted); border: 1px solid var(--rule); border-radius: 3px; padding: 0 .3rem; }
+.card .ttl { font-size: .9rem; margin: .2rem 0 0; }
+.card .when { font: 500 .76rem var(--f-mono); color: var(--muted); margin: .2rem 0 .55rem; }
+.card dl { margin: 0; display: grid; gap: .3rem; font-size: .93rem; max-width: none; }
+.card dl > div { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr); gap: .6rem; align-items: baseline; }
+.card dt { font: 500 .75rem var(--f-mono); color: var(--muted); }
+.card dd { margin: 0; }
+.card .links { margin-top: .55rem; }
+.card .caveat { font-size: .8rem; color: var(--muted); margin: .45rem 0 0; }
+.fast { color: var(--win); font-weight: 700; }
+table.pick { table-layout: fixed; min-width: 640px; }
+table.pick th:nth-child(1) { width: 2.8rem; } table.pick th:nth-child(2) { width: 27%; } table.pick th:nth-child(3) { width: 6.6rem; } table.pick th:nth-child(4) { width: 6.4rem; }
+table.pick a { text-decoration: none; font-weight: 700; }
+table.pick td.d { font: 500 .8rem var(--f-mono); white-space: nowrap; }
+.tl { margin: 1.1rem 0; padding: .7rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+.tl svg { display: block; width: 100%; min-width: 640px; height: auto; color: var(--ink); }
+.tl text { font: 11px var(--f-mono); fill: var(--muted); }
+.tl .row { font: 12px var(--f-body); fill: currentColor; }
+.tl .grid { stroke: var(--rule); stroke-width: 1; }
+.tl .yr { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.tl circle { fill: var(--accent); }
+.tl circle.new { fill: var(--win); }
+.tl .lbl { font: 500 10px var(--f-mono); fill: var(--surface); }
+.tl .anchor { fill: var(--ex); }
+@media (max-width: 640px) { .card { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Sim-robot-learning</span></span>
+    <div class="jump"><a href="#tldr">TL;DR</a><a href="#problem">地图</a><a href="#l2">时间轴</a><a href="#pick">挑选表</a><a href="#l3">每篇一张卡</a><a href="#limits">没收进来的</a></div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Sim-robot-learning · 归档于 2026-11-15</p>
+  <h1>FastRobotics 全景</h1>
+  <p class="full-title">高速 / 高频控制的机器人学习系统：近两年的地图</p>
+  <p class="meta">综述页，不是单篇论文 · 32 篇（其中 19 篇是 2026 年 6 月以后的）· 只读了摘要、项目页和关键表格，没有精读</p>
+  <p class="links"><a href="2026-11-15-FlashALOHA.html">起点：Flash ALOHA</a><a href="#pick">挑选表</a></p>
+  <p class="filed">归档到 <b>Robot learning in simulation</b>：从 Flash ALOHA 延伸出来的一组工作的入口。分成五环是我的归类；数字都标了出处。<b>回我编号（比如“3、7、12”），我就对这几篇做完整讲解。</b></p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>学出来的机器人动作慢，原因分散在五环：示范采得慢、策略照着慢、推理和换段卡、一段内部不反应、任务本身太快。</dd></div>
+    <div><dt>Trend</dt><dd>最挤的是第 3 环：RTC 之后的后续和变体查到约二十篇，这里只收 6 篇。和 Flash ALOHA 同一路数（握臂示教 + 去掉手）的最近一篇是 <a href="#w-1">HALO</a>。</dd></div>
+    <div><dt>Caveat</dt><dd>“高频”多数指底层控制器（500 Hz–1 kHz）。<b>学出来的那一环通常只有 10–60 Hz</b>；声明超过 100 Hz 的，在查过的约 70 篇里只有 T-WLA 和 Tube Diffusion Policy。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Map</p>
+  <h2>速度会丢在五个地方，每一环都有人在补</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · Flash ALOHA 的 Battery Insertion</p>
+    <p><b>装电池</b>：人徒手约 3 s（读图）；puppeteering 示范 <span class="ex">20 s</span>，训出的策略 <span class="ex">55% / 17.87 s</span>；Flash ALOHA <span class="ex">85% / 5.70 s</span>。下面每一环都对着这个例子问：时间丢在哪。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>装电池</b><br/><span class='ex'>人徒手约 3 s</span>"]:::example --> S1["<b>1 · 采集示范</b><br/>遥操作只能慢慢做<br/><span class='ex'>puppeteering 示范 20 s</span>"]:::gap
+  S1 --> S2["<b>2 · 重定时</b><br/>慢示范训出慢策略，硬提速就崩<br/><span class='ex'>55% / 17.87 s，提速后 15% / 30%</span>"]:::gap
+  S2 --> S3["<b>3 · 实时执行</b><br/>等推理要停，换段时指令跳一下<br/><span class='ex'>不混合：75%</span>"]:::gap
+  S3 --> S4["<b>4 · 快环</b><br/>一段内部不看力和触觉<br/><span class='ex'>作者列的局限：没有触觉</span>"]:::gap
+  S4 --> S5["<b>5 · 动态技能</b><br/>物体不等人，遥操作采不了<br/><span class='ex'>Toss &amp; Catch 1.85 s</span>"]:::gap
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点方块跳到那一环的论文。每个方块：这一环是什么、时间丢在哪（我对着例子的概括）、例子里的数字。数字来自 Flash ALOHA 的 Table II–IV 和 Fig. 7。Flash ALOHA 自己补的是第 1 环和第 3 环。</p>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Timeline</p>
+  <h2>哪一环最近最热</h2>
+  <div class="tl"><svg viewBox="0 0 760 222" role="img" aria-label="时间轴：每个点是一个工作，横轴是首次公开的月份，纵轴是五环；绿色的点是 2026 年 6 月以后的">
+<text x="124" y="214" text-anchor="middle">更早</text>
+<line class="yr" x1="150" y1="18" x2="150" y2="200"/><text x="154" y="214">2025</text>
+<line class="yr" x1="456" y1="18" x2="456" y2="200"/><text x="460" y="214">2026</text>
+<line class="yr" x1="583" y1="18" x2="583" y2="200"/><text x="587" y="214">2026-06</text>
+<line class="grid" x1="110" y1="43" x2="748" y2="43"/>
+<text class="row" x="8" y="47">1 · 采集</text>
+<a href="#w-32"><circle class="" cx="124" cy="43" r="9"><title>UMI 2024-02-15</title></circle><text class="lbl" x="124" y="46" text-anchor="middle">32</text></a>
+<a href="#w-30"><circle class="" cx="231" cy="43" r="9"><title>Tool-as-Interface 2025-04-06</title></circle><text class="lbl" x="231" y="46" text-anchor="middle">30</text></a>
+<a href="#w-26"><circle class="" cx="489" cy="43" r="9"><title>ExtremControl 2026-02-11</title></circle><text class="lbl" x="489" y="46" text-anchor="middle">26</text></a>
+<a href="#w-23"><circle class="" cx="546" cy="43" r="9"><title>I2RLC 2026-04-18</title></circle><text class="lbl" x="546" y="46" text-anchor="middle">23</text></a>
+<a href="#w-15"><circle class="new" cx="624" cy="43" r="9"><title>MEVION 2026-07-20</title></circle><text class="lbl" x="624" y="46" text-anchor="middle">15</text></a>
+<a href="#w-11"><circle class="new" cx="677" cy="43" r="9"><title>PAKT 2026-09-22</title></circle><text class="lbl" x="677" y="46" text-anchor="middle">11</text></a>
+<a href="#w-1"><circle class="new" cx="720" cy="43" r="9"><title>HALO 2026-11-12</title></circle><text class="lbl" x="720" y="46" text-anchor="middle">1</text></a>
+<line class="grid" x1="110" y1="77" x2="748" y2="77"/>
+<text class="row" x="8" y="81">2 · 重定时</text>
+<a href="#w-27"><circle class="" cx="287" cy="77" r="9"><title>SAIL 2025-06-13</title></circle><text class="lbl" x="287" y="80" text-anchor="middle">27</text></a>
+<a href="#w-25"><circle class="" cx="528" cy="77" r="9"><title>Realtime-VLA V2 2026-03-27</title></circle><text class="lbl" x="528" y="80" text-anchor="middle">25</text></a>
+<a href="#w-24"><circle class="" cx="547" cy="77" r="9"><title>RACE 2026-04-01</title></circle><text class="lbl" x="547" y="80" text-anchor="middle">24</text></a>
+<a href="#w-21"><circle class="" cx="566" cy="77" r="9"><title>RL Token 2026-04-24</title></circle><text class="lbl" x="566" y="80" text-anchor="middle">21</text></a>
+<a href="#w-16"><circle class="new" cx="616" cy="77" r="9"><title>B-spline Policy 2026-07-10</title></circle><text class="lbl" x="616" y="80" text-anchor="middle">16</text></a>
+<a href="#w-8"><circle class="new" cx="686" cy="77" r="9"><title>AdaTempo 2026-10-02</title></circle><text class="lbl" x="686" y="80" text-anchor="middle">8</text></a>
+<a href="#w-4"><circle class="new" cx="705" cy="77" r="9"><title>Learned Speed Prior 2026-10-23</title></circle><text class="lbl" x="705" y="80" text-anchor="middle">4</text></a>
+<line class="grid" x1="110" y1="111" x2="748" y2="111"/>
+<text class="row" x="8" y="115">3 · 实时执行</text>
+<a href="#w-28"><circle class="" cx="284" cy="111" r="9"><title>RTC 2025-06-09</title></circle><text class="lbl" x="284" y="114" text-anchor="middle">28</text></a>
+<a href="#w-14"><circle class="new" cx="631" cy="111" r="9"><title>πR² 2026-07-28</title></circle><text class="lbl" x="631" y="114" text-anchor="middle">14</text></a>
+<a href="#w-12"><circle class="new" cx="672" cy="111" r="9"><title>Real-Time EXPO-FT 2026-09-16</title></circle><text class="lbl" x="672" y="114" text-anchor="middle">12</text></a>
+<a href="#w-7"><circle class="new" cx="691" cy="111" r="9"><title>REACT 2026-10-08</title></circle><text class="lbl" x="691" y="114" text-anchor="middle">7</text></a>
+<a href="#w-6"><circle class="new" cx="710" cy="111" r="9"><title>Chronos Policy 2026-10-09</title></circle><text class="lbl" x="710" y="114" text-anchor="middle">6</text></a>
+<a href="#w-2"><circle class="new" cx="729" cy="111" r="9"><title>CAC + Async ACT 2026-11-08</title></circle><text class="lbl" x="729" y="114" text-anchor="middle">2</text></a>
+<line class="grid" x1="110" y1="145" x2="748" y2="145"/>
+<text class="row" x="8" y="149">4 · 快环</text>
+<a href="#w-31"><circle class="" cx="203" cy="145" r="9"><title>RDP 2025-03-04</title></circle><text class="lbl" x="203" y="148" text-anchor="middle">31</text></a>
+<a href="#w-20"><circle class="" cx="553" cy="145" r="9"><title>Tube Diffusion Policy 2026-04-26</title></circle><text class="lbl" x="553" y="148" text-anchor="middle">20</text></a>
+<a href="#w-19"><circle class="new" cx="590" cy="145" r="9"><title>IMPACT 2026-06-09</title></circle><text class="lbl" x="590" y="148" text-anchor="middle">19</text></a>
+<a href="#w-17"><circle class="new" cx="609" cy="145" r="9"><title>T-Rex 2026-06-15</title></circle><text class="lbl" x="609" y="148" text-anchor="middle">17</text></a>
+<a href="#w-9"><circle class="new" cx="683" cy="145" r="9"><title>FP2 2026-09-29</title></circle><text class="lbl" x="683" y="148" text-anchor="middle">9</text></a>
+<a href="#w-5"><circle class="new" cx="702" cy="145" r="9"><title>T-WLA 2026-10-20</title></circle><text class="lbl" x="702" y="148" text-anchor="middle">5</text></a>
+<line class="grid" x1="110" y1="179" x2="748" y2="179"/>
+<text class="row" x="8" y="183">5 · 动态技能</text>
+<a href="#w-29"><circle class="" cx="275" cy="179" r="9"><title>ANYmal Badminton 2025-05-29</title></circle><text class="lbl" x="275" y="182" text-anchor="middle">29</text></a>
+<a href="#w-22"><circle class="" cx="549" cy="179" r="9"><title>Ace 2026-04-22</title></circle><text class="lbl" x="549" y="182" text-anchor="middle">22</text></a>
+<a href="#w-18"><circle class="new" cx="595" cy="179" r="9"><title>Five-Ball Juggling 2026-06-15</title></circle><text class="lbl" x="595" y="182" text-anchor="middle">18</text></a>
+<a href="#w-13"><circle class="new" cx="655" cy="179" r="9"><title>RMBL Juggling 2026-08-27</title></circle><text class="lbl" x="655" y="182" text-anchor="middle">13</text></a>
+<a href="#w-10"><circle class="new" cx="679" cy="179" r="9"><title>Humanoid Badminton 2026-09-25</title></circle><text class="lbl" x="679" y="182" text-anchor="middle">10</text></a>
+<a href="#w-3"><circle class="new" cx="707" cy="179" r="9"><title>Catch It All! 2026-10-28</title></circle><text class="lbl" x="707" y="182" text-anchor="middle">3</text></a>
+</svg></div>
+  <p class="flow-hint">每个点是一篇，数字是卡片编号（按公开时间从新到旧排）；绿色是 2026 年 6 月以后的。点一下跳到卡片。</p>
+</section>
+
+<section id="pick">
+  <p class="eyebrow">Pick list</p>
+  <h2>挑选表：从新到旧</h2>
+  <div class="table-wrap">
+    <table class="grid pick">
+      <tr><th>#</th><th>工作</th><th>公开</th><th>哪一环</th><th>一句话</th></tr>
+<tr><td><a href="#w-1">#1</a></td><td><b>HALO</b><br><span class="muted">HKUST / Robbyant</span></td><td class="d">2026-11-12</td><td>1 · 采集</td><td>和 Flash ALOHA 最像：握臂示教 + 去掉画面里的手，用在移动操作上</td></tr>
+<tr><td><a href="#w-2">#2</a></td><td><b>CAC + Async ACT</b><br><span class="muted">RIKEN AIP / 东京大学</span></td><td class="d">2026-11-08</td><td>3 · 实时执行</td><td>和 Flash ALOHA 的 chunk 混合最像：ACT 异步执行 + 平滑跟踪</td></tr>
+<tr><td><a href="#w-3">#3</a></td><td><b>Catch It All!</b><br><span class="muted">UC San Diego</span></td><td class="d">2026-10-28</td><td>5 · 动态技能</td><td>灵巧手接没见过的物体；遥操作只接住 3/44</td></tr>
+<tr><td><a href="#w-4">#4</a></td><td><b>Learned Speed Prior</b><br><span class="muted">首尔大学</span></td><td class="d">2026-10-23</td><td>2 · 重定时</td><td>学一个“这段路该走多快”的先验来重定时示范：叠杯 6.02 s → 3.50 s</td></tr>
+<tr><td><a href="#w-5">#5</a></td><td><b>T-WLA</b><br><span class="muted">MIT / Harvard 等</span></td><td class="d">2026-10-20</td><td>4 · 快环</td><td>少数声明“学出来的环”超过 100 Hz 的工作：触觉修正 119.1 Hz</td></tr>
+<tr><td><a href="#w-6">#6</a></td><td><b>Chronos Policy</b><br><span class="muted">Stanford</span></td><td class="d">2026-10-09</td><td>3 · 实时执行</td><td>让策略认识物理时间：200 ms 延迟下 76.4% 对 1.8%</td></tr>
+<tr><td><a href="#w-7">#7</a></td><td><b>REACT</b><br><span class="muted">上海交大 / PrimeBot 等</span></td><td class="d">2026-10-08</td><td>3 · 实时执行</td><td>滚动去噪：反应延迟 734 ms，接近人的 705 ms</td></tr>
+<tr><td><a href="#w-8">#8</a></td><td><b>AdaTempo</b><br><span class="muted">清华大学 / 复旦大学</span></td><td class="d">2026-10-02</td><td>2 · 重定时</td><td>DemoSpeedup 同组的后续：按示范之间的节奏共识分段加速，2.02×</td></tr>
+<tr><td><a href="#w-9">#9</a></td><td><b>FP2</b><br><span class="muted">上海交大 / Flexiv / Noematrix 等</span></td><td class="d">2026-09-29</td><td>4 · 快环</td><td>给 VLA 旁边加一个 50 Hz 的力控策略：π0 从 15% 到 80%</td></tr>
+<tr><td><a href="#w-10">#10</a></td><td><b>Humanoid Badminton</b><br><span class="muted">清华大学 / 香港中文大学等</span></td><td class="d">2026-09-25</td><td>5 · 动态技能</td><td>人形机器人打羽毛球：回球 89.4%，能跳起来打</td></tr>
+<tr><td><a href="#w-11">#11</a></td><td><b>PAKT</b><br><span class="muted">NVIDIA</span></td><td class="d">2026-09-22</td><td>1 · 采集</td><td>握臂示教过一遍和策略相同的物理限制，再喂给真机 RL</td></tr>
+<tr><td><a href="#w-12">#12</a></td><td><b>Real-Time EXPO-FT</b><br><span class="muted">Stanford</span></td><td class="d">2026-09-16</td><td>3 · 实时执行</td><td>慢 VLA 出候选，快的 RL edit policy 按最新观测修改：42% → 97%</td></tr>
+<tr><td><a href="#w-13">#13</a></td><td><b>RMBL Juggling</b><br><span class="muted">RAI Institute</span></td><td class="d">2026-08-27</td><td>5 · 动态技能</td><td>在真机上 53 秒学会三球杂耍（低惯量双臂 AthenaZero）</td></tr>
+<tr><td><a href="#w-14">#14</a></td><td><b>πR²</b><br><span class="muted">CMU</span></td><td class="d">2026-07-28</td><td>3 · 实时执行</td><td>每次调用只去噪 1 步，把 GR00T 的重规划提到约 25 Hz</td></tr>
+<tr><td><a href="#w-15">#15</a></td><td><b>MEVION</b><br><span class="muted">东京大学 JSK Lab</span></td><td class="d">2026-07-20</td><td>1 · 采集</td><td>比 ALOHA 快 7 倍、力大 3 倍的开源 leader-follower 硬件</td></tr>
+<tr><td><a href="#w-16">#16</a></td><td><b>B-spline Policy</b><br><span class="muted">Harvard / MIT / UT Austin</span></td><td class="d">2026-07-10</td><td>2 · 重定时</td><td>动作改成连续的 B-spline，就能随意重定时；Flash ALOHA 引用了它</td></tr>
+<tr><td><a href="#w-17">#17</a></td><td><b>T-Rex</b><br><span class="muted">UC Berkeley / NVIDIA / Stanford 等</span></td><td class="d">2026-06-15</td><td>4 · 快环</td><td>触觉 slow-fast VLA 的参照：5 Hz 出动作，20 Hz 用触觉收尾</td></tr>
+<tr><td><a href="#w-18">#18</a></td><td><b>Five-Ball Juggling</b><br><span class="muted">TU Darmstadt</span></td><td class="d">2026-06-15</td><td>5 · 动态技能</td><td>两只 Barrett WAM 开环抛五个球，第二次尝试就收敛</td></tr>
+<tr><td><a href="#w-19">#19</a></td><td><b>IMPACT</b><br><span class="muted">Harvard / Stanford</span></td><td class="d">2026-06-09</td><td>4 · 快环</td><td>把学习放进 1 kHz 控制环：没见过的 5 kg 负载 21/25 对 0/25</td></tr>
+<tr><td><a href="#w-20">#20</a></td><td><b>Tube Diffusion Policy</b><br><span class="muted">Meta Reality Labs Research / Idiap 等</span></td><td class="d">2026-04-26</td><td>4 · 快环</td><td>每个控制周期都修正一次的 diffusion policy：超过 100 Hz</td></tr>
+<tr><td><a href="#w-21">#21</a></td><td><b>RL Token</b><br><span class="muted">Physical Intelligence</span></td><td class="d">2026-04-24</td><td>2 · 重定时</td><td>冻住 VLA，在一个 RL token 上做在线 RL：关键阶段快 3 倍，超过遥操作</td></tr>
+<tr><td><a href="#w-22">#22</a></td><td><b>Ace</b><br><span class="muted">Sony AI</span></td><td class="d">2026-04-22</td><td>5 · 动态技能</td><td>上了 Nature：RL 乒乓球机器人打赢精英选手</td></tr>
+<tr><td><a href="#w-23">#23</a></td><td><b>I2RLC</b><br><span class="muted">OMRON SINIC X / 筑波大学 / 早稻田大学</span></td><td class="d">2026-04-18</td><td>1 · 采集</td><td>慢示范在真机上迭代修正成 10× 的快示范，再训 ACT</td></tr>
+<tr><td><a href="#w-24">#24</a></td><td><b>RACE</b><br><span class="muted">首尔大学 / Vital Robotics / KAIST</span></td><td class="d">2026（ICLR）</td><td>2 · 重定时</td><td>状态当动作 + 时间最优重定时：真机最多 4×</td></tr>
+<tr><td><a href="#w-25">#25</a></td><td><b>Realtime-VLA V2</b><br><span class="muted">Dexmal</span></td><td class="d">2026-03-27</td><td>2 · 重定时</td><td>一整套部署栈让 VLA 跑到人徒手的速度：叠衬衫 18.9 s 对 19.0 s</td></tr>
+<tr><td><a href="#w-26">#26</a></td><td><b>ExtremControl</b><br><span class="muted">UMass Amherst / CMU</span></td><td class="d">2026-02-11</td><td>1 · 采集</td><td>把人形遥操作延迟压到 54 ms，并量出延迟对动态任务的代价</td></tr>
+<tr><td><a href="#w-27">#27</a></td><td><b>SAIL</b><br><span class="muted">Georgia Tech</span></td><td class="d">2025-06-13</td><td>2 · 重定时</td><td>这一环的 landmark：定义了问题和 TPR / SOD 两个指标，2026 年的工作都拿它对比</td></tr>
+<tr><td><a href="#w-28">#28</a></td><td><b>RTC</b><br><span class="muted">Physical Intelligence / UC Berkeley</span></td><td class="d">2025-06-09</td><td>3 · 实时执行</td><td>这一环的基线：新 chunk 对着已经承诺的前缀做 inpainting</td></tr>
+<tr><td><a href="#w-29">#29</a></td><td><b>ANYmal Badminton</b><br><span class="muted">ETH Zurich</span></td><td class="d">2025-05-29</td><td>5 · 动态技能</td><td>2025 landmark：四足 + 机械臂打羽毛球，感知全在机载</td></tr>
+<tr><td><a href="#w-30">#30</a></td><td><b>Tool-as-Interface</b><br><span class="muted">UIUC / UT Austin / Columbia</span></td><td class="d">2025-04-06</td><td>1 · 采集</td><td>干脆不用机器人采：拍人徒手用工具，遮掉手，学到 1.5 s 的颠锅</td></tr>
+<tr><td><a href="#w-31">#31</a></td><td><b>RDP</b><br><span class="muted">上海交大 / 清华大学等</span></td><td class="d">2025-03-04</td><td>4 · 快环</td><td>2025 landmark：slow-fast 的视觉 + 触觉策略，后面的工作都拿它当基线</td></tr>
+<tr><td><a href="#w-32">#32</a></td><td><b>UMI</b><br><span class="muted">Stanford / Columbia / TRI</span></td><td class="d">2024-02-15</td><td>1 · 采集</td><td>这一环的经典参照：Flash ALOHA 正是说它的位姿估计在高速下会漂</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Cards</p><h2>每篇一张图、三行字</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部收起</button>
+  </div>
+
+  <details class="stage" id="stage-1" open>
+    <summary>
+      <span class="stage-n">第 1 环</span>
+      <span class="stage-name">采集：让人能做出快示范</span>
+      <span class="stage-io">接口、硬件、遥操作延迟 · 7 篇</span>
+    </summary>
+    <div class="stage-body">
+      <div class="cards">
+      <article class="card" id="w-1">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/halo.jpg" alt="左：操作员双手握着机器人末端站在带轮平台上；右：六格学到的操作能力"></div><figcaption><b>Figure 2</b>（作者原图）(a) 操作员握着两只末端、站在可推动的平台上；(b) 学到的能力。</figcaption></figure>
+        <div>
+          <h3><span class="num">#1</span>HALO<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">HALO: Human-Aligned Data Collection for WhoLe-body MObile Manipulation</p>
+          <p class="when">2026-11-12 · arXiv · HKUST / Robbyant</p>
+          <dl>
+            <div><dt>解决</dt><dd>移动操作的示范又慢又别扭：leader-follower 把人的手和视线同机器人的末端隔开，VR 又没有力反馈。</dd></div>
+            <div><dt>做法</dt><dd>人直接握着机器人的两只末端，推着一个被动小车走（代替底盘）；训练前把人的手分割出来、用 inpainting 补掉；策略是 π0.5。</dd></div>
+            <div><dt>快在哪</dt><dd>采集比 Mobile ALOHA 快到 <span class='fast'>2.9×</span>（abstract）；一小时数据训出的策略 Disassemble Lego 75.0%，同样时间的 Mobile ALOHA / VR 数据训不出来。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2611.16439">Paper</a><a href="https://robbyant-research.github.io/Lingbot-ALOHA/">Project</a></p><p class="caveat">这里的“快”是采集快，不是机器人动得快；没有报告执行速度。</p>
+        </div>
+      </article>
+      <article class="card" id="w-11">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/pakt.jpg" alt="框图：人的外力和 RL 策略动作汇入同一个 reference generator，再到阻抗控制器和 Franka 机械臂"></div><figcaption><b>Figure 1</b>（作者原图）人的力 → admittance controller；和 RL 策略的动作共用 reference generator → 阻抗控制器 → 机器人。</figcaption></figure>
+        <div>
+          <h3><span class="num">#11</span>PAKT<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">PAKT: Physically-Aligned Kinesthetic Teaching for Reinforcement Learning</p>
+          <p class="when">2026-09-22 · CoRL 2026 · NVIDIA</p>
+          <dl>
+            <div><dt>解决</dt><dd>人用手带机器人时，会做出策略和控制器复现不了的速度、加速度和 jerk，这些示范落在学习器能执行的范围之外。</dd></div>
+            <div><dt>做法</dt><dd>人的推力先过 admittance controller，再过和策略动作同一个 reference generator（限速度、加速度、jerk）和阻抗控制器；存下来的是限过的动作。接进 HIL-SERL。</dd></div>
+            <div><dt>快在哪</dt><dd>策略 10 Hz，控制器 1000 Hz；cycle time 比 HIL-SERL 少 <span class='fast'>23%–48%</span>（abstract），例如 peg 3.88 s → 2.17 s（Table 3）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2609.25630">Paper</a><a href="https://pakt-website.github.io/pakt-website">Project</a></p><p class="caveat">作者自己说：cycle time 的下降主要来自控制器栈，不是握臂接口。是 RL，不是纯模仿。</p>
+        </div>
+      </article>
+      <article class="card" id="w-15">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/mevion.jpg" alt="四只机械臂组成的 leader-follower 系统，下方是颠平底锅和搬哑铃两张照片"></div><figcaption><b>Fig. 1</b>（作者原图）四臂系统；下面两格是 High Speed（颠锅）和 Powerful（哑铃）。</figcaption></figure>
+        <div>
+          <h3><span class="num">#15</span>MEVION<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">MEVION: Low-Cost Open-Source Data Collection System for Powerful and High-Speed Dual-Arm Manipulation</p>
+          <p class="when">2026-07-20 · IEEE Robotics and Automation Practice · 东京大学 JSK Lab</p>
+          <dl>
+            <div><dt>解决</dt><dd>ALOHA 是默认的开源 leader-follower 平台，但小舵机出不了大力和高速，重物和快动作示范不了。</dd></div>
+            <div><dt>做法</dt><dd>四只 6-DoF 臂，零件来自电商和钣金；肘部电机挪到靠近基座，用平行连杆驱动肘关节，减轻远端质量。</dd></div>
+            <div><dt>快在哪</dt><dd>最大关节速度 <span class='fast'>20.4 rad/s</span>，ALOHA 是 3.1；最大力矩 60 Nm 对 21.2 Nm（Table I）。每只臂约 3,500 美元。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2607.17970">Paper</a><a href="https://haraduka.github.io/mevion-hardware/">Project</a><a href="https://github.com/haraduka/mevion">Code</a></p><p class="caveat">快的任务（颠锅、达摩落）只在遥操作下展示；学出来的任务没有成功率数字。</p>
+        </div>
+      </article>
+      <article class="card" id="w-23">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/i2rlc.jpg" alt="三步流程图：leader 和 follower 采集示范，降采样与迭代学习修正，训练 IL 策略"></div><figcaption><b>Fig. 2</b>（作者原图）三步：bilateral control 采集 → 降采样并用 I2RLC 修正 → 训练模仿策略。</figcaption></figure>
+        <div>
+          <h3><span class="num">#23</span>I2RLC</h3>
+          <p class="ttl">Refinement of Accelerated Demonstrations via Incremental Iterative Reference Learning Control for Fast Contact-Rich Imitation Learning</p>
+          <p class="when">2026-04-18 · arXiv（投 IROS 2026） · OMRON SINIC X / 筑波大学 / 早稻田大学</p>
+          <dl>
+            <div><dt>解决</dt><dd>人没法高速示范接触多的任务；直接把示范放快，接触动力学就变了，跟踪误差大甚至触发保护停机。</dd></div>
+            <div><dt>做法</dt><dd>先用 bilateral leader-follower 慢慢采；降采样得到更快的参考；在真机上回放，按跟踪误差迭代修正参考，一级一级提速。修好的快轨迹当训练数据。</dd></div>
+            <div><dt>快在哪</dt><dd>示范最多加速到 <span class='fast'>10×</span>（abstract）；用 10× 数据训的 ACT 在 peg-in-hole 上 100%（Table V）。柔顺控制 500 Hz。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2604.16850">Paper</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-26">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/extremcontrol.jpg" alt="六组连续画面：操作员和人形机器人同步完成乒乓球、托球、接飞盘等动作"></div><figcaption><b>Figure 1</b>（作者原图）Unitree G1 上遥操作的六个任务：乒乓球回球、托球、杂耍、接飞盘、接篮子、抬箱子。</figcaption></figure>
+        <div>
+          <h3><span class="num">#26</span>ExtremControl</h3>
+          <p class="ttl">ExtremControl: Low-Latency Humanoid Teleoperation with Scaled Velocity Feedforward</p>
+          <p class="when">2026-02-11 · arXiv · UMass Amherst / CMU</p>
+          <dl>
+            <div><dt>解决</dt><dd>人形机器人遥操作的端到端延迟约 200 ms，差不多是人的一次反应时间，采不了需要反应的动态示范。</dd></div>
+            <div><dt>做法</dt><dd>在底层 PD 上加一项按比例的速度前馈；直接跟踪 6 个 link 的 SE(3) 位姿，用闭式的 Cartesian 映射代替环里的 retargeting。</dd></div>
+            <div><dt>快在哪</dt><dd>端到端延迟 <span class='fast'>54 ms</span>（mocap）/ 64 ms（VR），已有系统约 178–454 ms（Table 1）。延迟从 50 ms 加到 200 ms，乒乓球回球率 80% → 20%（Table 4）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2602.11321">Paper</a><a href="https://extremcontrol.github.io/">Project</a></p><p class="caveat">只做到遥操作，没有用这些数据训练策略。</p>
+        </div>
+      </article>
+      <article class="card" id="w-30">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/tool-as-interface.jpg" alt="左：人手拿平底锅翻东西；右：机械臂拿同样的工具执行，标着 resilient、agile、precise、dynamic"></div><figcaption><b>Figure 1</b>（作者原图）人用平底锅做示范；右边是两种机械臂上的执行。</figcaption></figure>
+        <div>
+          <h3><span class="num">#30</span>Tool-as-Interface<span class="tag-old">2025 landmark</span></h3>
+          <p class="ttl">Tool-as-Interface: Learning Robot Policies from Observing Human Tool Use</p>
+          <p class="when">2025-04-06 · CoRL 2025 · UIUC / UT Austin / Columbia</p>
+          <dl>
+            <div><dt>解决</dt><dd>遥操作慢、怕延迟，不适合动态任务；手持夹爪在惯性下工具会滑。快的用工具技能没法通过机器人来示范。</dd></div>
+            <div><dt>做法</dt><dd>人直接徒手用工具，两台 RGB 相机拍；训练时遮掉手、部署时遮掉机器人；动作是工具在任务坐标系里的位姿，换一只臂也能用。</dd></div>
+            <div><dt>快在哪</dt><dd>颠锅翻鸡蛋 <span class='fast'>1.5 s</span>、12/12；同样的任务用遥操作数据训的 diffusion policy “Not Feasible”（Table 1）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2504.04612">Paper</a><a href="https://tool-as-interface.github.io">Project</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-32">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/umi.jpg" alt="左：手持 UMI 夹爪洗盘子；中：多个环境的鱼眼画面；右：机器人执行四类任务"></div><figcaption><b>Fig. 1</b>（作者原图）手持夹爪示范、各种环境里的鱼眼画面、机器人执行（dynamic / precise / bimanual / long-horizon）。</figcaption></figure>
+        <div>
+          <h3><span class="num">#32</span>UMI<span class="tag-old">窗口外 · 参照</span></h3>
+          <p class="ttl">Universal Manipulation Interface: In-The-Wild Robot Teaching Without In-The-Wild Robots</p>
+          <p class="when">2024-02-15 · RSS 2024 · Stanford / Columbia / TRI</p>
+          <dl>
+            <div><dt>解决</dt><dd>遥操作慢，还离不开机器人；更早的手持夹爪位姿跟踪差，只能做准静态动作。</dd></div>
+            <div><dt>做法</dt><dd>手持夹爪 + 一台 GoPro，位姿来自 visual-inertial SLAM；策略接口在推理时对齐观测和动作的延迟，动作用相对轨迹。</dd></div>
+            <div><dt>快在哪</dt><dd>抛物入筐：对齐延迟 <span class='fast'>87.5%</span>，不对齐 57.5%；示范速度是人手的 64%（Sec. V-B，Fig. 11）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2402.10329">Paper</a><a href="https://umi-gripper.github.io">Project</a><a href="https://github.com/real-stanford/universal_manipulation_interface">Code</a></p><p class="caveat">2024 年 2 月，在时间窗口之外；只作为这一环的参照留下。</p>
+        </div>
+      </article>
+      </div>
+    </div>
+  </details>
+  <details class="stage" id="stage-2" open>
+    <summary>
+      <span class="stage-n">第 2 环</span>
+      <span class="stage-name">重定时：比示范跑得更快</span>
+      <span class="stage-io">重定时示范、能缩放时间的动作表示、RL 提速 · 7 篇</span>
+    </summary>
+    <div class="stage-body">
+      <div class="cards">
+      <article class="card" id="w-4">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/speed-prior.jpg" alt="四格：路径上的节点窗口，transformer 速度先验，沿路径的速度曲线，时间随弧长的时钟曲线"></div><figcaption><b>Figure 1</b>（作者原图）路径窗口 → speed prior → 沿路径的速度 → 新的时钟。</figcaption></figure>
+        <div>
+          <h3><span class="num">#4</span>Learned Speed Prior<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">Retiming Robot Demonstrations with a Learned Speed Prior</p>
+          <p class="when">2026-10-23 · arXiv · 首尔大学</p>
+          <dl>
+            <div><dt>解决</dt><dd>示范的节奏是遥操作员定的，不是任务定的；策略把操作员的慢也一起学走了。</dd></div>
+            <div><dt>做法</dt><dd>用遥操作数据和手持夹爪数据训一个 speed prior；让它按“手持”的节奏重读慢轨迹，得到新的时间表来重定时示范。底层用 1 kHz 力矩控制器跟踪。</dd></div>
+            <div><dt>快在哪</dt><dd>叠三个杯子 <span class='fast'>3.50 s</span>，原节奏的策略 6.02 s，都是 29/30（Table 2）。策略 15 Hz，执行器 1 kHz。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2610.32676">Paper</a><a href="https://mllab.snu.ac.kr/projects/learned_speed_prior">Project</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-8">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/adatempo.jpg" alt="三块流程：DTW 对齐示范得到相对节奏，节奏共识映射成加速曲线，重采样轨迹训练更快的策略"></div><figcaption><b>Fig. 2</b>（作者原图）相位对齐的相对节奏 → 共识引导的连续加速 → 离线重采样再训练。</figcaption></figure>
+        <div>
+          <h3><span class="num">#8</span>AdaTempo<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">AdaTempo: Learning Shared Relative Tempo from Demonstrations for Faster Robot Manipulation</p>
+          <p class="when">2026-10-02 · arXiv · 清华大学 / 复旦大学</p>
+          <dl>
+            <div><dt>解决</dt><dd>整体统一加速不可靠：任务的不同阶段能承受的加速不一样。</dd></div>
+            <div><dt>做法</dt><dd>用 DTW 把同一任务的示范对齐到统一的相位，取各条示范相对节奏的共识，得到连续的加速曲线，再重采样示范。训练和部署都不改。</dd></div>
+            <div><dt>快在哪</dt><dd>真机 ALOHA + ACT 六个任务平均快 <span class='fast'>2.02×</span>，成功率 77.8%（ACT 58.3%，DemoSpeedup 56.7%）；Conveyor Fast 29/30、3.2 s（Table III）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2610.02706">Paper</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-16">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/bspline-policy.jpg" alt="流程：观测进入 B-spline Policy，输出样条参数，经段对齐和时间缩放后以 100 Hz 采样给控制器"></div><figcaption><b>Figure 3</b>（作者原图）10 Hz 策略 → B-spline 参数 → 段对齐和时间缩放 → 100 Hz 采样 → 控制器。</figcaption></figure>
+        <div>
+          <h3><span class="num">#16</span>B-spline Policy<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">B-spline Policy: Accelerating Manipulation Policies via B-spline Action Representations</p>
+          <p class="when">2026-07-10 · arXiv · Harvard / MIT / UT Austin</p>
+          <dl>
+            <div><dt>解决</dt><dd>离散的 action chunk 时间分辨率固定，段和段之间有跳变，一放快就跟不上。</dd></div>
+            <div><dt>做法</dt><dd>策略输出一段三次 B-spline 的节点和控制点；执行时密集采样、按倍数缩放时间，再把新的一段对齐到上一个已执行的动作。</dd></div>
+            <div><dt>快在哪</dt><dd>策略 10 Hz，spline 按 <span class='fast'>100 Hz</span> 采样；Table Cleaning 开到 4× 用 11.80 s，同样 4× 的 chunk 基线 23.57 s（Table 1）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2607.09648">Paper</a><a href="https://b-spline-policy.github.io">Project</a><a href="https://github.com/B-spline-policy/bspline-policy">Code</a></p><p class="caveat">双臂 Speed Stacking 开到 4× 是 0/20：便宜的臂跟不上（作者写的局限）。</p>
+        </div>
+      </article>
+      <article class="card" id="w-21">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/rl-token.jpg" alt="四栏：数据，带 RL token 的 VLA，在线 RL 的 actor 和 critic，最终策略在拧螺丝、扎带、插网线上的画面"></div><figcaption><b>Fig. 1</b>（作者原图）数据 → 带 RL token 的 VLA → 在线 actor-critic → 四个任务上的最终策略。</figcaption></figure>
+        <div>
+          <h3><span class="num">#21</span>RL Token</h3>
+          <p class="ttl">RL Token: Bootstrapping Online RL with Vision-Language-Action Models</p>
+          <p class="when">2026-04-24 · arXiv · Physical Intelligence</p>
+          <dl>
+            <div><dt>解决</dt><dd>VLA 在精细任务的“最后一毫米”又慢又犹豫；对整个模型做 RL 又太费真机数据。</dd></div>
+            <div><dt>做法</dt><dd>让 π0.6 多输出一个紧凑的 RL token 后冻结；在这个 token 上在线训练一个小的 actor-critic，输出对 VLA 动作段的修正。</dd></div>
+            <div><dt>快在哪</dt><dd>50 Hz 控制；插网线、插充电器的关键阶段约 <span class='fast'>快 3 倍</span>，一半的 RL episode 比所有遥操作示范都快（Sec. VI，Fig. 9）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2604.23073">Paper</a><a href="https://pi.website/research/rlt">Project</a></p><p class="caveat">吞吐量的具体数值只在图里，这里没有摘。</p>
+        </div>
+      </article>
+      <article class="card" id="w-24">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/race.jpg" alt="方法总览：action chunk 策略批量采样，时间参数化轨迹，高增益控制器；下方三格解释三个部件"></div><figcaption><b>方法图</b>（作者原图）状态当动作、时间最优规划、测试时搜索、高增益底层控制器。</figcaption></figure>
+        <div>
+          <h3><span class="num">#24</span>RACE</h3>
+          <p class="ttl">Time Optimal Execution of Action Chunk Policies Beyond Demonstration Speed</p>
+          <p class="when">2026（ICLR） · ICLR 2026 · 首尔大学 / Vital Robotics / KAIST</p>
+          <dl>
+            <div><dt>解决</dt><dd>把 chunk 放快会改变控制器的动力学，还会撞上力矩和速度上限；异步推理又让前后两段对不齐。</dd></div>
+            <div><dt>做法</dt><dd>策略预测“到达的状态”而不是指令；用 TOPP-RA 在力矩和速度约束下做时间最优的重定时；测试时采样多段，挑最容易接上的一段。</dd></div>
+            <div><dt>快在哪</dt><dd>真机高精度任务比原策略快到 <span class='fast'>4×</span>（abstract）；π0.5 传送带抓取 0.63 成功、9.8 s，15 Hz 原策略 0.03、21.3 s（Fig. 8）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://proceedings.iclr.cc/paper_files/paper/2026/file/fab80bb9d97e9b9ff5c19f91f72838c6-Paper-Conference.pdf">Paper</a><a href="https://clvrai.github.io/RACE/">Project</a></p><p class="caveat">首次公开的日期没核实（OpenReview 拦了自动访问），按 ICLR 2026 记，时间轴上的位置是近似的。</p>
+        </div>
+      </article>
+      <article class="card" id="w-25">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/realtime-vla-v2.jpg" alt="三个任务各三条时间条：human demonstration 最长，vla execution 和 human operation 接近"></div><figcaption><b>Figure 1</b>（作者原图）三个任务上，示范、VLA 执行、人徒手三者的时间条。</figcaption></figure>
+        <div>
+          <h3><span class="num">#25</span>Realtime-VLA V2</h3>
+          <p class="ttl">Realtime-VLA V2: Learning to Run VLAs Fast, Smooth, and Accurate</p>
+          <p class="when">2026-03-27 · 技术报告 · Dexmal</p>
+          <dl>
+            <div><dt>解决</dt><dd>推理已经够快以后，VLA 驱动的轻型臂在精细任务上到底能跑多快。</dd></div>
+            <div><dt>做法</dt><dd>不动 VLA，只做部署栈：标定并补偿相机、本体、运动三种延迟；速度模型给每一步定快慢（用人实时“踩油门”的数据训）；QP 重排时间，MPC 跟踪。</dd></div>
+            <div><dt>快在哪</dt><dd>叠衬衫：遥操作示范 75.3 s，VLA 执行 <span class='fast'>18.9 s</span>，人徒手 19.0 s（Figure 1）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2603.26360">Paper</a><a href="https://dexmal.github.io/realtime-vla-v2/">Project</a><a href="https://github.com/dexmal/realtime-vla-v2">Code</a></p><p class="caveat">技术报告，没有成功率表。</p>
+        </div>
+      </article>
+      <article class="card" id="w-27">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/sail.jpg" alt="系统图：左边策略层两次推理之间用引导保持一致并预测速度因子，右边系统层做动作调度和跟踪控制"></div><figcaption><b>Figure 2</b>（作者原图）策略层（误差自适应引导 + 预测速度因子）和系统层（动作调度 + 高增益跟踪）。</figcaption></figure>
+        <div>
+          <h3><span class="num">#27</span>SAIL<span class="tag-old">2025 landmark</span></h3>
+          <p class="ttl">SAIL: Faster-than-Demonstration Execution of Imitation Learning Policies</p>
+          <p class="when">2025-06-13 · CoRL 2025 · Georgia Tech</p>
+          <dl>
+            <div><dt>解决</dt><dd>第一次把“比示范更快地执行”当成一个问题提出来：步长缩短以后，分布偏移、跟踪和延迟都会出事。</dd></div>
+            <div><dt>做法</dt><dd>四件套：段间一致性引导；预测到达位姿 + 高增益控制器；关键动作处自动放慢；按延迟丢掉过期的动作。</dd></div>
+            <div><dt>快在哪</dt><dd>仿真最多 4×，真机最多 <span class='fast'>3.2×</span>（abstract）。Franka 上动作按 100 Hz 调度，力矩 500 Hz。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2506.11948">Paper</a><a href="https://nadunranawaka1.github.io/sail-policy">Project</a><a href="https://github.com/nadunRanawaka1/SAIL">Code</a></p>
+        </div>
+      </article>
+      </div>
+    </div>
+  </details>
+  <details class="stage" id="stage-3" open>
+    <summary>
+      <span class="stage-n">第 3 环</span>
+      <span class="stage-name">实时执行：推理慢也不停、不跳</span>
+      <span class="stage-io">异步推理、RTC 和它的后续、滚动去噪 · 6 篇</span>
+    </summary>
+    <div class="stage-body">
+      <div class="cards">
+      <article class="card" id="w-2">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/cac-async.jpg" alt="两个框：机器人控制线程和动作推理线程，中间箭头表示共享观测和动作 chunk"></div><figcaption><b>Fig. 1</b>（作者原图）控制线程（观测、收 chunk、生成平滑指令）和推理线程互相交换观测和 chunk。</figcaption></figure>
+        <div>
+          <h3><span class="num">#2</span>CAC + Async ACT<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">Control-Aware Command Generation for Asynchronous Control and Action Inference with Vision-Based Policies towards Fast Execution</p>
+          <p class="when">2026-11-08 · NeurIPS 2026 Robot Learning Workshop · RIKEN AIP / 东京大学</p>
+          <dl>
+            <div><dt>解决</dt><dd>不改训练，只在控制层面能把 ACT 的执行提多快；异步到达的新 chunk 和当前的运动对不上。</dd></div>
+            <div><dt>做法</dt><dd>控制线程把（不连续的）预测位置当参考，在加速度限制下做 tracking control，平滑地收敛到最新的 chunk；重叠预测的方差小，就一次走 2 步。</dd></div>
+            <div><dt>快在哪</dt><dd>ALOHA 上 box handover <span class='fast'>16.2 s → 8.6 s</span>（同步 → 异步 + CAC + 跳步，Table 2）；pen storage 成功率 30.0% → 83.3%（Table 1）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2611.11089">Paper</a><a href="https://github.com/TakaOsa/ACT_Async">Code</a></p><p class="caveat">Workshop 论文；控制频率和推理延迟没写。</p>
+        </div>
+      </article>
+      <article class="card" id="w-6">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/chronos-policy.jpg" alt="三栏：不同采样时刻的图像、力、本体 token；按物理时间旋转的 RoPE；共享时间轴上的观测和动作查询"></div><figcaption><b>Fig. 2</b>（作者原图）带时间戳的 token → time-aware RoPE → 观测和动作排在同一条物理时间轴上。</figcaption></figure>
+        <div>
+          <h3><span class="num">#6</span>Chronos Policy<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">Chronos Policy: Learning Robot Policies on Physical Time</p>
+          <p class="when">2026-10-09 · arXiv · Stanford</p>
+          <dl>
+            <div><dt>解决</dt><dd>策略把感知和控制当成固定频率的序列，时间只靠“第几个”来表示；传感器频率或推理延迟一变就错。</dd></div>
+            <div><dt>做法</dt><dd>每个观测带上采集时刻，每个动作带上期望的执行时刻，用 time-aware RoPE 编码，注意力只看时间差。</dd></div>
+            <div><dt>快在哪</dt><dd>不提高频率，而是延迟变了也对：仿真传送带任务在最多 200 ms 推理延迟下 <span class='fast'>76.4%</span>，Diffusion Policy 1.8%（Table 3）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2610.13929">Paper</a><a href="https://changhaowang.github.io/chronospolicy/">Project</a></p><p class="caveat">论文和项目页没写真机用的是什么机器人。</p>
+        </div>
+      </article>
+      <article class="card" id="w-7">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/react.jpg" alt="左：滚动去噪缓冲的逐步演化；中：移动碗的例子；右：输入吞吐和输出吞吐的二维图与雷达图"></div><figcaption><b>Fig. 1</b>（作者原图）左：缓冲里的每一块每步都再精修一次，最干净的块执行；右：输入新鲜度和输出速率的对比。</figcaption></figure>
+        <div>
+          <h3><span class="num">#7</span>REACT<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">REACT: Rolling Denoising and Dual Decoupling for Reactive Robot Control with VLA Models</p>
+          <p class="when">2026-10-08 · CoRL 2026 Spotlight · 上海交大 / PrimeBot 等</p>
+          <dl>
+            <div><dt>解决</dt><dd>长 chunk 平滑但不反应；频繁重规划反应快，但段和段之间会跳。</dd></div>
+            <div><dt>做法</dt><dd>动作缓冲里有 5 块，处在不同的去噪进度；每次用最新观测给所有块走一步，最干净的一块拿去执行。感知、VLM、去噪、执行各跑各的。</dd></div>
+            <div><dt>快在哪</dt><dd>π0.5 上动作输出 30 Hz；反应延迟 <span class='fast'>734 ms</span>，整段执行的 π0.5 是 1505 ms，人遥操作 705 ms（Table 3）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2610.12007">Paper</a><a href="https://react-vla.github.io">Project</a></p><p class="caveat">去掉 dual decoupling 的版本成功率反而略高（65.7% 对 64.8%，Table 2）。</p>
+        </div>
+      </article>
+      <article class="card" id="w-12">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/realtime-expo-ft.jpg" alt="时间轴上 VLA 开始推理和当前观测两个时刻，慢的候选生成与快的动作编辑；下方是微调前后的画面和成功率曲线"></div><figcaption><b>Fig. 1</b>（作者原图）上：VLA 慢慢生成候选，edit 和 Q 选择在最新观测上很快完成；下：微调前后的执行和训练曲线。</figcaption></figure>
+        <div>
+          <h3><span class="num">#12</span>Real-Time EXPO-FT<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">Reinforcement Learning for Real-Time Vision-Language-Action Policies</p>
+          <p class="when">2026-09-16 · arXiv · Stanford</p>
+          <dl>
+            <div><dt>解决</dt><dd>大 VLA 出动作时用的观测已经过时；现有的异步执行补法都是纯模仿，可靠性超不过示范。</dd></div>
+            <div><dt>做法</dt><dd>慢的 VLA 先给出候选动作段；一个轻量的 edit policy 看最新观测修改候选，Q 函数在执行前挑一个。用在线 RL 训练。</dd></div>
+            <div><dt>快在哪</dt><dd>30 Hz 控制、约 167 ms 延迟下，4 个动态任务平均从 <span class='fast'>42% 到 97%</span>，只用 10 分钟在线数据（abstract，Table I）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2609.18207">Paper</a><a href="https://pd-perry.github.io/real-time-expo-ft/">Project</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-14">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/pir2.jpg" alt="上半：标准扩散和本体感觉 diffusion forcing 的噪声方块对比；下半：两种噪声时间表曲线"></div><figcaption><b>Fig. 1</b>（作者原图）上：普通扩散 vs 每个位置噪声不同的 diffusion forcing；下：train-time RTC 的噪声表 vs 按延迟自适应的噪声表。</figcaption></figure>
+        <div>
+          <h3><span class="num">#14</span>πR²<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">πR²: Reactive Real-time Flow Policies</p>
+          <p class="when">2026-07-28 · arXiv（under review） · CMU</p>
+          <dl>
+            <div><dt>解决</dt><dd>带大 backbone 的 chunk 策略又慢又不反应：整段开环执行，backbone 加多步去噪让重规划很稀（约 7 Hz）。</dd></div>
+            <div><dt>做法</dt><dd>本体感觉每一拍都是新的，视觉特征在后台异步更新；滚动的噪声表让每次调用只做 1 步去噪就放出下一批动作。从 GR00T-N1.7 微调。</dd></div>
+            <div><dt>快在哪</dt><dd>重规划约 <span class='fast'>25 Hz</span>（每 40 ms 用一次新观测），约为原策略的 4 倍（abstract）；真机 Catch Book 11/20，train-time RTC 5/20（Table 1）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2607.26055">Paper</a><a href="https://pi-r2-flow.github.io/">Project</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-28">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/rtc.jpg" alt="一条动作序列分成四段：已执行、推理延迟内冻结、可修改的中间区、新生成的尾部；上方是引导权重曲线"></div><figcaption><b>Fig. 3</b>（作者原图）chunk 时间轴：冻结的前缀（推理延迟 d）、可以改的中段（软权重逐渐衰减）、新生成的尾段。</figcaption></figure>
+        <div>
+          <h3><span class="num">#28</span>RTC<span class="tag-old">2025 landmark</span></h3>
+          <p class="ttl">Real-Time Execution of Action Chunking Flow Policies</p>
+          <p class="when">2025-06-09 · NeurIPS 2025 · Physical Intelligence / UC Berkeley</p>
+          <dl>
+            <div><dt>解决</dt><dd>机器人不停、边执行边推理时，新 chunk 和正在执行的旧 chunk 对不上，交接处会跳。</dd></div>
+            <div><dt>做法</dt><dd>把生成下一段当成 inpainting：推理期间必然要执行的前几步冻结，中间重叠的部分软约束，尾部自由生成。在推理时做，不用重训。</dd></div>
+            <div><dt>快在哪</dt><dd>50 Hz 控制；额外注入 <span class='fast'>+200 ms</span> 延迟也不掉性能。后续的 training-time RTC（2512.05964）把约束搬进训练：108 ms 对 135 ms。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2506.07339">Paper</a><a href="https://pi.website/research/real_time_chunking">Project</a></p>
+        </div>
+      </article>
+      </div>
+    </div>
+  </details>
+  <details class="stage" id="stage-4" open>
+    <summary>
+      <span class="stage-n">第 4 环</span>
+      <span class="stage-name">快环：chunk 内部对力和触觉做反应</span>
+      <span class="stage-io">slow-fast 分层、residual、底层在线学习 · 6 篇</span>
+    </summary>
+    <div class="stage-body">
+      <div class="cards">
+      <article class="card" id="w-5">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/t-wla.jpg" alt="上：视觉分支从 RGB 和指令得到 visual memory 和基础动作 chunk；下：触觉分支用 residual editor 修正剩余动作"></div><figcaption><b>Fig. 2</b>（作者原图）视觉分支在每次 RGB 更新时出基础 chunk 和 visual memory；触觉分支在每次触觉更新时修改剩下的动作。</figcaption></figure>
+        <div>
+          <h3><span class="num">#5</span>T-WLA<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">T-WLA: Bridging Slow Vision and Fast Touch</p>
+          <p class="when">2026-10-20 · arXiv · MIT / Harvard 等</p>
+          <dl>
+            <div><dt>解决</dt><dd>视觉策略两次更新之间，接触状态就变了；重跑视觉策略太慢，只靠触觉又不知道动作该怎么改。</dd></div>
+            <div><dt>做法</dt><dd>视觉分支出基础 chunk，并缓存一份 visual memory；一个小的 tactile editor 读缓存、当前 chunk 和最近的压力图，给还没执行的动作加 residual。</dd></div>
+            <div><dt>快在哪</dt><dd>视觉分支 39.7 Hz，触觉修正 <span class='fast'>119.1 Hz</span>（论文自述）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2610.28814">Paper</a><a href="https://anonymous-submission-20.github.io/T-WLA.github.io/">Project</a></p><p class="caveat">真机上触觉只多 2.75 个点（47.25% → 50.0%，Table 2）；频率是在什么硬件上测的没写。</p>
+        </div>
+      </article>
+      <article class="card" id="w-9">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/fp2.jpg" alt="上：基础模型、压缩器、力控策略和控制器的连接，标着 2 Hz、15 Hz、50 Hz；下：三步训练流程"></div><figcaption><b>框架图</b>（作者原图）2 Hz 基础模型 → 15 Hz action chunk → 50 Hz force control policy → 控制器；下面是三步训练。</figcaption></figure>
+        <div>
+          <h3><span class="num">#9</span>FP2<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">FP2: Equipping Robotic Foundation Models with Force Control</p>
+          <p class="when">2026-09-29 · arXiv · 上海交大 / Flexiv / Noematrix 等</p>
+          <dl>
+            <div><dt>解决</dt><dd>机器人基础模型会出动作，但管不了接触力；把力直接塞进大模型，效果不稳定。</dd></div>
+            <div><dt>做法</dt><dd>大模型照旧出动作；旁边加一个小的 force-control policy，读大模型压缩成的一个 token 和力、本体的历史，输出哪些轴做力控、目标力是多少。</dd></div>
+            <div><dt>快在哪</dt><dd>三层频率：基础模型 2 Hz，力控策略 <span class='fast'>50 Hz</span>，底层 1 kHz；π0 的平均分 15% → 80%（Table I）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2609.37433">Paper</a><a href="https://force-policy.github.io/fp2/">Project</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-17">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/t-rex.jpg" alt="T-Rex 架构：latent expert、action expert、tactile expert 共享注意力；下方是级联去噪和异步执行时间线"></div><figcaption><b>Fig. 3</b>（作者原图）三个 expert 共享 attention；动作和触觉级联去噪（第 0 → 6 → 10 步）；约 5 Hz 和约 20 Hz 的异步执行。</figcaption></figure>
+        <div>
+          <h3><span class="num">#17</span>T-Rex<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">T-Rex: Tactile-Reactive Dexterous Manipulation</p>
+          <p class="when">2026-06-15 · arXiv · UC Berkeley / NVIDIA / Stanford 等</p>
+          <dl>
+            <div><dt>解决</dt><dd>VLA 要么不用触觉，要么把它当成又慢又静态的输入：缺触觉数据，VLM backbone 也太慢。</dd></div>
+            <div><dt>做法</dt><dd>三个 expert：action expert 每段做前 6 步去噪并缓存视觉语言特征；tactile expert 用最新的触觉做后 4 步，一段里跑 4 次。</dd></div>
+            <div><dt>快在哪</dt><dd>action expert 约 5 Hz，tactile expert 约 <span class='fast'>20 Hz</span>，底层 300 Hz；12 个任务平均 65%，最强基线 35%（Table 1）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2606.17055">Paper</a><a href="https://tactile-rex.github.io/">Project</a><a href="https://github.com/ZhuoyangLiu2005/T-Rex">Code</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-19">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/impact.jpg" alt="上下两行对比：隐式力控和 IMPACT，后者的控制器内部多一个网络并接收历史状态"></div><figcaption><b>Fig. 3</b>（作者原图）同样的 30 Hz 策略；IMPACT 的 1000 Hz 控制器里多了一个读历史状态的 internal model。</figcaption></figure>
+        <div>
+          <h3><span class="num">#19</span>IMPACT<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">IMPACT: Learning Internal-Model Predictive Control for Forceful Robotic Manipulation</p>
+          <p class="when">2026-06-09 · arXiv · Harvard / Stanford</p>
+          <dl>
+            <div><dt>解决</dt><dd>输出目标位姿的模仿策略只能靠跟踪误差“间接”出力，负载或接触力和示范不同就失败。</dd></div>
+            <div><dt>做法</dt><dd>diffusion policy 只管规划位姿；1 kHz 的控制环里有一个在线学习的 internal model，从关节读数预测外力，加成前馈力矩。不需要力传感器。</dd></div>
+            <div><dt>快在哪</dt><dd>策略 30 Hz，控制器连同在线学习 <span class='fast'>1000 Hz</span>；只用 2.5 kg 训练，搬 5 kg 哑铃 21/25，Diffusion Policy 0/25（Table 1）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2606.10818">Paper</a></p><p class="caveat">Table 1 的数字取自 HTML 版（单元格里有多余的 0），精读时要对一下 PDF。</p>
+        </div>
+      </article>
+      <article class="card" id="w-20">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/tube-diffusion-policy.jpg" alt="一根管子里的三条曲线：红色去噪进入管口，绿色名义轨迹，橙色 streaming 轨迹，沿途有条件 flow 模型"></div><figcaption><b>Fig. 1</b>（作者原图）红色的去噪路径落到 tube 上，橙色的 streaming flow 沿绿色的 nominal 轨迹逐步修正。</figcaption></figure>
+        <div>
+          <h3><span class="num">#20</span>Tube Diffusion Policy</h3>
+          <p class="ttl">Tube Diffusion Policy: Reactive Visual-Tactile Policy Learning for Contact-rich Manipulation</p>
+          <p class="when">2026-04-26 · arXiv · Meta Reality Labs Research / Idiap 等</p>
+          <dl>
+            <div><dt>解决</dt><dd>chunk 内部是开环的，diffusion policy 在一段里没法对新的触觉或视觉做反应。</dd></div>
+            <div><dt>做法</dt><dd>学出来的 tube MPC：每段开头去噪几步得到 nominal 动作；之后每个控制周期用最新观测积分一步 flow，把动作拉回 nominal 附近。</dd></div>
+            <div><dt>快在哪</dt><dd>只用 3 步 DDIM，控制 <span class='fast'>超过 100 Hz</span>，约为 Diffusion Policy（约 25 Hz）的 4 倍；两个真机任务都是 96%，DP 是 60% 和 84%（Table V）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2604.23609">Paper</a><a href="https://schortenger.github.io/tube-diffusion-policy/">Project</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-31">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/rdp.jpg" alt="左：快策略的编码器解码器和慢策略的 latent diffusion 训练；右：慢快交替的推理时间线"></div><figcaption><b>Fig. 6</b>（作者原图）(a) 两阶段训练：快的 asymmetric tokenizer 和慢的 latent diffusion；(b) slow-fast 推理的时间线。</figcaption></figure>
+        <div>
+          <h3><span class="num">#31</span>RDP<span class="tag-old">2025 landmark</span></h3>
+          <p class="ttl">Reactive Diffusion Policy: Slow-Fast Visual-Tactile Policy Learning for Contact-Rich Manipulation</p>
+          <p class="when">2025-03-04 · RSS 2025 · 上海交大 / 清华大学等</p>
+          <dl>
+            <div><dt>解决</dt><dd>chunk 内部开环，视觉模仿策略在一段里对触觉和力没有反应。</dd></div>
+            <div><dt>做法</dt><dd>慢策略用 latent diffusion 出一段 latent 动作；快策略是一个 GRU decoder，边读最新的触觉和力，边逐步解码成动作，像一个学出来的阻抗控制器。</dd></div>
+            <div><dt>快在哪</dt><dd>慢 1–2 Hz，快 <span class='fast'>20–30 Hz</span>（推理不到 1 ms），指令插值后超过 500 Hz；削皮得分 0.95，Diffusion Policy 0.44（Table II）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2503.02881">Paper</a><a href="https://reactive-diffusion-policy.github.io">Project</a><a href="https://github.com/xiaoxiaoxh/reactive_diffusion_policy">Code</a></p>
+        </div>
+      </article>
+      </div>
+    </div>
+  </details>
+  <details class="stage" id="stage-5" open>
+    <summary>
+      <span class="stage-n">第 5 环</span>
+      <span class="stage-name">动态技能：任务本身就快</span>
+      <span class="stage-io">乒乓球、羽毛球、抛接、杂耍 · 6 篇</span>
+    </summary>
+    <div class="stage-body">
+      <div class="cards">
+      <article class="card" id="w-3">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/catch-it-all.jpg" alt="左：九种测试物体；中：坐着的人形机器人和投掷者；右：机器人头部相机的视角"></div><figcaption><b>Fig. 1</b>（作者原图）九个测试物体；坐着的 G1 用灵巧手接抛来的袋子；第一人称视角。</figcaption></figure>
+        <div>
+          <h3><span class="num">#3</span>Catch It All!<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">Catch It All!: Generalizable Dynamic Catching with a Dexterous Hand</p>
+          <p class="when">2026-10-28 · arXiv · UC San Diego</p>
+          <dl>
+            <div><dt>解决</dt><dd>只用一个第一人称相机和力矩很小的手臂，接住没见过的抛来物体（形状、软硬、弹性都不同）。</dd></div>
+            <div><dt>做法</dt><dd>sim-to-real 的 teacher-student RL：teacher 看真值位置；student 从带噪声、会丢帧的相机位置蒸馏，用 1 s 的历史。</dd></div>
+            <div><dt>快在哪</dt><dd>9 个没见过的物体，下手接 <span class='fast'>38.9%</span>、上手接 36.1%（Table III）。15 Hz 遥操作只接住 3/44，作者用它说明这类任务没法靠遥操作采数据。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2610.39044">Paper</a><a href="https://arth-shukla.github.io/catch-it-all">Project</a></p><p class="caveat">成功率不高；物体速度和相机帧率没写。</p>
+        </div>
+      </article>
+      <article class="card" id="w-10">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/humanoid-badminton.jpg" alt="四块：任务随机化的动作增强，底层控制器学习，latent 技能空间里的高层规划，规划层的正则"></div><figcaption><b>Fig. 2</b>（作者原图）动作增强、底层控制器、latent 空间里的高层规划、判别器。</figcaption></figure>
+        <div>
+          <h3><span class="num">#10</span>Humanoid Badminton<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">Humanoid Badminton: Learning Dynamic Racket Skills from Limited Human Motion Data</p>
+          <p class="when">2026-09-25 · CoRL 2026 · 清华大学 / 香港中文大学等</p>
+          <dl>
+            <div><dt>解决</dt><dd>连续对打需要大范围、多种击球，但能用的人类羽毛球动作数据又少又不准。</dd></div>
+            <div><dt>做法</dt><dd>三层 RL：人类视频重定向，在击球帧附近随机化目标，训一个带 latent skill 的底层控制器；高层按球的状态选 latent；对抗正则让动作自然。</dd></div>
+            <div><dt>快在哪</dt><dd>Unitree G1，高层和底层都是 50 Hz；20 回合人机对打，回球成功率 <span class='fast'>89.4%</span>，最长连续 23 拍，含跳起击球（Table 5）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2609.31840">Paper</a><a href="https://sunlight02.github.io/humanoid-badminton/">Project</a></p><p class="caveat">定位靠 motion capture；真机的球速和拍速没写。</p>
+        </div>
+      </article>
+      <article class="card" id="w-13">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/rmbl-juggling.jpg" alt="分层系统图：orchestrator 的花样，感知，技能执行器里的 memory-based learner 和控制系统，右侧是机器人照片"></div><figcaption><b>Fig. 1</b>（作者原图）orchestrator → memory-based learner → 带可达集的任务规划 → 机器人。</figcaption></figure>
+        <div>
+          <h3><span class="num">#13</span>RMBL Juggling<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">Rapid On-Robot Learning for Dynamic Manipulation Skills: Robot Juggling</p>
+          <p class="when">2026-08-27 · arXiv · RAI Institute</p>
+          <dl>
+            <div><dt>解决</dt><dd>模型不准到一个周期都抛不下来时，让带三指手的双臂机器人学会抛接三个球。</dd></div>
+            <div><dt>做法</dt><dd>每抛一次，就把（状态、指令、落点）记进 memory，用局部模型修正下一次抛的指令；预先算好的可达集保证每个目标都在关节和电机的极限内。</dd></div>
+            <div><dt>快在哪</dt><dd>在真机上平均 <span class='fast'>53 s</span> 学会 cascade，5 种花样不到 5 分钟。1 kHz 控制，30 Hz 视觉（延迟约 0.1 s），手一开一合约 80 ms。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2608.26800">Paper</a></p><p class="caveat">学习只发生在任务指令这一层；规划和跟踪是 model-based 的。</p>
+        </div>
+      </article>
+      <article class="card" id="w-18">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/five-ball-juggling.jpg" alt="长曝光照片：两只机械臂之间五个红球划出的弧线"></div><figcaption><b>Fig. 1</b>（作者原图）两只 4-DoF Barrett WAM 抛五球 cascade（长曝光照片）。</figcaption></figure>
+        <div>
+          <h3><span class="num">#18</span>Five-Ball Juggling<span class="tag-new">2026 下半年</span></h3>
+          <p class="ttl">Task-Error Residual Learning for Real-Robot Five-Ball Juggling</p>
+          <p class="when">2026-06-15 · ISRR 2026 · TU Darmstadt</p>
+          <dl>
+            <div><dt>解决</dt><dd>五球杂耍：节奏很紧，一次失误就全掉；规划和控制栈故意做得简单、不准。</dd></div>
+            <div><dt>做法</dt><dd>只学抛出速度的 residual；监督信号是“球实际偏到哪去了”这个带方向的任务误差，不是标量奖励。执行是开环的。</dd></div>
+            <div><dt>快在哪</dt><dd>1 kHz 控制；每次尝试最多 120 抛、约 30 s；五球平均 <span class='fast'>2.2 次尝试</span>就成功（Table 2）。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2606.16978">Paper</a><a href="https://kai-ploeger.com/residual-juggling">Project</a></p><p class="caveat">学的是低维的 residual，不是神经网络策略；闭环里没有感知。</p>
+        </div>
+      </article>
+      <article class="card" id="w-22">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/sony-ace.jpg" alt="系统图：感知、发球控制、对打控制、机器人接口和真实比赛画面，下方是训练器和仿真器"></div><figcaption><b>Fig. 1</b>（作者原图）感知（200 Hz 位置，400–700 Hz 旋转）→ RL 策略 31.25 Hz → 1 kHz 机器人接口；下面是训练器和仿真器。</figcaption></figure>
+        <div>
+          <h3><span class="num">#22</span>Ace</h3>
+          <p class="ttl">Outplaying elite table tennis players with an autonomous robot</p>
+          <p class="when">2026-04-22 · Nature 652 · Sony AI</p>
+          <dl>
+            <div><dt>解决</dt><dd>按正式规则和精英、职业选手打乒乓球：球速、旋转和两拍的间隔都在人反应时间的边缘。</dd></div>
+            <div><dt>做法</dt><dd>帧相机定位球，event camera 测旋转；一组纯仿真训练的 RL 策略输出 32 ms 之后的关节目标，凸优化生成轨迹。</dd></div>
+            <div><dt>快在哪</dt><dd>策略 31.25 Hz，轨迹 <span class='fast'>1 kHz</span>，球位置 200 Hz、延迟 10.2 ms。对精英选手 5 场赢 3 场，对职业选手 2 场都输。</dd></div>
+          </dl>
+          <p class="links"><a href="https://www.nature.com/articles/s41586-026-10338-5">Paper</a><a href="https://sonyresearch.github.io/ace_public/">Project</a></p>
+        </div>
+      </article>
+      <article class="card" id="w-29">
+        <figure class="paper-fig"><div class="mat"><img src="2026-11-15-FastRoboticsLandscape/anymal-badminton.jpg" alt="ANYmal 四足机器人带机械臂和球拍的照片，下方是 60 Hz 卡尔曼滤波、轨迹预测和 100 Hz 控制策略的框图"></div><figcaption><b>Fig. 2</b>（作者原图）立体相机 → 60 Hz 的 EKF 和轨迹预测 → 100 Hz 的控制策略。</figcaption></figure>
+        <div>
+          <h3><span class="num">#29</span>ANYmal Badminton<span class="tag-old">2025 landmark</span></h3>
+          <p class="ttl">Learning coordinated badminton skills for legged manipulators</p>
+          <p class="when">2025-05-29 · Science Robotics 2025 · ETH Zurich</p>
+          <dl>
+            <div><dt>解决</dt><dd>让带机械臂的四足机器人协调腿、臂和机载相机，拦截并击打羽毛球。</dd></div>
+            <div><dt>做法</dt><dd>一个 whole-body RL 策略控制所有关节；训练里加了按真实相机数据建的感知噪声模型，策略自己学会把球留在视野里。</dd></div>
+            <div><dt>快在哪</dt><dd>策略 <span class='fast'>100 Hz</span>，机载感知 60 Hz（延迟 60–160 ms）；挥拍最高 12.06 m/s；和人连续对打 10 拍。</dd></div>
+          </dl>
+          <p class="links"><a href="https://arxiv.org/abs/2505.22974">Paper</a></p>
+        </div>
+      </article>
+      </div>
+    </div>
+  </details>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Left out</p>
+  <h2>没收进来的，和这页的局限</h2>
+  <ul class="tight">
+    <li><b>每环落选但值得知道的：</b>
+      采集：DexWrist（准直驱手腕，执行快 3–5×）、AthenaZero（低惯量双臂，没有学习）、DexUMI。
+      重定时：DemoSpeedup、SpeedTuning、ESPADA（Flash ALOHA 都引用了，被更新的工作覆盖）、EPCC、RoboPace、AutoSpeed。
+      实时执行：VLASH、FASTER、FlashVLA、FAST tokenizer、Running VLAs at Real-time Speed。
+      快环：FA-RDP、ReflexArc、TAO-Force、Wrench-ACT。
+      动态技能：DeepMind 乒乓球（2024-08）、HITTER、SMASH、PingpongDuo。</li>
+    <li><b>只读了摘要、项目页和关键表格。</b>数字是各论文自己报的，任务和机器人都不同，不能横向比。只出现在图里的数字没有收；论文没写的地方写了“没写”。</li>
+    <li><b>没收：</b>纯 locomotion、无人机、只有仿真的工作。Dual-system VLA 在另一份 Dual-System Reading Room 里，这里只在“频率是主要贡献”时才提。</li>
+    <li><b>时间：</b>窗口是 2024-11 到 2026-11，越新越优先；2025 年每环只留一篇大家都在对比的 landmark。UMI（2024-02）在窗口外，作为第 1 环的参照留下。RACE 的首次公开日期没核实。</li>
+    <li><b>Flash ALOHA 和 ALOHA Lightning 是同一个工作：</b>ICRA 2026 程序册里是 6 月 3 日的 WeI2I.216，同样五位作者；Flash ALOHA 多了 Toss &amp; Catch 和 Unstack Cups。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">综述页 · 依据是各论文的摘要、项目页和关键表格 · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>
