@@ -187,6 +187,32 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
   .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
   .crumb .proj { display: none; }
 }
+
+/* inline-SVG diagrams: same tokens as the flowcharts; scroll inside the box on a phone */
+.net { margin: 1.25rem 0 .5rem; }
+.net .mat { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: .6rem; overflow-x: auto; }
+.net svg { display: block; width: 100%; min-width: 620px; height: auto; color: var(--ink); }
+.net text { font: 12px var(--f-body); fill: currentColor; }
+.net .t-b { font-weight: 700; }
+.net .t-m { font: 11px var(--f-mono); fill: var(--muted); }
+.net .t-ex { font: 11px var(--f-mono); fill: var(--ex); }
+.net .bx { fill: var(--surface); stroke: var(--accent); stroke-width: 1.2; }
+.net .bx-ex { fill: var(--ex-bg); stroke: var(--ex); stroke-width: 1.2; stroke-dasharray: 5 3; }
+.net .bx-win { fill: var(--surface); stroke: var(--win); stroke-width: 2; }
+.net .band { fill: var(--bg); stroke: var(--rule); }
+.net .sg-p { fill: var(--ex-bg); stroke: var(--ex); }
+.net .sg-i { fill: color-mix(in srgb, var(--accent) 16%, var(--surface)); stroke: var(--accent); }
+.net .sg-q { fill: color-mix(in srgb, var(--win) 18%, var(--surface)); stroke: var(--win); }
+.net .dim { opacity: .35; }
+.net .ln { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+.net .ln.dash, .net .gd { stroke-dasharray: 4 3; }
+.net .gd { stroke: var(--muted); stroke-width: 1; opacity: .6; fill: none; }
+.net .ax, .net .dv { stroke: var(--muted); stroke-width: 1.2; }
+.net .ex-ln { stroke: var(--ex); stroke-width: 2; }
+.net .hd { fill: var(--muted); }
+.net figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.net figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+#net { margin-top: 1.5rem; scroll-margin-top: 3.5rem; }
 </style>
 </head>
 <body>
@@ -436,11 +462,272 @@ flowchart LR
       </pre></div>
       <ul class="tight">
         <li><b>Why action chunking：</b>一次预测一段，减轻 behavior cloning 的误差累积。</li>
-        <li><b>Action lookahead：</b>每次换 chunk 时跳过新 chunk 的前几步，抵消推理和执行的延迟；跳几步是调出来的，论文没给数值。</li>
+        <li><b>Action lookahead：</b>每次换 chunk 时跳过新 chunk 的前几步，抵消推理和执行的延迟；跳几步是调出来的，论文没给数值（公开代码默认 10 步，见<a href="#net">图 C</a>）。</li>
         <li><b>配置（Table VI）：</b>ACT 去掉 CVAE encoder，hidden 512 / feedforward 3200，encoder 4 层、decoder 7 层，8 heads，batch 256，lr 2×10⁻⁴，AdamW，200k steps。</li>
         <li><b>训练（Appendix V）：</b>图像从 360×640 降到 180×320，随机裁剪每边 95%；只用关节位置做条件，不用速度；单 GPU。</li>
         <li><b>不绑定 ACT：</b>作者认为别的 action chunk 策略也行，但没有实验。</li>
       </ul>
+
+      <h3 id="net">网络内部：按公开代码画</h3>
+      <p class="note" style="margin-top:.4rem">论文没有画网络结构。下面三张图按作者公开的代码画（<code>src/policy/act.py</code>、<code>training_utils.py</code>、<code>inference_direct.py</code>，2026-11-12 首次发布）。代码和论文的配置不完全一样：</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th></th><th>论文 Table VI</th><th>公开代码默认配置</th></tr>
+          <tr><td>结构</td><td>ACT 去掉 CVAE encoder，encoder 4 层 + decoder 7 层</td><td>decoder-only：一条 token 序列过 7 层 self-attention</td></tr>
+          <tr><td>MLP 宽度</td><td>3200</td><td>2048（4 × 512）</td></tr>
+          <tr><td>Chunk</td><td>50 步，50 Hz</td><td>预测 100 步，执行 50 步，100 Hz</td></tr>
+          <tr><td>Batch / lr / steps</td><td>256 / 2×10⁻⁴ / 200k</td><td>128 / 1.2×10⁻⁴ / 100k</td></tr>
+        </table>
+      </div>
+
+      <figure class="net">
+        <div class="mat">
+        <svg viewBox="0 0 720 640" role="img" aria-label="网络一次前向：关节位置、三路图像和 50 个全零 query 变成一条 231 个 token 的序列，过 7 层 self-attention，只取 query 位置的输出，经线性层得到 50 乘 14 的动作 chunk">
+          <defs><marker id="na" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="hd"/></marker></defs>
+          <text x="361" y="15" text-anchor="middle" class="t-m">3 路图像：手的位置已涂黑，像素缩放到 0–1</text>
+          <!-- inputs -->
+          <rect class="bx-ex" x="16" y="24" width="120" height="50" rx="4"/>
+          <text x="76" y="45" text-anchor="middle" class="t-b">关节位置</text>
+          <text x="76" y="63" text-anchor="middle" class="t-ex">14 维</text>
+          <rect class="bx-ex" x="156" y="24" width="130" height="50" rx="4"/>
+          <text x="221" y="45" text-anchor="middle" class="t-b">俯视</text>
+          <text x="221" y="63" text-anchor="middle" class="t-ex">3×180×320</text>
+          <rect class="bx-ex" x="296" y="24" width="130" height="50" rx="4"/>
+          <text x="361" y="45" text-anchor="middle" class="t-b">左 wrist</text>
+          <text x="361" y="63" text-anchor="middle" class="t-ex">3×180×320</text>
+          <rect class="bx-ex" x="436" y="24" width="130" height="50" rx="4"/>
+          <text x="501" y="45" text-anchor="middle" class="t-b">右 wrist</text>
+          <text x="501" y="63" text-anchor="middle" class="t-ex">3×180×320</text>
+          <rect class="bx-ex" x="586" y="24" width="118" height="50" rx="4"/>
+          <text x="645" y="45" text-anchor="middle" class="t-b">50 个 query</text>
+          <text x="645" y="63" text-anchor="middle" class="t-ex">全零</text>
+          <!-- row 2 -->
+          <line class="ln" x1="76" y1="74" x2="76" y2="98" marker-end="url(#na)"/>
+          <line class="ln" x1="221" y1="74" x2="221" y2="98" marker-end="url(#na)"/>
+          <line class="ln" x1="361" y1="74" x2="361" y2="98" marker-end="url(#na)"/>
+          <line class="ln" x1="501" y1="74" x2="501" y2="98" marker-end="url(#na)"/>
+          <line class="ln" x1="645" y1="74" x2="645" y2="248" marker-end="url(#na)"/>
+          <rect class="bx" x="16" y="100" width="120" height="50" rx="4"/>
+          <text x="76" y="121" text-anchor="middle" class="t-b">Linear</text>
+          <text x="76" y="139" text-anchor="middle" class="t-m">14 → 512</text>
+          <rect class="bx" x="156" y="100" width="130" height="50" rx="4"/>
+          <text x="221" y="121" text-anchor="middle" class="t-b">ResNet-18</text>
+          <text x="221" y="139" text-anchor="middle" class="t-m">512×6×10</text>
+          <rect class="bx" x="296" y="100" width="130" height="50" rx="4"/>
+          <text x="361" y="121" text-anchor="middle" class="t-b">ResNet-18</text>
+          <text x="361" y="139" text-anchor="middle" class="t-m">512×6×10</text>
+          <rect class="bx" x="436" y="100" width="130" height="50" rx="4"/>
+          <text x="501" y="121" text-anchor="middle" class="t-b">ResNet-18</text>
+          <text x="501" y="139" text-anchor="middle" class="t-m">512×6×10</text>
+          <!-- row 3 -->
+          <line class="ln" x1="76" y1="150" x2="76" y2="248" marker-end="url(#na)"/>
+          <line class="ln" x1="221" y1="150" x2="221" y2="172" marker-end="url(#na)"/>
+          <line class="ln" x1="361" y1="150" x2="361" y2="172" marker-end="url(#na)"/>
+          <line class="ln" x1="501" y1="150" x2="501" y2="172" marker-end="url(#na)"/>
+          <rect class="bx" x="156" y="174" width="130" height="46" rx="4"/>
+          <text x="221" y="193" text-anchor="middle" class="t-b">1×1 conv</text>
+          <text x="221" y="210" text-anchor="middle" class="t-m">60 token × 512</text>
+          <rect class="bx" x="296" y="174" width="130" height="46" rx="4"/>
+          <text x="361" y="193" text-anchor="middle" class="t-b">1×1 conv</text>
+          <text x="361" y="210" text-anchor="middle" class="t-m">60 token × 512</text>
+          <rect class="bx" x="436" y="174" width="130" height="46" rx="4"/>
+          <text x="501" y="193" text-anchor="middle" class="t-b">1×1 conv</text>
+          <text x="501" y="210" text-anchor="middle" class="t-m">60 token × 512</text>
+          <line class="ln" x1="221" y1="220" x2="221" y2="248" marker-end="url(#na)"/>
+          <line class="ln" x1="361" y1="220" x2="361" y2="248" marker-end="url(#na)"/>
+          <line class="ln" x1="501" y1="220" x2="501" y2="248" marker-end="url(#na)"/>
+          <!-- token sequence -->
+          <rect class="sg-p" x="16" y="250" width="120" height="40" rx="3"/>
+          <text x="76" y="275" text-anchor="middle">1 个 token</text>
+          <rect class="sg-i" x="156" y="250" width="410" height="40" rx="3"/>
+          <line class="dv" x1="291" y1="250" x2="291" y2="290"/>
+          <line class="dv" x1="431" y1="250" x2="431" y2="290"/>
+          <text x="221" y="275" text-anchor="middle">60</text>
+          <text x="361" y="275" text-anchor="middle">60</text>
+          <text x="501" y="275" text-anchor="middle">60</text>
+          <rect class="sg-q" x="586" y="250" width="118" height="40" rx="3"/>
+          <text x="645" y="275" text-anchor="middle">50 个 token</text>
+          <text x="360" y="311" text-anchor="middle" class="t-m">一条序列：1 + 180 + 50 = 231 个 token，每个位置加一个可学习的位置编码</text>
+          <line class="ln" x1="360" y1="320" x2="360" y2="340" marker-end="url(#na)"/>
+          <!-- transformer -->
+          <rect class="bx-win" x="16" y="342" width="688" height="66" rx="4"/>
+          <text x="360" y="370" text-anchor="middle" class="t-b">7 层 self-attention block</text>
+          <text x="360" y="391" text-anchor="middle" class="t-m">8 heads · 512 维 · MLP 2048 · 没有 mask：所有 token 互相可见</text>
+          <line class="ln" x1="360" y1="408" x2="360" y2="430" marker-end="url(#na)"/>
+          <!-- outputs -->
+          <rect class="sg-p dim" x="16" y="432" width="120" height="40" rx="3"/>
+          <rect class="sg-i dim" x="156" y="432" width="410" height="40" rx="3"/>
+          <text x="291" y="457" text-anchor="middle" class="t-m">前 181 个位置的输出不用</text>
+          <rect class="sg-q" x="586" y="432" width="118" height="40" rx="3"/>
+          <text x="645" y="457" text-anchor="middle">50 个输出</text>
+          <line class="ln" x1="645" y1="472" x2="645" y2="496" marker-end="url(#na)"/>
+          <rect class="bx" x="586" y="498" width="118" height="46" rx="4"/>
+          <text x="645" y="517" text-anchor="middle" class="t-b">Linear</text>
+          <text x="645" y="534" text-anchor="middle" class="t-m">512 → 14</text>
+          <line class="ln" x1="645" y1="544" x2="645" y2="568" marker-end="url(#na)"/>
+          <rect class="bx-ex" x="466" y="570" width="238" height="54" rx="4"/>
+          <text x="585" y="592" text-anchor="middle" class="t-b">动作 chunk：50 × 14</text>
+          <text x="585" y="611" text-anchor="middle" class="t-ex">未来 50 步的关节目标（归一化）</text>
+          <text x="450" y="592" text-anchor="end">每步 14 维 =</text>
+          <text x="450" y="611" text-anchor="end" class="t-m">左臂 6 关节 + 左夹爪 + 右臂 6 关节 + 右夹爪</text>
+        </svg>
+        </div>
+        <figcaption><b>图 A · 一次前向</b>（按代码画；尺寸按论文的设置代入：180×320 图像，chunk 50）。绿框是 transformer，虚线橙框是输入和输出。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>三种 token 进同一条序列：</b>1 个关节 token、180 个图像 token、50 个 query token。没有单独的 encoder 和 cross-attention。</li>
+        <li><b>Query 起初是空的：</b>全零向量加位置编码；过 7 层之后，第 k 个 query 的输出就是第 k 步的动作。50 步一次算完，不是一步步自回归。</li>
+        <li><b>每路相机一个 ResNet-18：</b>ImageNet 预训练，BatchNorm 冻结，取最后一层的 6×10 特征图。</li>
+        <li><b>代码默认 chunk 是 100：</b>那时序列是 281 个 token，其余不变。</li>
+      </ol>
+
+      <figure class="net">
+        <div class="mat">
+        <svg viewBox="0 0 720 420" role="img" aria-label="训练一步：从一条示范里随机取时刻 t，t 时刻的三帧图像和关节位置是输入，t 之后 50 步的关节位置是标签；网络预测 50 乘 14，和标签算 L1 loss，再用 AdamW 更新">
+          <defs><marker id="nb" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="hd"/></marker></defs>
+          <text x="40" y="18" class="t-m">一条示范：7 s，50 Hz</text>
+          <line class="ax" x1="40" y1="60" x2="680" y2="60"/>
+          <line class="ax" x1="40" y1="54" x2="40" y2="66"/>
+          <line class="ax" x1="680" y1="54" x2="680" y2="66"/>
+          <rect class="sg-q" x="200" y="54" width="92" height="12" rx="2"/>
+          <line class="ex-ln" x1="200" y1="46" x2="200" y2="74"/>
+          <text x="194" y="44" text-anchor="end" class="t-ex">随机取时刻 t</text>
+          <text x="206" y="44">t 之后的 50 步（1 s）</text>
+          <!-- arrows from timeline -->
+          <line class="ln" x1="200" y1="74" x2="130" y2="107" marker-end="url(#nb)"/>
+          <line class="ln" x1="200" y1="74" x2="328" y2="107" marker-end="url(#nb)"/>
+          <line class="ln" x1="292" y1="66" x2="578" y2="107" marker-end="url(#nb)"/>
+          <rect class="bx-ex" x="16" y="110" width="220" height="50" rx="4"/>
+          <text x="126" y="131" text-anchor="middle" class="t-b">t 时刻的 3 帧图像</text>
+          <text x="126" y="149" text-anchor="middle" class="t-m">缩放 → 涂黑手 → 0–1</text>
+          <rect class="bx-ex" x="252" y="110" width="160" height="50" rx="4"/>
+          <text x="332" y="131" text-anchor="middle" class="t-b">t 时刻的关节位置</text>
+          <text x="332" y="149" text-anchor="middle" class="t-m">(x − 均值) / 标准差</text>
+          <rect class="bx-ex" x="474" y="110" width="216" height="50" rx="4"/>
+          <text x="582" y="131" text-anchor="middle" class="t-b">标签：50 × 14 关节位置</text>
+          <text x="582" y="149" text-anchor="middle" class="t-m">(x − 均值) / 标准差</text>
+          <line class="ln" x1="126" y1="160" x2="126" y2="188" marker-end="url(#nb)"/>
+          <rect class="bx" x="16" y="190" width="220" height="46" rx="4"/>
+          <text x="126" y="209" text-anchor="middle" class="t-b">随机裁 95% 再放大</text>
+          <text x="126" y="226" text-anchor="middle" class="t-m">只在训练时做</text>
+          <line class="ln" x1="126" y1="236" x2="126" y2="264" marker-end="url(#nb)"/>
+          <line class="ln" x1="332" y1="160" x2="332" y2="264" marker-end="url(#nb)"/>
+          <rect class="bx-win" x="16" y="266" width="396" height="50" rx="4"/>
+          <text x="214" y="287" text-anchor="middle" class="t-b">网络（图 A）</text>
+          <text x="214" y="305" text-anchor="middle" class="t-m">一次前向</text>
+          <line class="ln" x1="412" y1="291" x2="472" y2="291" marker-end="url(#nb)"/>
+          <rect class="bx" x="474" y="266" width="216" height="50" rx="4"/>
+          <text x="582" y="287" text-anchor="middle" class="t-b">预测：50 × 14</text>
+          <text x="582" y="305" text-anchor="middle" class="t-m">归一化的关节目标</text>
+          <line class="ln" x1="582" y1="316" x2="582" y2="354" marker-end="url(#nb)"/>
+          <path class="ln" d="M690,135 H706 V381 H692" marker-end="url(#nb)"/>
+          <rect class="bx-win" x="474" y="356" width="216" height="50" rx="4"/>
+          <text x="582" y="377" text-anchor="middle" class="t-b">L1 loss</text>
+          <text x="582" y="395" text-anchor="middle" class="t-m">|预测 − 标签|，只算没 pad 的步</text>
+          <line class="ln" x1="474" y1="381" x2="414" y2="381" marker-end="url(#nb)"/>
+          <rect class="bx" x="16" y="356" width="396" height="50" rx="4"/>
+          <text x="214" y="377" text-anchor="middle" class="t-b">AdamW 更新全部权重</text>
+          <text x="214" y="395" text-anchor="middle" class="t-m">ResNet 用更小的学习率 1e-5</text>
+          <line class="ln dash" x1="214" y1="356" x2="214" y2="318" marker-end="url(#nb)"/>
+          <text x="222" y="341" class="t-m">梯度</text>
+        </svg>
+        </div>
+        <figcaption><b>图 B · 训练一步</b>（按代码画）。输入只有 t 这一个时刻；标签是示范里之后 1 s 的关节位置。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>标签不用另外标：</b>握臂示教里“指令”就是测到的关节位置，所以示范自己就是标签。</li>
+        <li><b>纯回归：</b>没有 CVAE，所以没有 KL 项，也没有 diffusion 的加噪去噪。</li>
+        <li><b>示范末尾不够 50 步：</b>补零并标成 pad，不算 loss。</li>
+        <li><b>涂黑用的是这一帧自己的关节位置：</b>和部署时完全同一段代码。</li>
+        <li><b>没核对的一点：</b>论文写标签是 t+1 到 t+50；代码里起点可配置，默认值我没逐行确认。</li>
+      </ol>
+
+      <figure class="net">
+        <div class="mat">
+        <svg viewBox="0 0 720 470" role="img" aria-label="推理：每 50 步查询一次网络，预测 100 步；新的一段跳过前 10 步，并在交接的 5 步里和前一段多预测出来的部分按 sigmoid 权重混合，再逐步发给电机">
+          <defs><marker id="nc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="hd"/></marker></defs>
+          <text x="8" y="16" class="t-m">每到换段的时刻做一次（每 50 步 = 0.5 s）</text>
+          <!-- pipeline strip -->
+          <rect class="bx-ex" x="8" y="26" width="104" height="46" rx="4"/>
+          <text x="60" y="45" text-anchor="middle">读关节位置</text><text x="60" y="62" text-anchor="middle">和 3 帧图像</text>
+          <rect class="bx" x="128" y="26" width="104" height="46" rx="4"/>
+          <text x="180" y="45" text-anchor="middle">缩放、涂黑</text><text x="180" y="62" text-anchor="middle">归一化</text>
+          <rect class="bx-win" x="248" y="26" width="104" height="46" rx="4"/>
+          <text x="300" y="45" text-anchor="middle" class="t-b">网络（图 A）</text><text x="300" y="62" text-anchor="middle" class="t-m">出 100 步</text>
+          <rect class="bx" x="368" y="26" width="104" height="46" rx="4"/>
+          <text x="420" y="45" text-anchor="middle">反归一化</text><text x="420" y="62" text-anchor="middle" class="t-m">× 标准差 + 均值</text>
+          <rect class="bx" x="488" y="26" width="104" height="46" rx="4"/>
+          <text x="540" y="45" text-anchor="middle">跳过前 10 步</text><text x="540" y="62" text-anchor="middle">和前一段混合</text>
+          <rect class="bx-ex" x="608" y="26" width="104" height="46" rx="4"/>
+          <text x="660" y="45" text-anchor="middle">每步发一个</text><text x="660" y="62" text-anchor="middle">关节目标</text>
+          <line class="ln" x1="112" y1="49" x2="126" y2="49" marker-end="url(#nc)"/>
+          <line class="ln" x1="232" y1="49" x2="246" y2="49" marker-end="url(#nc)"/>
+          <line class="ln" x1="352" y1="49" x2="366" y2="49" marker-end="url(#nc)"/>
+          <line class="ln" x1="472" y1="49" x2="486" y2="49" marker-end="url(#nc)"/>
+          <line class="ln" x1="592" y1="49" x2="606" y2="49" marker-end="url(#nc)"/>
+          <!-- time axis: step s at x = 60 + 6 s -->
+          <line class="ax" x1="60" y1="112" x2="700" y2="112"/>
+          <line class="ax" x1="60" y1="107" x2="60" y2="117"/><text x="60" y="102" text-anchor="middle" class="t-m">第 0 步</text>
+          <line class="ax" x1="360" y1="107" x2="360" y2="117"/><text x="360" y="102" text-anchor="middle" class="t-m">第 50 步</text>
+          <line class="ax" x1="660" y1="107" x2="660" y2="117"/><text x="660" y="102" text-anchor="middle" class="t-m">第 100 步</text>
+          <line class="gd" x1="360" y1="117" x2="360" y2="286"/>
+          <line class="gd" x1="660" y1="117" x2="660" y2="286"/>
+          <!-- chunk 1 -->
+          <text x="60" y="136">第 1 段：第 0 步看一眼，预测 100 步</text>
+          <rect class="sg-i" x="60" y="144" width="300" height="20" rx="2"/>
+          <rect class="sg-i dim" x="360" y="144" width="300" height="20" rx="2"/>
+          <rect class="sg-p" x="360" y="144" width="30" height="20" rx="2"/>
+          <text x="210" y="158" text-anchor="middle" class="t-m">执行前 50 步</text>
+          <text x="398" y="158" class="t-m">多预测的部分：前 5 步拿去混合，其余丢掉</text>
+          <!-- chunk 2 -->
+          <text x="60" y="192">第 2 段：第 50 步再看一眼，预测 100 步</text>
+          <rect class="sg-q dim" x="300" y="200" width="60" height="20" rx="2"/>
+          <rect class="sg-q" x="360" y="200" width="300" height="20" rx="2"/>
+          <rect class="sg-q dim" x="660" y="200" width="40" height="20" rx="2"/>
+          <rect class="sg-p" x="360" y="200" width="30" height="20" rx="2"/>
+          <text x="294" y="214" text-anchor="end" class="t-m">跳过前 10 步（lookahead）</text>
+          <text x="525" y="214" text-anchor="middle" class="t-m">执行第 10–59 个动作</text>
+          <!-- commands -->
+          <text x="60" y="248">发给电机的指令</text>
+          <rect class="sg-i" x="60" y="256" width="300" height="20" rx="2"/>
+          <rect class="sg-p" x="360" y="256" width="30" height="20" rx="2"/>
+          <rect class="sg-q" x="390" y="256" width="270" height="20" rx="2"/>
+          <rect class="sg-p" x="660" y="256" width="30" height="20" rx="2"/>
+          <text x="210" y="270" text-anchor="middle" class="t-m">第 1 段</text>
+          <text x="525" y="270" text-anchor="middle" class="t-m">第 2 段</text>
+          <!-- zoom on the blend -->
+          <line class="gd" x1="360" y1="276" x2="150" y2="318"/>
+          <line class="gd" x1="390" y1="276" x2="590" y2="318"/>
+          <rect class="band" x="150" y="318" width="440" height="136" rx="4"/>
+          <text x="142" y="345" text-anchor="end" class="t-m">前一段</text>
+          <text x="142" y="395" text-anchor="end" class="t-m">后一段</text>
+          <rect class="sg-i" x="160" y="330" width="68" height="62"/><rect class="sg-q" x="160" y="392" width="68" height="14"/>
+          <rect class="sg-i" x="248" y="330" width="68" height="54"/><rect class="sg-q" x="248" y="384" width="68" height="22"/>
+          <rect class="sg-i" x="336" y="330" width="68" height="44"/><rect class="sg-q" x="336" y="374" width="68" height="32"/>
+          <rect class="sg-i" x="424" y="330" width="68" height="32"/><rect class="sg-q" x="424" y="362" width="68" height="44"/>
+          <rect class="sg-i" x="512" y="330" width="68" height="22"/><rect class="sg-q" x="512" y="352" width="68" height="54"/>
+          <text x="194" y="424" text-anchor="middle" class="t-m">0.82 : 0.18</text>
+          <text x="282" y="424" text-anchor="middle" class="t-m">0.71 : 0.29</text>
+          <text x="370" y="424" text-anchor="middle" class="t-m">0.57 : 0.43</text>
+          <text x="458" y="424" text-anchor="middle" class="t-m">0.43 : 0.57</text>
+          <text x="546" y="424" text-anchor="middle" class="t-m">0.29 : 0.71</text>
+          <text x="194" y="442" text-anchor="middle" class="t-m">第 50 步</text>
+          <text x="282" y="442" text-anchor="middle" class="t-m">51</text>
+          <text x="370" y="442" text-anchor="middle" class="t-m">52</text>
+          <text x="458" y="442" text-anchor="middle" class="t-m">53</text>
+          <text x="546" y="442" text-anchor="middle" class="t-m">54</text>
+          <text x="600" y="345" class="t-m">交接的 5 步里</text>
+          <text x="600" y="362" class="t-m">两段各占多少</text>
+        </svg>
+        </div>
+        <figcaption><b>图 C · 推理时怎么换段</b>（按代码画；数字是公开配置：100 Hz，预测 100 步，每 50 步换段，lookahead 10，混合 5 步）。蓝是第 1 段，绿是第 2 段，橙是混合的 5 步。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>预测比执行多：</b>每段预测 100 步只执行 50 步；多出来的部分的前 5 步，正好和下一段混合。</li>
+        <li><b>跳过前 10 步：</b>新的一段是按第 50 步的画面算的，电机跟上需要时间，所以从它的第 10 个动作开始发（论文叫 action lookahead）。夹爪再往前多读 5 步。</li>
+        <li><b>混合权重：</b>前一段的权重 = 1 / (1 + e<sup>3(i/5 − 0.5)</sup>)，i 是交接后的第几步（0 到 4）；从 0.82 降到 0.29。</li>
+        <li><b>论文实验的数字不同：</b>50 Hz、chunk 50；重叠步数和 lookahead 论文没给，这里的 5 和 10 只是代码的默认值。</li>
+      </ol>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
         <p>Battery Insertion 的策略每次输出 50 步，50 Hz 下是 1 s 的关节轨迹；整个任务约 5.70 s，要接好几段 chunk。</p>
@@ -472,7 +759,7 @@ flowchart LR
           <tr><td>q̂²（红点）</td><td>后一段 chunk 给出的关节目标</td><td>看到新画面后重新预测的 1 s 轨迹</td></tr>
           <tr><td>a（带灰边的点）</td><td>最终发给电机的指令</td><td>ARX 臂实际跟踪的关节位置</td></tr>
           <tr><td>T</td><td>一段 chunk 有多少步</td><td>50</td></tr>
-          <tr><td>H</td><td>两段重叠（要混合）的步数，比 T 小</td><td>论文没给数值</td></tr>
+          <tr><td>H</td><td>两段重叠（要混合）的步数，比 T 小</td><td>论文没给数值；公开代码的配置是 5 步</td></tr>
           <tr><td>w</td><td>后一段占的权重，0 到 1</td><td>重叠开始时接近 0，结束时接近 1</td></tr>
           <tr><td>σ</td><td>权重从 0 升到 1 有多陡</td><td>论文没给数值</td></tr>
         </table>
@@ -639,7 +926,7 @@ flowchart LR
     <li><b>Mask 太保守（作者）：</b>手附近的有用画面也被涂掉了；想做自适应 masking。</li>
     <li><b>只有视觉和关节（作者）：</b>没有触觉，接触很多的灵巧操作学不了。</li>
     <li><b>泛化没测：</b>每个任务一个策略，物体只沿 15 cm 胶带移动（短裤最多转 30°）。</li>
-    <li><b>关键超参没给：</b>重叠步数 H、陡度 σ、lookahead 跳几步都没有数值，也没有消融。</li>
+    <li><b>关键超参没给：</b>重叠步数 H、陡度 σ、lookahead 跳几步，论文都没有数值，也没有消融；公开代码的默认值见 <a href="#net">Stage 4 的图 C</a>。</li>
     <li><b>对比不完全对等：</b>puppeteering 用的是另一台机器人；Table I、II 没写试验次数。</li>
   </ul>
 </section>
