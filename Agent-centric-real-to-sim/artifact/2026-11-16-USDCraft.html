@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>USDCraft</title>
+<meta name="description" content="现成 LLM 把扫描 mesh 读成公制切片文本，写可编译的铰接 USD 程序并在同一网格上复查；USDCraft-bench F1 84.830，真机 sim→real 最多掉 10 点。">
+<meta name="paper:title" content="USDCraft: Geometrically Grounded Programmatic Modeling of Articulated 3D Assets for Simulation">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.11322">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.11322v1">
+<meta name="paper:date" content="2026-10-08">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-16</p>
+  <h1>USDCraft</h1>
+  <p class="full-title">USDCraft: Geometrically Grounded Programmatic Modeling of Articulated 3D Assets for Simulation</p>
+  <p class="meta">Chuanrui Zhang, Zaijia Yang, Duomin Wang, Lu Shi, Daquan Zhou, Ruihua Zhang et al. · NVIDIA、NTU、PKU · arXiv 2026-10-08 · 30 页（正文 9 页，其余是参考文献和附录）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.11322">arXiv</a><a href="https://arxiv.org/pdf/2610.11322v1">PDF</a>
+    <a href="https://nvlabs.github.io/USDCraft/v1/">Project page</a><a href="https://github.com/NVlabs/USDCraft">Code</a><a href="https://huggingface.co/datasets/nvidia/USDCraft-10K">Dataset</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：agent 把真实物体的扫描 + 一张照片重建成 Isaac Sim 直接能加载的铰接 USD 资产，并用 real-to-sim-to-real 验证。</p>
+  <p class="meta">数字都出自 PDF。项目页是 nvlabs.github.io/USDCraft/v1（arXiv comment 里的 xingyoujun.github.io/usdcraft 会跳转过去），本页取了它的高清 Fig. 2 和真机视频；开源代码的 README 只在 For you 里引用，已标明。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>扫描 mesh 不全、零件粘连：切分法只能切已有表面，缺的补不上；只看照片写程序的方法尺寸不准，sim 里练的策略到真机按错位置。</dd></div>
+    <div><dt>Idea</dt><dd>把 mesh 编成 LLM 能读的公制切片文本（观测到的表面和 unknown 分开），让现成 LLM 写可编译的 USD 资产程序；每改一版都在同一网格上复查：漏掉观测表面必改，unknown 里多出的再看照片判断。</dd></div>
+    <div><dt>Result</dt><dd>USDCraft-bench 部件 F1 84.830（Articraft 64.041、Particulate 33.366，Table 1）；扫描 toaster 上只用 sim 数据训练的策略，真机压 lever 85%，比 sim 只掉 5 点（Articraft 掉 80 点，Table 4）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>扫描不全、零件粘连：切分法补不上，只看照片的程序量不准</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>扫描的真实 toaster</b>（§4.4、App. E）：输入是 iPhone Pro 用 LiDAR + RGB 扫了约 2 分钟的 mesh（<span class="ex">0.1435 × 0.2527 × 0.1682 m</span>，App. G.6；Fig. 9 里 slot 很浅，lever 和 knob 只是外壳上的鼓包）+ 一张照片 → 想要：一个直接放进 Isaac Sim 的铰接 USD，<span class="ex">lever 能压下（prismatic）</span>、<span class="ex">knob 能转（revolute）</span>，位置和尺寸跟真机一致，让只用 sim 数据训练的 Diffusion Policy 在真机上把 lever 压下 ≥ 4 cm、把 switch 转过 5° 以上。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>toaster 扫描 + 照片</b><br/><span class='ex'>iPhone LiDAR，约 2 分钟</span>"]:::example
+  IN --> P1["<b>切分扫描表面</b><br/>Particulate"]
+  P1 --> PX["knob 分不出，机身站不稳<br/><span class='ex'>switch 0%，lever 真机 10%</span>"]:::gap
+  IN --> A1["<b>只看照片写程序</b><br/>Articraft–Sol"]
+  A1 --> AX["lever 尺寸、位置对不上<br/><span class='ex'>lever sim 90% → 真机 10%</span>"]:::gap
+  IN --> M1["<b>同一 LLM + 通用工具</b><br/>Mini Workflow–Sol"]
+  M1 --> MX["自写量测代码，部件放偏<br/><span class='ex'>lever 85% → 真机 30%</span>"]:::gap
+  </pre></div>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-USDCraft/fig4.jpg" alt="四行物体（toaster、drawer、chair、game console），每行依次是照片、mesh，以及 Particulate、Mini-Sol、Mini-Astra、USDCraft Sol、USDCraft Astra 的 rest 和 articulated 两个姿态，部件按颜色区分"></div>
+    <figcaption><b>Fig. 4</b>（作者原图）同一 backbone 下的 harness 对比：(a) 扫描的 toaster，(b) 扫描的 drawer，(c) 生成的 chair，(d) 生成的 game console；每对是第一次运行的 rest / articulated。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>列：</b>Image、Mesh 是输入；后面每个方法两张：rest 和 articulated。颜色区分部件，红色旋转符号 = revolute，黄色双箭头 = prismatic（图例同 Fig. 3）。</li>
+    <li><b>(a) toaster，本页的例子：</b>Particulate 只有 lever 的黄色箭头，没有 knob 的红色转轴，机身还是扫描的鼓包外形；Mini-Sol、Mini-Astra 和 USDCraft 都有 lever + knob，差别在尺寸和位置，图上看不出来，要看 Table 4 的真机成功率。</li>
+    <li><b>(b) drawer：</b>Particulate 没有抽屉这个部件；Mini-Astra 张开时青色抽屉出现在盒子后上方（读图所得）。§4.4 说它的把手放错，真机触发危险接触，成功率 0%。</li>
+  </ol>
+  <p class="note">推断的“坏在哪”：Articraft 和 Mini Workflow 在 toaster 上具体哪个零件放偏，论文没有逐个说，依据是 §4.2（Articraft “parts are poorly sized and placed”）和 §4.4（“a handle, lever, or switch that is misplaced or missized in simulation sends the real robot to the wrong location”）。Particulate 一条是 App. E 原文：只恢复了 lever 关节，机身站不稳，在 Isaac Sim 里被固定；drawer 和 switch 没有可用资产，没采示范，记 0%。Articraft 的资产按真实扫描尺寸缩放过（App. E）。</p>
+  <p class="crux"><b>根本问题：</b>LLM 读不了 mesh，所以现有方法要么只切 mesh（缺的补不上、粘的分不开），要么不看 mesh（尺寸靠猜）。　<b>这篇的切入点：</b>把 mesh 编成公制文本（观测到的表面 vs unknown）交给现成 LLM 写程序，每改一版都在同一网格上复查；toaster 上 USDCraft–Astra 真机压 lever 85%，只比 sim 掉 5 点（Table 4）。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Mesh segmentation</b><br><span class="muted">Particulate、Instruct-Particulate、Articulate AnyMesh</span></td><td>静态 mesh → 部件 + 关节</td><td>前两者是在标注资产上训练的 feed-forward 网络；AnyMesh 用 VLM visual prompting，免训练</td><td>只能切给定的表面：扫描里粘连的 knob 分不开、缺的部件补不上 → 本文用程序重建每个部件（Lightwheel F1：Particulate 65.500，Instruct-Particulate 用原 mesh 83.400，本文 86.983）</td></tr>
+      <tr><td><b>3D LLM</b><br><span class="muted">SIMART、ArtLLM</span></td><td>mesh → 部件分解 + 运动学</td><td>把 3D token 交给专门训练的 3D 语言模型；ArtLLM 生成 articulation-aware layout 引导部件几何，依赖 P3-SAM 分割</td><td>要 articulation 专门训练，分布外的类别就弱，ArtLLM 100 例里 28 例分割失败 → 本文用现成 LLM，零训练（USDCraft-bench F1：SIMART 35.957，ArtLLM† 19.337）</td></tr>
+      <tr><td><b>Image-conditioned generation</b><br><span class="muted">PhysX-Anything、URDF-Anything+</span></td><td>单张照片 → 带关节和物理量的资产</td><td>学出来的生成模型一次前向生成；URDF-Anything+ 是自回归 diffusion</td><td>一次生成，没有可编辑程序也没有迭代修正，尺寸只能从图猜 → 本文写程序并逐版改（Lightwheel F1 19.700 / 35.700）</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Agentic programmatic generation</b>（本文所属）<br><span class="muted">Articraft、Procedura</span></td><td>从文字或照片生成铰接资产</td><td>LLM 写资产程序：Articraft 有 SDK + 受限 harness 回传执行和校验结果；Procedura 用 typed mates 约束摆放，另设 visual critic，每个部件单独调用</td><td>有程序和反馈循环，但只校验装配合理，不校验和实物尺寸一致 → 本文把扫描编成文本，并在同一网格上复查（重建 F1：Articraft–Astra 64.041，本文 84.830）</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2 Related Work，§4.2–4.5 的对比和 App. C、E。URDFormer、Articulate-Anything 从资产库取部件拼装，论文认为设定不同，没当 baseline。README 说 USDCraft 的 SDK 以 Articraft 的为起点。未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>现成 LLM 写资产程序：照片定是什么、怎么动，扫描定多大、在哪</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-USDCraft/fig1.jpg" alt="上方是一排生成的资产；下方三栏：Generation（文字或照片到资产）、Reconstruction（toaster 扫描和 microwave 生成 mesh 到资产）、Real2Sim2Real（sim 和真机照片及成功率柱状图）"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）USDCraft 做三件事：生成、重建、real-to-sim-to-real。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>上方一排：</b>USDCraft-10k 里生成的资产（10,000 个，500 多类，§4.5）。</li>
+    <li><b>Generation（左）：</b>文字 “Mini rice cooker.” 或一张照片 → Appearance 和 Parts + joints（部件上色，带关节符号）。没有 mesh。</li>
+    <li><b>Reconstruction（中），上行就是本页的 toaster：</b>Image → Scanning（手机扫描）→ 灰色 mesh → USDCraft → Appearance 和 Parts + joints（黄色 lever、底部带红色转轴的 knob）。下行的 microwave 换成 HunYuan 从照片生成的 mesh；Fig. 2 的 microwave 看起来是同一台。</li>
+    <li><b>Real2Sim2Real（右）：</b>Sim / Real 两张照片是 toaster 叠在红色 drawer 上；柱状图是 USDCraft 的成功率：Open drawer 100 / 90，Press toaster lever 90 / 85，Turn on toaster 85 / 85（橙 = sim，蓝 = 真机；和 Table 4 的 USDCraft–Astra 一致）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>toaster 扫描 + 照片</span>"]:::example --> M["<b>现成 LLM 写程序</b><br/><span class='ex'>读公制切片文本</span>"]
+  M --> O["<b>Output</b><br/><span class='ex'>铰接 USD + 物理量</span>"]:::win
+  M --> R["<b>同网格复查</b><br/><span class='ex'>漏掉的表面必改</span>"]
+  R --> M
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage，一个 agent 自己定顺序</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-USDCraft/web-method.jpg" alt="USDCraft 总览：上排输入、Modeling Agent、model.py 和候选、编译后的资产及下游；中排 Source geometry analysis 和 Iterative geometric rechecking 两个面板；下排 Image observation、Authoring toolkit、PhysX parameters、Visual feedback 四个面板"></div>
+    <figcaption><b>Fig. 2</b>（作者原图，取自<a href="https://nvlabs.github.io/USDCraft/v1/#method">项目页 Method</a> 的高清版；和 PDF 版相比我们只看到一处不同：Compile 写成了 Compile &amp; validate）USDCraft overview。蓝色模块只在重建时测量源几何，紫色是共享工具，橙色是下游使用。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图（图里是 microwave，不是 toaster：下面的数值论文只对它给出）</p>
+  <ol class="read">
+    <li><b>上排左：</b>三种输入 Text、Image、Geometry；Geometry 标着 Recon only：生成任务没有 mesh。</li>
+    <li><b>Modeling Agent：</b>Adaptive tool usage，一个 agent 自己挑工具和顺序；蓝底的 Source geometry analysis、Iterative geometric rechecking 只在重建时用。</li>
+    <li><b>上排右：</b>model.py 里 <code>d = m.part('door')</code>、<code>m.articulation('door_hinge', REVOLUTE, body, d)</code> → Candidate（青色门 + 红色转轴）→ Compile &amp; validate → Articulated asset → USD / URDF → Isaac Sim → Data collection &amp; policy training → Real-world Deployment（橙色 = 下游）。</li>
+    <li><b>中排左 Source geometry analysis（Stage 2）：</b>Global encoding 是一叠切片；Metric summaries 给出整机 0.604 × 0.380 × 0.324 m 和一个 37 mm raised feature；Mesh inspection 放大一块局部（看起来是把手）：154 × 60 × 280 mm 和 surface normals。</li>
+    <li><b>中排右 Iterative geometric rechecking（Stage 4）：</b>在源上框出把手区域，Handle comparison 给两个数：Front–back shift 0.64 mm inward（位置几乎没偏），Shape difference 90% within 3.41 mm（形状有差）；底部循环 Compare → Revise program → Recompile → Recheck geometry。</li>
+    <li><b>下排：</b>Image observation 给出 part plan：door（open · close）、handle（grasp）、panel（fixed）（Stage 1）；Authoring toolkit 是 CadQuery、SDF、Appearance 三类 API；PhysX parameters 四个例值：physics:mass = 2.42、physics:staticFriction = 0.40、physics:upperLimit = 105、angular:staticFrictionEffort = 0.48（Stage 3）；Visual feedback 用 Part colors 和 Appearance 两种渲染（Stage 5）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Evidence + part plan</b><br/><span class='ex'>lever 下压，knob 旋转</span>"] --> S2["<b>2 · Source geometry analysis</b><br/><span class='ex'>24 层切片，7.9 mm 一格</span>"]
+  S2 --> S3["<b>3 · 写 model.py + 编译</b><br/><span class='ex'>body + lever + knob</span>"]
+  S3 --> S4["<b>4 · Geometric rechecking</b><br/><span class='ex'>D− 必改，D+ 待判</span>"]
+  S3 --> S5["<b>5 · Visual feedback</b><br/><span class='ex'>部件色 vs 照片</span>"]
+  S4 --> S3
+  S5 --> S3
+  S3 --> OUT["<b>USD 资产</b><br/><span class='ex'>toaster 进 Isaac Sim</span>"]:::win
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。贯穿全程的单 agent 循环见 <a href="#stage-all">Stage all</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Evidence + part plan</span>
+      <span class="stage-io">照片 + 扫描 mesh（+ 可选文字）→ 公制 Z-up 坐标 + part plan</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>照片说明是什么、有哪些部件、怎么动，扫描说明多大、在哪；这条分工写在 agent 的指令里（§3.1、G.1）。</li>
+        <li><b>坐标和尺度：</b>源几何放进公制 Z-up 坐标，按声明的单位；看起来被归一化、又没有物理尺度的 mesh，先从照片估一个尺度假设，之后固定不动（A.3）。</li>
+        <li><b>part plan：</b>agent 自己看照片，记下哪些部件、怎么连接、怎么动；扫描里缺的部件也从照片补进计划（§3.1）。没有强制的单独观察步骤（G.1）。</li>
+        <li><b>别加独立的看图 agent：</b>先让另一个 agent 列部件清单，每项指标都变差（Table 7：F1 84.830 → 82.556）。</li>
+        <li><b>生成：</b>没有 mesh 的特例，跳过 mesh 工具，只靠文字和/或照片（§3.1）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  P["<b>照片</b><br/><span class='ex'>toaster 正面</span>"]:::example --> PL["<b>part plan</b><br/><span class='ex'>lever 下压，knob 旋转</span>"]
+  S["<b>扫描 mesh</b><br/><span class='ex'>iPhone LiDAR，公制</span>"]:::example --> F["<b>公制 Z-up 坐标</b><br/><span class='ex'>0.1435 × 0.2527<br/>× 0.1682 m</span>"]
+  PL --> A["<b>交给 agent</b><br/>照片定身份，扫描定尺寸"]
+  F --> A
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>toaster 扫描来自 iPhone LiDAR，本身就是米制，范围 <span class="ex">0.1435 × 0.2527 × 0.1682 m</span>（G.6），所以应该不触发看图估尺度（推断）。照片给出的 part plan：机身固定，<span class="ex">lever 上下滑（prismatic）</span>，<span class="ex">knob 旋转（revolute）</span>。这是从 Fig. 1、Fig. 4 的 Parts + joints 读出来的，论文没有打印这份计划的原文。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Source geometry analysis</span>
+      <span class="stage-io">扫描 mesh → LLM 能读的公制文本（切片 + 摘要），外加按需量测</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>LLM 擅长读文字但读不了 mesh；渲染图丢了公制尺度、看不到内部，原始顶点列表又太长（§3.2）。</li>
+        <li><b>采样：</b>在共享的公制网格上取表面：沿三个坐标轴打射线，再加顶点和三角形中心，外壳里面看得到的表面也算（A.4）。</li>
+        <li><b>切片文本：</b>细网格最长边 192 格；文字版是沿 Z 排列的 XY 切片，每片最长边取 32、24、16 格里能塞进文字预算的最细一档，重复的切片只存一次（A.4）。</li>
+        <li><b>unknown 不是空：</b>有表面的格子记 ~（这些格子的集合记作 <i>S</i><sub>M</sub>），其余一律记 unknown，不当空也不当实心：扫描的洞不代表那里没东西，闭合外壳里面也不代表是实心（§3.2）。</li>
+        <li><b>摘要和锚点：</b>附局部公制摘要：边界、凸起、开口、内部构件；自动检测的特征只当量测锚点，它是什么功能由 agent 判断（§3.2）。</li>
+        <li><b>按需 inspection：</b>agent 根据照片和 part plan 选视角渲染源 mesh（render_source），量选定区域的边界、点分布、表面朝向（measure_mesh、measure_face；§3.2、G.1）。Fig. 2 的 microwave：整机 0.604 × 0.380 × 0.324 m，放大的局部 154 × 60 × 280 mm。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  M["<b>扫描 mesh</b><br/><span class='ex'>toaster</span>"]:::example --> G["<b>公制网格采样</b><br/><span class='ex'>最长边 192 格，1.3 mm</span>"]
+  G --> T["<b>切片文本 + 摘要</b><br/><span class='ex'>24 层，每层 20 × 32 字符</span>"]
+  T --> AG["<b>agent 读文本</b><br/><span class='ex'>~ 是表面，. 是 unknown</span>"]
+  AG --> Q["<b>按需 inspection</b><br/>render_source、measure_mesh"]
+  Q --> AG
+      </pre></div>
+      <figure class="paper-fig">
+<pre style="margin:0;padding:.75rem .9rem;background:var(--surface);color:var(--ink);border:1px solid var(--rule);border-radius:6px;font:.72rem/1.25 var(--f-mono);overflow-x:auto;max-width:none">AXIAL ENCODING（摘录）
+frame: world, Z-up, meters; isotropic
+extent_xyz:  0.1435, 0.2527, 0.1682
+fine_grid:   dims_xyz=112,192,128  pitch=0.0013
+slice_stack: axis=Z  dims_xyz=20,32,24  pitch=0.0079
+cells: . = unknown, ~ = sampled source surface
+
+m: slices 12:13         u: slices 20:21
+....~~~~~~~~~~~.....   ......~~~~~~~~~.....
+...~~.........~~....   ....~~~.......~~....
+..~~...........~~...   ...~~...........~~..
+..~.............~~..   ..~~.............~..
+.~~..............~~.   ..~...~~~~~.~~~..~~.
+.~~...............~.   ..~..~~..~~~~~~~..~.
+.~................~.   ..~..~~...~~...~..~.
+.~................~.   .~~..~~...~~...~..~.
+.~................~.   .~...~~..~~~...~..~.
+.~................~.   .~...~~...~~...~..~.
+.~................~.   .~~..~~..~~~...~..~.
+.~................~.   .~~..~~..~~~...~..~.
+.~................~.   ..~..~~..~~~...~..~.
+.~................~.   ..~..~~..~~~...~..~.
+.~................~.   ..~..~~..~~~...~..~.
+.~................~.   ..~..~~..~~~..~~..~.
+.~................~.   ..~..~~..~~~..~~..~.
+.~................~.   ..~..~~..~~~..~~..~.
+.~................~.   ..~..~...~~~..~~..~.
+.~................~.   .~~..~...~~~..~~..~.
+.~................~.   .~~..~~~~~~~~~~~.~~.
+.~................~.   .~..........~~~~.~~.
+.~................~.   .~...............~~.
+.~................~.   .~...............~~.
+.~...............~~.   .~~..............~~.
+.~...............~..   ..~..............~..
+.~~..............~..   ..~~............~~..
+..~~............~~..   ...~~...........~...
+...~~~.........~~...   ...~~~~.......~~~...
+.....~~~~~~~~~~.....   ......~~~~~~~~~.....
+....................   ....................
+....................   ....................</pre>
+        <figcaption><b>App. G.6</b>（作者原文摘录，∼ 写成 ~，省略了 bounds 和 grid_min）扫描 toaster 的 axial encoding。每行从 +Y 到 −Y，每列从 −X 到 +X；左边 m 层只有外壳一圈，右边靠近顶部的 u 层多出两道内框，就是两个 slot 的边。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>toaster 的细网格是 <span class="ex">112 × 192 × 128</span>，pitch 0.0013 m（1.3 mm）；文字切片是 <span class="ex">20 × 32 × 24</span>，pitch 0.0079 m（7.9 mm），Z 从下往上 24 层。agent 从 m 层读到外壳轮廓，从 u 层读到 slot 的位置。m 层（第 12–13 片）的细网格摘要 <code>s12:13 mz=64:70 xy=4:109,15:192(f=.03;p=4,43 16,22 …)</code> 再给出细网格里的索引范围、采样占比 f 和简化的边界轮廓 p，让 agent 在粗字符图之外定位和定尺寸（G.6）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">写 model.py + 编译</span>
+      <span class="stage-io">part plan + 量测 → model.py → 候选 USD（PhysX、Newton）+ URDF</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>程序把部件、关节、物理量都写成显式参数，查出问题时改几行就行，不用重新生成；程序还能加上扫描从没观测到的部件，切分法做不到（§3.3）。</li>
+        <li><b>Authoring toolkit：</b>CadQuery 参数化实体做尺寸可控的机械件（<code>box().cutBlind().cskHole().chamfer()</code>）；SDF 解析基元做有机形状和平滑过渡（<code>sdf_cylinder</code>、<code>smooth_union</code>、<code>mesh_from_sdf</code>）；外观在同一个程序里写：PBR 材质、贴图、decal（§3.3、A.2）。</li>
+        <li><b>关节相对部件定义：</b>按类型、原点、轴、限位，相对它连接的两个部件来写；Mini Workflow 要直接在 USD 坐标里摆关节锚点和轴。这是消融里单项增益最大的一步：AE 21.141° → 9.201°（Table 6）。</li>
+        <li><b>PhysX 参数：</b>直接用引擎自己的量写质量、接触摩擦、关节限位、关节摩擦、drive，省掉从通用物理量换算的一步（§3.3）。</li>
+        <li><b>取值依据：</b>authoring guidance，是另一轮迭代里从 Isaac Sim 测试结果提炼的：手动机构保持 passive，沿正常使用的动作序列检查关节间隙；量不到的物理量作为 modeling assumption 写在代码里（§3.3、A.2、G.1）。Fig. 2 的 microwave：mass 2.42、staticFriction 0.40、upperLimit 105、staticFrictionEffort 0.48。</li>
+        <li><b>编译（host 做）：</b>重新生成几何、关节和物理量，推出 collision geometry，导出 PhysX 和 Newton 两个 USD 入口 + URDF，并检查导出完整、能打开（A.1、A.2）。根节点是浮动的，固定与否交给场景（G.1）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  IN["<b>part plan + 量测</b><br/><span class='ex'>lever、knob、外形尺寸</span>"]:::example --> C["<b>CadQuery / SDF</b><br/>机械件 / 有机形状"]
+  IN --> J["<b>部件 + 关节</b><br/><span class='ex'>prismatic、revolute</span>"]
+  IN --> PH["<b>PhysX 参数</b><br/>质量、摩擦、限位"]
+  C --> MP["<b>model.py</b><br/>外观也写在里面"]
+  J --> MP
+  PH --> MP
+  MP --> CO["<b>host 编译</b><br/><span class='ex'>USD（PhysX、Newton）</span><br/><span class='ex'>+ URDF</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>toaster 程序里是机身 + <span class="ex">lever（prismatic）</span> + <span class="ex">knob（revolute）</span>；外观用材质参数复现 toaster 的表面，不复用扫描贴图（App. E）。编出的 USD 直接进 Isaac Sim：压 lever 的任务把它叠在 drawer 上，转 switch 的任务叠在 box 上；两个支撑物也是 USDCraft–Astra 重建的，所有方法共用。支撑高度决定了 lever 和 switch 相对机器人的位置，所以支撑物的尺寸也得对（App. E）。论文没有给 toaster 的质量、摩擦等取值。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Iterative geometric rechecking</span>
+      <span class="stage-io">候选 + 源编码 → 同一网格上的差异 → 指向几行程序的修改</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>Stage 2 只帮第一次构建；写程序时引入的错也得找到，而且反馈要用和源证据同一种表示，才能对回到程序里的某一处（§3.4）。</li>
+      </ul>
+      <p class="eyebrow">符号表（Eq. 1、Eq. 2）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>例子里的值</th></tr>
+          <tr><td><i>S</i><sub>M</sub></td><td>源 mesh 里有观测表面的格子</td><td>toaster：G.6 切片里的 ~ 格</td></tr>
+          <tr><td><i>S</i><sub>t</sub></td><td>第 t 版候选在同一网格上的表面格子</td><td>论文未报告</td></tr>
+          <tr><td><i>r</i><sub>t</sub></td><td>源表面被候选盖住的比例</td><td>论文未报告</td></tr>
+          <tr><td><i>D</i><sub>t</sub><sup>−</sup></td><td>源有、候选没有：确定的错，必须改</td><td>论文未报告</td></tr>
+          <tr><td><i>D</i><sub>t</sub><sup>+</sup></td><td>候选有、源是 unknown：可能是错，也可能是该补的</td><td>推断：挖深的 slot 内壁</td></tr>
+          <tr><td><i>u</i>、Ω</td><td>投影平面上的一个像素；两边都看得到的像素集合</td><td>—</td></tr>
+          <tr><td><i>d</i><sub>M</sub>(<i>u</i>)、<i>d</i><sub>t</sub>(<i>u</i>)</td><td>沿视线看到的第一个表面的深度：源、候选</td><td>—</td></tr>
+          <tr><td><i>δ</i>(<i>u</i>)</td><td>两者的深度差</td><td>—</td></tr>
+          <tr><td><i>b</i></td><td>深度差的中位数 = 部件整体前后挪了多少</td><td>Fig. 2 microwave 把手：0.64 mm（向内）</td></tr>
+          <tr><td><i>e</i><sub>profile</sub></td><td>去掉整体平移后，残差的 90% 分位 = 形状差多少</td><td>Fig. 2 microwave 把手：3.41 mm</td></tr>
+        </table>
+      </div>
+      <p class="note">原式：<i>r</i><sub>t</sub> = |<i>S</i><sub>M</sub> ∩ <i>S</i><sub>t</sub>| / |<i>S</i><sub>M</sub>|，<i>D</i><sub>t</sub><sup>−</sup> = <i>S</i><sub>M</sub> ∖ <i>S</i><sub>t</sub>，<i>D</i><sub>t</sub><sup>+</sup> = <i>S</i><sub>t</sub> ∖ <i>S</i><sub>M</sub>（Eq. 1）；<i>b</i> = median<sub><i>u</i>∈Ω</sub> <i>δ</i>(<i>u</i>)，<i>e</i><sub>profile</sub> = Q<sub>0.9</sub>(|<i>δ</i>(<i>u</i>) − <i>b</i>|)（Eq. 2）。</p>
+      <ul class="tight">
+        <li><b>重新编码：</b>把第 t 版候选摆在参考姿态，编码到源的网格上，得到它的表面格子（<i>S</i><sub>t</sub>）；差异出现在 agent 已经读过的切片上，能追回到产生它的那段程序（§3.4）。</li>
+        <li><b>两种差异分开对待：</b>源有、候选没有（<i>D</i><sub>t</sub><sup>−</sup>）是直接的错误证据，要改；候选有、源是 unknown（<i>D</i><sub>t</sub><sup>+</sup>）是待定问题，可能是必要的补全（内壁、照片支持的部件、扫描缺的连接），由 agent 用照片和物体功能判断，不统一惩罚（§3.4）。</li>
+        <li><b>六向深度图：</b>只看覆盖率分不清放错位置还是形状不对；六个轴向的 first-surface 深度图量面的偏移、轮廓差、开口和凸起的位置（§3.4）。</li>
+        <li><b>compare_part：</b>agent 选一块源区域和一个候选部件，沿某个视线比较两边都看得到的像素的深度，不需要 ground-truth 部件分割；整体平移（<i>b</i>）大、形状差（<i>e</i><sub>profile</sub>）小 → 部件放错了，挪；反过来 → 轮廓不对，改形状（§3.4）。</li>
+        <li><b>循环：</b>每次修改后重新编译、复查受影响的几何：Compare → Revise program → Recompile → Recheck geometry（Fig. 2）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  C["<b>候选 USD</b><br/>参考姿态"] --> E["<b>编码到源网格</b><br/>候选的表面格子"]
+  E --> DM["<b>D−：源有、候选无</b><br/>确定的错，必改"]:::gap
+  E --> DP["<b>D+：候选有、源 unknown</b><br/><span class='ex'>slot 内壁？看照片</span>"]
+  DM --> CP["<b>compare_part</b><br/>b 平移 vs e_profile 形状"]
+  DP --> CP
+  CP --> ED["<b>改 model.py</b><br/>重新编译"]
+  ED --> C
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>论文没有打印 toaster 这一步的数值。Fig. 2 的 microwave 把手：<span class="ex">b = 0.64 mm</span>、<span class="ex">e_profile = 3.41 mm</span> → 位置对、轮廓要改。套到 toaster（推断）：扫描里 slot 很浅（Fig. 9），程序按照片把 slot 挖深，多出来的内壁落在 unknown 格子里，属于 <i>D</i><sup>+</sup>，照片支持它，所以保留；假如 lever 放偏了，扫描里 lever 鼓包所在的格子就会落进 <i>D</i><sup>−</sup>，compare_part 报的是大 <i>b</i>、小 <i>e</i><sub>profile</sub> → 挪 lever，而不是重画它。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Visual feedback</span>
+      <span class="stage-io">候选 → 渲染图（材质 / 部件色，指定关节姿态）→ 缺件、装配、外观、间隙的修改</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>几何诊断只比表面，判断不了看起来、用起来像不像；生成任务没有 mesh，这一步是主要检查（§3.5）。</li>
+        <li><b>How：</b>render_candidate 用材质和按部件上色两种方式，在 agent 选的视角、默认或指定的关节姿态下渲染（§3.5、G.1）。</li>
+        <li><b>找什么：</b>和参考照片或文字要求对比：缺的部件、不合理的装配、外观错误、只在部件动起来才出现的间隙问题，然后改程序（§3.5）。</li>
+        <li><b>证据：</b>去掉它几何几乎不变（static gIoU 0.694 → 0.694），但 F1 84.830 → 83.589、AE 6.833° → 7.565°（Table 7）：它抓的是缺件和不合理的运动，不是表面误差。</li>
+        <li><b>边界：</b>静态检查和摆姿态的渲染不能证明动力学仿真会成功（G.1 原话）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  C["<b>候选</b><br/><span class='ex'>lever 压下、knob 转</span>"] --> R["<b>render_candidate</b><br/>材质 + 部件色"]
+  R --> V["<b>对照参考照片</b><br/>缺件？间隙？外观？"]
+  V --> C
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>按 §3.5 的做法，toaster 应在 lever 压下、knob 转动的姿态下渲染部件色视图，对照片检查 lever 槽和 knob 是否齐全、动起来会不会卡（推断：论文没有给 toaster 的渲染记录）。Fig. 4 (a) 里 USDCraft 的结果就是这种部件色视图。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">Stage all</span>
+      <span class="stage-name">一个 agent、一个会话</span>
+      <span class="stage-io">贯穿 Stage 1–5：agent 自己决定什么时候建、量、改，host 只管编译和机械检查</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>分工：</b>一个 modeling agent 维护 model.py，在同一个会话里选构建、检查、修改动作；host 编译、刷新用于几何检查和渲染的候选、检查导出是否完整；解释差异和决定怎么修由 agent 做（A.1）。</li>
+        <li><b>起始上下文：</b>任务、实例证据、PhysX authoring guidance、toolkit 基础和一份文档目录；详细 API 和示例按需检索（A.1）。</li>
+        <li><b>工具（G.1）：</b>measure_mesh / measure_face，render_source，write_model / apply_patch，compile_model / validate_model，check_axial / compare_part，render_candidate。</li>
+        <li><b>指令要点（G.1）：</b>尽早做出一个粗的可执行候选，再用针对性的查询解决关键不确定；不要为了通过诊断或间隙检查删掉必要的运动；最后报告检查结果、假设、残余差异。</li>
+        <li><b>花费（Table 3、12）：</b>Astra 平均 4.2 分钟、16.7 轮、$0.8510；Sol 7.9 分钟、25.4 轮、$0.9704。几何证据以文字返回，输入 token 比 Mini Workflow 多（Astra 560.0k vs 128.3k）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  T["<b>起始上下文</b><br/>任务、证据、guidance"] --> B["<b>先出粗候选</b><br/>write_model"]
+  B --> K["<b>compile + validate</b><br/>host 检查导出"]
+  K --> Q["<b>agent 挑检查</b><br/>check_axial、compare_part"]
+  Q --> P["<b>apply_patch</b><br/>局部改"]
+  P --> K
+  Q --> F["<b>最终报告</b><br/>检查、假设、残差"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>论文没有给 toaster 这次运行的轮数和用时；同配置（Astra）在 USDCraft-bench 上平均 <span class="ex">4.2 分钟、16.7 轮</span>（Table 3）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>重建 = 以部分几何为依据的程序建模，现成 LLM，不训练</td><td>Big picture：toaster 扫描 + 照片 → model.py → USD</td></tr>
+        <tr><td>照片定身份和运动，mesh 定尺寸和位置</td><td>Stage 1：lever 下压、knob 旋转来自照片；尺寸来自扫描</td></tr>
+        <tr><td>公制 Z-up；没有尺度时看图估</td><td>Stage 1：LiDAR 扫描本身是米制（推断不需要估）</td></tr>
+        <tr><td>Source geometry analysis：切片文本，unknown ≠ 空</td><td>Stage 2：G.6 的 m、u 两层，u 层出现两个 slot</td></tr>
+        <tr><td>按需 mesh inspection</td><td>Stage 2：render_source、measure_mesh（toaster 的调用记录论文没给）</td></tr>
+        <tr><td>程序表示：CadQuery + SDF + 外观</td><td>Stage 3：机身、lever、knob；材质复现 toaster 表面</td></tr>
+        <tr><td>关节相对部件定义（authoring harness）</td><td>Stage 3：lever 的 prismatic、knob 的 revolute；Table 6 单项增益最大</td></tr>
+        <tr><td>PhysX 参数 + 从 Isaac Sim 测试提炼的 guidance</td><td>Stage 3：值只有 Fig. 2 microwave 的（mass 2.42 等）</td></tr>
+        <tr><td>编译成 USD（PhysX、Newton）+ URDF</td><td>Stage 3：toaster 叠在 drawer / box 上进 Isaac Sim</td></tr>
+        <tr><td>同网格复查：D−、D+、b、e_profile</td><td>Stage 4：slot 内壁属于 D+（推断）；microwave 把手 0.64 / 3.41 mm</td></tr>
+        <tr><td>Visual feedback</td><td>Stage 5：lever 压下、knob 转动的部件色渲染</td></tr>
+        <tr><td>单 agent 自定顺序；独立看图 agent 有害</td><td>Stage all；Table 7</td></tr>
+        <tr><td>sim 数据训练的策略迁到真机</td><td>E4：lever 90% → 85%，switch 85% → 85%</td></tr>
+        <tr><td>跨模型迁移</td><td>E3：Claude Opus 5、Gemini 3.8 Flash</td></tr>
+        <tr><td>没有 mesh 的生成、USDCraft-10k</td><td>toaster 例子覆盖不到：见 E5 和 Fig. 1 左的 Mini rice cooker</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>量过的几何让部件和关节都更准，sim 里训练的策略到真机最多掉 10 点</h2>
+  <p>顺序同论文：<a href="#exp-1">E1</a> 在自建的 USDCraft-bench 上和切分法、只看照片的程序法比重建 → <a href="#exp-2">E2</a> 在公开的 Lightwheel 上和已发表的结果比 → <a href="#exp-3">E3</a> 同一 LLM 换成通用工具，看增益来自工具还是模型 → <a href="#exp-4">E4</a> 重建的资产能否让 sim 策略上真机 → <a href="#exp-5">E5</a> 没有 mesh 的生成 → <a href="#exp-6">E6</a> 拆组件。E1–E3、E6 比几何和关节误差，E4 比 sim 和真机成功率，时间只在 E3、E5 报。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>自建 benchmark 上，部件、几何、关节比切分法和只看图的程序法准吗？<span class="exp-src">§4.2 · Table 1 · Fig. 3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-USDCraft/tab1.jpg" alt="Table 1：ArtLLM、SIMART、Particulate、Articraft–Astra、USDCraft–Sol、USDCraft–Astra 在 F1、静态几何、铰接几何、关节轴九项指标上的结果"></div>
+      <figcaption><b>Table 1</b>（作者原图）先看最右两列 Joint axes：USDCraft–Astra AE 6.833°、LE 0.044；再看 F1。粗体最好，下划线第二。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-USDCraft/fig3.jpg" alt="四个物体（microwave、四门冰箱、dishwasher、三抽屉柜）在 ArtLLM、SIMART、Particulate、USDCraft Sol、USDCraft Astra 和 GT 下的 rest 与 articulated 姿态"></div>
+      <figcaption><b>Fig. 3</b>（作者原图）USDCraft-bench 上的重建，每对是 rest / articulated；红色旋转符号 = revolute，黄色双箭头 = prismatic。</figcaption>
+    </figure>
+    <ol class="read">
+      <li><b>(d) 三抽屉柜：</b>ArtLLM 和 Particulate 把顶面当翻盖（顶上红色转轴），SIMART 在正面挖出一块当门（张开后是参差的黑洞）；USDCraft 两个版本都分出 3 个抽屉（黄色双箭头），和 GT 一致。</li>
+      <li><b>(b) 四门冰箱：</b>Particulate 左侧上下两扇门是同一块黄色，张开时一起转：粘连的部件分不开；USDCraft–Astra 分出 4 扇门和内部的层架、抽屉，接近 GT。</li>
+    </ol>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>部件更全、关节误差大幅下降。</b>USDCraft–Astra F1 84.830，对 Articraft–Astra 64.041、SIMART 35.957、Particulate 33.366、ArtLLM† 19.337；AE 6.833°（Articraft 15.106°，其余 46.656–61.156°）；static gIoU 0.694（最好的 baseline 是 Particulate 0.300）。九项指标上两个 USDCraft 都排第一、第二。</dd></div>
+      <div><dt>在故事里</dt><dd>主张的直接证据：切分法分不开粘连部件、补不了缺的；Articraft 部件找得多、关节方向也合理，但没有量测，尺寸和位置不准；重建 + 量测两头都占（§4.2）。</dd></div>
+      <div><dt>指标</dt><dd>F1 = 可动部件匹配的 precision / recall 调和平均（同关节类型，且 static gIoU ≥ 0.25，或质心距离 ≤ 较小部件最长边的 0.6 倍且最长边之比 ≤ 2；带轴的还要轴角误差 ≤ 15°，revolute 轴线距离 ≤ 0.100）；gIoU、mIoU = 部件包围盒重叠；PC = 部件 Chamfer，OC = 整体 Chamfer（每个资产采 100,000 点）；AE = 关节轴夹角，LE = revolute 轴线距离；缺失的关节罚 90° 和 0.5。预测和参考各自居中、缩放到最长边为 1（App. C）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>100 个物体：60 个 agent 生成（USDCraft、Articraft、Procedura 各 20）+ 40 个 Hunyuan3D 2.1 mesh 和真实扫描；输入都处理成没有部件和关节信息的单一静态 mesh（§4.1、B.1）。</li>
+        <li>参考标注照 SIMART 的流程：P3-SAM 初分割，人工合并成功能部件、标关节（B.1）。</li>
+        <li>USDCraft–Astra 是 3 次平均（Table 9：F1 84.83 ± 0.88）；baseline 各跑几次，论文没说。</li>
+        <li>ArtLLM 有 28 例 P3-SAM 分割失败、没有输出，只算剩下的 72 例；在同样这 72 例上 SIMART 42.041、Particulate 36.556、USDCraft–Astra 86.524（C.2）。</li>
+        <li>对 USDCraft 有利的一点：20 个参考是它自己生成的。去掉这 20 个，USDCraft–Astra F1 83.854（Articraft 61.021）；去掉全部 60 个 agent 生成的，89.827（Table 10）。</li>
+        <li>归一化去掉了整体尺度误差；改在参考坐标系里评测（保留绝对尺寸），USDCraft–Astra F1 83.303，Articraft–Astra 从 64.041 掉到 37.398（Table 11）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>换成公开的 Lightwheel，和已发表的结果比又如何？<span class="exp-src">§4.2 · Table 2</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-USDCraft/tab2.jpg" alt="Table 2：Lightwheel 上 Image-conditioned generation、Mesh Segmentation、Mesh Rebuild 三组方法的九项指标"></div>
+      <figcaption><b>Table 2</b>（作者原图）三组：Image-conditioned generation、Mesh Segmentation、Mesh Rebuild。先比 USDCraft–Astra（不带 +G）和 Instruct-Particulate（Dataset）这两行。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>部件匹配、几何重叠、关节位置最好；整体表面误差不如直接切原 mesh 的方法。</b>USDCraft–Astra F1 86.983、LE 0.009，对用原数据集 mesh 的 Instruct-Particulate 83.400、0.018；但 OC 0.011 vs 0.004、mIoU 0.683 vs 0.724：切分法直接复用给定表面，USDCraft 每个部件重画，小偏差会累积。Articraft–Astra 的 AE 更低（7.657° vs 10.151°），但它只匹配到约三分之二的可动部件（recall 66.8% vs 85.0%），关节误差只在匹配上的部件里平均。加 +G 后 F1 89.765、AE 4.463°。</dd></div>
+      <div><dt>在故事里</dt><dd>换成人工建模的资产、和别人报过的数字比，结论仍成立；+G 说明用一段文字就能引导部件和关节怎么定义，不用重训（§4.2）。</dd></div>
+      <div><dt>指标</dt><dd>沿用 Instruct-Particulate 的 Lightwheel 设定和九项指标（§4.2、C.1）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>Lightwheel：243 个人工建模的铰接物体，14 类（§4.1、B.2）。</li>
+        <li>baseline 行应是已发表结果（推断：引言说 “relative to published Lightwheel results”，这些行只有一位有效小数）；Articraft 和 USDCraft 是作者跑的。</li>
+        <li>Instruct-Particulate 两行：Dataset = 直接用原数据集 mesh（对它有利）；HY3D-3.1 应是 Hunyuan3D 3.1 生成的 mesh，表里没解释。</li>
+        <li>Articraft–Astra‡：预测和参考各自居中、缩放，它没有公制尺度，这样对它有利。</li>
+        <li>+G：14 类通用的一段铰接约定文字，没有类别标签和实例标注，每个 case 都给同一段（G.4）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>增益来自工具还是模型？同一 LLM 换通用工具，再换 Claude、Gemini<span class="exp-src">§4.3 · Table 3 · Fig. 4</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-USDCraft/tab3.jpg" alt="Table 3：Mini Workflow–Sol/Astra、USDCraft–Sol/Astra、USDCraft–Claude/Gemini 的九项指标、每个资产的时间和轮数"></div>
+      <figcaption><b>Table 3</b>（作者原图）上两行 Mini Workflow，中间两行 USDCraft（同 backbone），下两行换 backbone；最后两列是每个资产的分钟数和轮数。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>工具比模型重要。</b>同样用 Astra，USDCraft 九项全胜 Mini Workflow：F1 74.480 → 84.830，AE 21.141° → 6.833°，LE 0.117 → 0.044；Sol 版 USDCraft 也每一项都胜过 Mini Workflow–Astra。换 Claude Opus 5（F1 82.014，LE 0.035 全表最好）、Gemini 3.8 Flash（F1 80.940）也几乎每项胜过 Mini Workflow。代价：GPT backbone 每个资产多约一到两分钟（Astra 3.0 → 4.2，Sol 5.7 → 7.9）。</dd></div>
+      <div><dt>在故事里</dt><dd>把 harness（source analysis、rechecking、SDK）和 LLM 拆开：差距来自工具，而且 harness 不改就能换模型（§4.3）。Fig. 4（见 Problem）是这组对比的第一轮结果。</dd></div>
+      <div><dt>指标</dt><dd>同 E1；另报每个资产的时间（分钟）和轮数。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>Mini Workflow：同 backbone、同样的照片 + mesh，prompt 同样要求实测、可仿真的重建（G.2 原文），但只有通用工具（OpenUSD、NumPy、trimesh、Pillow），量测代码要自己在原始 mesh 上写。</li>
+        <li>两个 Astra 配置跑 3 次取均值，标准差远小于差距（Table 9）；其余跑一次。</li>
+        <li>token 和费用（Table 12）：USDCraft–Astra 输入 560.0k、$0.8510，Mini–Astra 128.3k、$0.4619；Claude 6,493.0k、$4.5115；Gemini $0.8643。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>重建的资产能让只用 sim 数据训练的策略上真机吗？<span class="exp-src">§4.4 · App. E · Table 4</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-USDCraft/tab4.jpg" alt="Table 4：六种资产方法在 Open drawer、Press toast、Turn on toaster 三个任务上的 sim 和真机成功率及下降点数"></div>
+      <figcaption><b>Table 4</b>（作者原图）每个任务两列 Sim / Real，红色小字是真机比 sim 掉了多少点。Press toast 和 Turn on toaster 两组就是本页的 toaster。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-16-USDCraft/web-lever-sim.mp4" autoplay muted loop playsinline controls></video><figcaption>仿真 · 采示范（lever）</figcaption></figure>
+        <figure><video src="2026-11-16-USDCraft/web-lever-real.mp4" autoplay muted loop playsinline controls></video><figcaption>真机 · policy（lever，4×）</figcaption></figure>
+        <figure><video src="2026-11-16-USDCraft/web-switch-real.mp4" autoplay muted loop playsinline controls></video><figcaption>真机 · policy（switch，4×）</figcaption></figure>
+      </div>
+      <figcaption><b>项目页</b> <a href="https://nvlabs.github.io/USDCraft/v1/#application">Real2Sim2Real</a>：左边是 USDCraft 重建的 toaster 叠在 drawer 上，在 sim 里采示范；中、右是只用 sim 数据训练的 Diffusion Policy 在真机上压 lever、转 switch（4 倍速）。中间片尾有人挪动 toaster，应是为下一次试验重新摆放（App. E：每次随机摆放）。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>sim 成功率人人都高，掉多少才看出资产对不对。</b>USDCraft–Astra 真机 drawer 90%、lever 85%、switch 85%，比 sim 只掉 10 / 5 / 0 点；只看照片的 Articraft–Sol 真机 20% / 10% / 20%，掉 70 / 80 / 60 点；Mini Workflow 波动大（Astra 的 drawer 100% → 0%，把手放错导致危险接触）；Particulate 只能做 lever（sim 50%，真机 10%）。</dd></div>
+      <div><dt>在故事里</dt><dd>几何准 → 策略学到的抓、压位置在真机上也对：sim 里错位或尺寸不对的 lever 会把真机引到错的位置；Particulate 说明先要结构完整，再谈几何准（§4.4）。</dd></div>
+      <div><dt>指标</dt><dd>成功 = drawer 拉开 ≥ 5 cm、lever 压下 ≥ 4 cm、switch 转过 &gt; 5°；因危险接触被叫停的算失败；每个 policy sim 20 次 + 真机 20 次，物体位置和机器人初始姿态随机（App. E）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>3 个真实物体（drawer、toaster、box）用 iPhone Pro 的 LiDAR + RGB 扫描，每个约 2 分钟；支撑物都用 USDCraft–Astra 重建，所有方法共用（App. E）。</li>
+        <li>UR7e + Robotiq 2F-85，一个外部相机；policy 输入 RGB，输出末端绝对位姿；sim 和真机的机器人、桌子、相机标定对齐。</li>
+        <li>每个方法 × 任务：NVIDIA cuMotion 在 sim 里自动采 200 条示范，Diffusion Policy 训练 80 epoch、batch 128，直接上真机，不用真机数据、不微调。</li>
+        <li>baseline 资产：Articraft 只给照片，生成后按真实扫描尺寸缩放；Particulate 只给 mesh，机身站不稳、在 Isaac Sim 里固定，它的 50% 是在固定底座下测的。</li>
+        <li>没报：试验间的方差，以及除 Mini–Astra drawer 之外的失败原因。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>没有 mesh 时，同一套工具生成资产怎么样？<span class="exp-src">§4.5 · Table 5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-USDCraft/tab5.jpg" alt="Table 5：Articraft–Sol、Procedura–Sol、USDCraft–Sol、USDCraft–Astra 的五项质量分和生成时间"></div>
+      <figcaption><b>Table 5</b>（作者原图）五项 1–5 分（Sol/high 打分）和每个资产的生成时间。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>分数最高、用时最短。</b>每一项最高分都是 USDCraft（Sol 或 Astra）；USDCraft–Astra 平均 5.6 分钟，对 Articraft–Sol 12.0、Procedura–Sol 58.8。差距主要在 Condition（4.270 vs 4.040 / 3.810）和 Appearance（3.880 vs 3.670 / 3.440）。</dd></div>
+      <div><dt>在故事里</dt><dd>重建用的 toolkit 也能做生成；用它（USDCraft–Astra，70% 文字、30% 图片请求）生成了 USDCraft-10k：10,000 个资产，500 多类（§4.5）。</dd></div>
+      <div><dt>指标</dt><dd>匿名的 Sol/high 评审，每个资产在新上下文里看证据包（请求、部件要求、几何和关节记录、外观视图、每个关节的运动图），按 G.3 的 rubric 给 1–5 整数分（C.3）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>每种设定 50 个文字请求 + 50 个图片请求。</li>
+        <li>只有模型打分，没有人评；评审用的 Sol 也是 USDCraft–Sol 和两个 baseline 的 backbone。</li>
+        <li>Procedura 每个部件单独调用 agent，时间随部件数增长，可能也是它 Structure 低的原因；USDCraft 整个物体写一个程序（§4.5）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-6">
+    <h3><span class="exp-n">E6</span>哪个组件起作用？<span class="exp-src">§4.6 · Table 6 · Table 7</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-USDCraft/tab6-7.jpg" alt="Table 6 从 Mini Workflow 逐个加组件，Table 7 从完整 USDCraft 逐个拿掉组件，各九项指标"></div>
+      <figcaption><b>Table 6、7</b>（作者原图）上表从 Mini Workflow 开始逐个加组件；下表从完整系统逐个拿掉，外加“多一个独立 observation agent”。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>authoring harness 增益最大；source geometry analysis 第二，拿掉它掉得最多。</b>逐个加：F1 74.480 → 80.925（+ harness，AE 21.141° → 9.201°）→ 84.030（+ source analysis）→ 84.293（+ rechecking）→ 84.830（+ visual feedback）。逐个拿掉：无 source analysis F1 81.975、AE 10.226°、static gIoU 0.616，三项都是最大跌幅；无 rechecking F1 82.936；无 visual feedback 几何不变（gIoU 0.694）但 F1 83.589；多一个独立 observation agent，每项都变差（F1 82.556）。</dd></div>
+      <div><dt>在故事里</dt><dd>每个组件管一种错：SDK 让关节相对部件定义；量测决定初始规划（后面的复查能改错，但补不出规划需要的尺寸）；复查纠正错位和形状；渲染抓缺件和不合理运动；单独的看图清单反而误导（§4.6）。</dd></div>
+      <div><dt>指标</dt><dd>同 E1，USDCraft-bench，Astra / low。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>Table 6 从 Mini Workflow 起逐个累加，Table 7 从完整系统逐个拿掉。</li>
+        <li>完整 USDCraft 行就是 Table 1 的 3 次均值；其余各行跑了几次，论文没说。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>细密网格结构（球拍线、购物车钢丝框）重建不准：整体形状对，线距和连接不对（Fig. 11，App. F）。</li>
+    <li>柔性物体只支持标注的状态和静止几何；弯曲、拉伸、接触响应都没建模，伞面张力和刚柔耦合没在 Isaac Sim 里验证（Fig. 12）。</li>
+    <li>物理参数是按 guidance 写的假设，不是从交互里辨识的；G.1 自己也说静态检查和姿态渲染证明不了动力学仿真会成功。动力学上的验证只有 E4 的三个任务。</li>
+    <li>逐件重画会累积表面小偏差：Lightwheel 上 OC（0.011 vs 0.004）和 mIoU（0.683 vs 0.724）不如直接切原 mesh 的 Instruct-Particulate（Table 2）。</li>
+    <li>USDCraft-bench 是作者自建的，100 个里有 20 个参考是 USDCraft 自己生成的；去掉它们仍最好（F1 83.854，Table 10）。</li>
+    <li>生成质量只由 LLM（Sol/high）打分，没有人评（Table 5）。</li>
+    <li>真机实验 3 个物体、每个任务 20 次、一台 UR7e、一个外部相机，没报方差。</li>
+    <li>换 backbone 成本差别大：Claude 每个资产 27.5 分钟、$4.5115，Astra 4.2 分钟、$0.8510（Table 3、12）。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>接进 r2s-lite：</b>DROID 场景里的铰接物体（抽屉、柜门、带 lever 的电器）从 twin 的 mesh 里切出来，配一帧照片，跑 <code>uv run usdcraft reconstruction obj.glb --image frame.jpg --meters-per-unit … --up-axis +Z --no-image-observation</code>，把 <code>isaac/model.usdc</code>（PhysX 那份）放回场景。显式给尺度，否则像是归一化过的 mesh 会按照片估尺度（A.3）；关掉 image observation，因为开源 CLI 默认开着它（README），而 Table 7 里多这一步每项都变差（F1 84.830 → 82.556）。支撑物也按公制重建：支撑高度决定 lever 相对机器人的位置（App. E）。</li>
+    <li><b>repair loop 用几何差当证据：</b>锅盖那集第 9 次过了宽松规则，场景却是错的。USDCraft 的复查可以直接搬：把 Isaac Sim 里的 twin 编码到源 mesh 的同一网格，观测到却没建出来的格子（D−）不清零就不算完成，多出来的（D+）要有画面依据，b 和 e_profile 区分该挪还是该改形状。E4 也说明 sim 成功率说明不了 twin 对不对：Articraft 的 lever sim 90%，真机 10%。</li>
+    <li><b>real2sim-anything-indoor 和 WorldClaw：</b>视频重建出的房间里，柜子、抽屉、门如果是静态 mesh，正好是 USDCraft 的输入形态（mesh + 一张照片），可以逐件换成铰接 USD；WorldClaw 的白盒场景可以用它的生成模式（Astra 平均 5.6 分钟一个，Table 5）或 USDCraft-10K 的现成资产。但物理参数是按 PhysX 写的，论文只评测了 PhysX 那份（G.2）；放进 Genesis 时用它的 URDF 导出，摩擦和关节参数要重新核对。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-16-USDCraft.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>

@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>NeoWorld-3</title>
+<meta name="description" content="coding agent 把多视角照片重建成可调的几何程序：NeoSDK 拟合参数并检查封闭性、关节和接触，NeoMCP 把这些能力做成 agent 工具；RoboCasa365 场景穿插率 0.67%，双臂真机演示 Real-Sim-Real">
+<meta name="paper:title" content="NeoWorld-3: From Pixels to Code-Defined Physical Worlds">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.27690">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.27690v1">
+<meta name="paper:date" content="2026-10-20">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-16</p>
+  <h1>NeoWorld-3</h1>
+  <p class="full-title">NeoWorld-3: From Pixels to Code-Defined Physical Worlds</p>
+  <p class="meta">Eachen Soong, Zijian Niu, Haoran Xu, Yihong Dong, Yunbo Wang, Xiaokang Yang · Shanghai Jiao Tong University、Doxi AI · arXiv 2026-10-20 · 29 页（正文 9 页，附录 A–C）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.27690">arXiv</a><a href="https://arxiv.org/pdf/2610.27690v1">PDF</a>
+    <a href="https://neoworldproject.github.io/Studio/">Project page</a><a href="https://github.com/NeoWorldProject/NeoWorldStudio">Code</a>
+    <span class="muted">代码库目前只有 README 和 LICENSE，README 写明这一版只有文档、不含实现源码（2026-11-18 查）</span>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：coding agent 把多视角照片重建成可调的几何程序，检查关节和接触后导出 MuJoCo twin，给双臂真机规划。</p>
+  <p class="meta">前作：NeoWorld-Pro（arXiv 2608.24212，NeurIPS 2026）。本文正文和 30 条参考文献都没有提到它，项目页也没有，所以本页不写两者的关系。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>编码 agent 能把照片写成 Blender 代码，但尺寸靠 VLM 逐 token 去猜；mesh 不封闭、关节配错、零件互相穿插也没人检查，放进仿真器就出问题（§1）。</dd></div>
+    <div><dt>Idea</dt><dd>重建结果就是一段可调程序 P = (S, θ, T)。VLM agent 通过 NeoMCP 的工具改程序结构 S；NeoSDK 在 tensor twin 里用采样加梯度拟合数值 θ，再查封闭性、关节扫掠和刚体接触；harness 只收照片证明更好的候选。场景由一个 coordinator 拆给每个物体的 worker。</dd></div>
+    <div><dt>Result</dt><dd>RoboCasa365 的 10 个厨房：零件穿插率 P-Pen 0.67%，Codex+BlenderMCP 是 9.21%；同一个 harness 换回 BlenderMCP 是 45.41%（Table 4、5）。3DCodeBench 物体 CD 0.0365，VIGA 0.0680（Table 2）。真机：双臂串联任务做了 3 次，约 136、137、109 s，没有成功率统计（B.3）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>编码 agent 能搭出像样的厨房，但尺寸靠 token 猜，穿插和关节错误没人查</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Fig. 1 的厨房一角</b>：真实厨房的 <span class="ex">多视角 RGB-D + 相机</span>（Fig. 2 的输入），画面里有 <span class="ex">一台微波炉</span>、<span class="ex">一台咖啡机</span>、<span class="ex">两把吧凳</span>、水槽和橱柜 → 想要：每个物体一段可调的 Python 程序（如 <span class="ex">microwave.py：box("shell", (0.502, 0.282, 0.255))</span>），零件不互相穿插，微波炉门有关节，整个场景能放进仿真器给机器人规划。</p>
+    <p><b>延伸（Stage 6）</b>：同样的流程用在桌面上：<span class="ex">微波炉 + 碗 + 50 mm 方块</span>，重建成 MuJoCo twin，交给两台 AgileX Piper 真机（§4.6）。论文没说它和 Fig. 1 是不是同一台微波炉。</p>
+  </div>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-NeoWorld-3/fig1.jpg" alt="Fig. 1：右上是真实厨房的输入照片，中间是重建出的整个厨房，三个角标出微波炉、吧凳、咖啡机的照片、重建和程序片段"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）Code-defined physical worlds：输入真实观测，用可调的几何程序重建出可编辑、可配置物理属性的 3D 环境。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>右上 Input：</b>真实厨房的几张照片，就是例子的输入。</li>
+    <li><b>中间 Output（simulation-ready 3D reconstruction）：</b>重建出的整个厨房。场景里还放了一台机器人模型，论文没说明它是哪台、做了什么。</li>
+    <li><b>左上 ② microwave.py：</b><code>box("shell", (0.502, 0.282, 0.255))</code>、<code>box("door", (0.400, 0.010, 0.243))</code>、<code>cylinder("timer_knob", r=0.021)</code>。机身和门是两段独立的 box，所以门可以单独装关节。论文没写这些数的单位。</li>
+    <li><b>左下 ① bar_stool.py：</b>框 ① 把两把吧凳一起圈住，只连到一个程序：<code>seat("upholstered_saddle_seat")</code>、<code>legs(n=4, splay=True, wood="oak")</code>、<code>rail("front_footrest")</code>。</li>
+    <li><b>右下 ③ coffee_machine.py：</b>很小的零件也是有名字的参数：<code>box("drip_basin", (0.186, 0.139, 0.010))</code>、<code>shell("nozzle", r=0.0035, t=0.0012)</code>。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>厨房多视角 RGB-D</span>"] --> A1["<b>生成式 image-to-3D</b><br/>Pixal3D 等直接出 mesh"]
+  A1 --> AX["微波炉是一整块<br/><span class='ex'>无部件无关节 Table 1</span>"]:::gap
+  IN --> B1["<b>Codex + Blender MCP</b><br/>通用 agent 写代码"]
+  B1 --> BX["零件互相穿插<br/><span class='ex'>P-Pen 9.21% Table 4</span>"]:::gap
+  IN --> C1["<b>VIGA</b><br/>看渲染迭代改代码"]
+  C1 --> CX["没有关节，物体放偏<br/><span class='ex'>OCD 41.6275 cm</span>"]:::gap
+  IN --> D1["<b>Articraft</b><br/>写带关节的资产"]
+  D1 --> DX["尺寸对不准<br/><span class='ex'>CD 0.0719 Table 2</span>"]:::gap
+  </pre></div>
+  <p class="note">推断的部分：Pixal3D 一行只有 Table 1 的勾叉，论文没有跑它；VIGA 的“没有关节”出自 §4.1 和 Table 4 的注（P-Pen 记为 –），OCD 出自 Table 4；Articraft 没跑场景，数字是 3DCodeBench 物体的 CD。所有数字都来自 RoboCasa365 的 10 个厨房或 3DCodeBench，论文没有给 Fig. 1 这个厨房的数字。</p>
+  <p class="crux"><b>根本问题：</b>VLM 逐 token 写数值，几何精度不够；程序也没经过物理在环检查，mesh 不封闭、关节配错、零件互穿都发现不了（§1）。只有 NeoWorld-3 的 harness、工具仍是 BlenderMCP 时，P-Pen 还是 45.41%（Table 5）。　<b>这篇的切入点：</b>把重建写成可调程序：结构交给 agent，数值交给梯度，有效性交给 NeoSDK 的检查，harness 只收照片说更好的候选。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>专用 3D 编码 agent</b>（本文所属）<br><span class="muted">VIGA、Articraft、Articulate-Anything、3D-CoS</span></td><td>用程序重建或生成结构化的 3D 资产</td><td>VLM 写代码，看渲染迭代修改；Articraft 还生成关节</td><td>离散地改代码定不准数值，只看图不保证物理有效 → 本文加可微拟合，并检查封闭性、关节和接触</td></tr>
+      <tr><td><b>通用 coding agent + Blender MCP</b><br><span class="muted">Codex + Blender MCP</span></td><td>让通用 agent 直接在 Blender 里建模</td><td>社区 MCP 插件把 Blender 交给语言模型</td><td>没有专用 harness 和工具（§4.5：单用 Codex 重建质量有限）→ 本文 NeoMCP 每个 verb 有 schema、receipt，结果要过准入</td></tr>
+      <tr><td><b>关节 / sim-ready 资产生成</b><br><span class="muted">PhysX-Anything、URDF-Anything、SINGAPO、SPARK</span></td><td>从图像得到带部件和关节的资产</td><td>模型直接预测部件和运动学结构；PhysX-Anything 还给物理属性</td><td>预测结果不能再调（Table 1 Tunable ×），物理有效性仍难保证（§2）→ 本文输出带命名常量的程序，可以接着编辑和拟合</td></tr>
+      <tr><td><b>生成式 3D 和神经渲染</b><br><span class="muted">Pixal3D、TRELLIS、SAM 3D、DreamFusion；NeRF、3DGS</span></td><td>从图像得到外观或整体形状</td><td>学到的生成先验，或 radiance field / Gaussian</td><td>黑盒 mesh 或场，没有部件和关节 → 本文每个部件都是程序里有名字的一段</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>早期 LLM/VLM 写 3D 程序</b><br><span class="muted">3D-GPT、SceneCraft、BlenderAlchemy、Real2Code</span></td><td>从文本程序化建模、编辑 3D，或用代码表示关节物体</td><td>LLM 生成或修改 Blender / 程序代码</td><td>证明了可行，但重建精度有限（§2）→ 本文用 tensor twin 拟合数值，并从物体扩到整个场景</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：§2 Related Work、Table 1、§4.1 Baselines，未另行检索。论文没有和 library 里或本轮其他论文比较。</p>
+  <p class="eyebrow" style="margin-top:1.2rem">论文自己的能力对照（Table 1，照原表重排）</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>方法</th><th>Scene</th><th>Tunable</th><th>Parts</th><th>Watertight</th><th>Diff.</th><th>Articulation</th><th>Physics</th><th>RSI</th></tr>
+      <tr><td>Generative image-to-3D（Pixal3D）</td><td>✓</td><td>×</td><td>×</td><td>△</td><td>×</td><td>×</td><td>×</td><td>×</td></tr>
+      <tr><td>VLM-based（PhysX-Anything）</td><td>△</td><td>×</td><td>✓</td><td>△</td><td>×</td><td>△</td><td>✓</td><td>×</td></tr>
+      <tr><td>Coding-agent-based（Articraft）</td><td>✓</td><td>△</td><td>✓</td><td>×</td><td>×</td><td>✓</td><td>×</td><td>×</td></tr>
+      <tr><td><b>NeoWorld-3</b></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    </table>
+  </div>
+  <p class="note">✓ 完全支持，△ 部分，× 没有。Diff. 是可微优化，RSI 是 recursive self-improvement。这是作者自评；RSI 的 ✓ 是能力，附录 A.5 说目前还没有被采纳的新工具（见 <a href="#limits">Limits</a>）。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>agent 写结构，梯度定数值，NeoSDK 查有效性，harness 决定收不收</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-NeoWorld-3/fig2.jpg" alt="Fig. 2：上半是 real-to-sim 重建（scene agent、NeoMCP + NeoSDK、object subagent、scene integration），下半是 downstream applications"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）物体级：agent 写可调几何程序，按真实与仿真的对比改结构，可微 refinement 调参数，再加部件和关节。场景级：object subagent 重建单个物体，scene agent 负责集成和全局布局。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左上 Real observations（Multi-view RGB-D + cameras）：</b>输入是多视角 RGB-D 和相机参数，画面就是 Fig. 1 的厨房。</li>
+    <li><b>Scene agent（Global Scene Management、Task Coordination &amp; Revision）：</b>coordinator，管全局场景、分派物体、决定修订（<a href="#stage-1">Stage 1</a>、<a href="#stage-5">5</a>）。</li>
+    <li><b>中上 NeoMCP + NeoSDK：</b>NeoSDK 写着 Geometry Construction、Differentiable Execution，小框里是 <code>cube()</code>、<code>translate()</code>、<code>rotate()</code> 这类建模调用；NeoMCP 写着 Visual Inspection、Code Editing &amp; Rendering。两处 Tool calling 箭头表示 scene agent 和 object subagent 都通过它干活（<a href="#stage-all">三层分工</a>）。</li>
+    <li><b>左中 Object handoff（Views、Source、Context）：</b>咖啡机被交给 worker，带着视角、已有源码和上下文（<a href="#stage-1">Stage 1</a>）。</li>
+    <li><b>Object subagent 一排：</b>Author/revise program → Geometry Refinement（θ₁、θ₂、θ₃ 滑块）→ Real–Sim feedback（真实和仿真的咖啡机并排）→ Articulation（微波炉关和开，Add Parts &amp; Joints）；虚线 Object-level feedback loop 回到写程序（<a href="#stage-2">Stage 2</a>–<a href="#stage-4">4</a>）。</li>
+    <li><b>右侧 Scene integration（Validate Object Updates，Accept / Reject）→ Real–Sim scene：</b>交回的物体过了检查才进场景；虚线 Scene-level feedback loop 回到 scene agent（<a href="#stage-5">Stage 5</a>）。</li>
+    <li><b>底部 Downstream Applications：</b>Sim-based Policy Optimization（Policy agent 和仿真之间来回传 Candidate policies、Simulation feedback）→ Sim-to-Real Deployment。论文的实验里没有训练 policy：真机部分是在 twin 里解 IK、规划轨迹，再加接触控制律（<a href="#stage-6">Stage 6</a>）。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><video src="2026-11-16-NeoWorld-3/web-scene-compare.mp4" autoplay muted loop playsinline controls></video></div>
+    <figcaption><b>项目页</b> <a href="https://neoworldproject.github.io/Studio/#scene-demo">Scene reconstruction · Scene 01</a>：左边是原始拍摄，右边是补全地面后的重建（项目页称 floor-completed），机位相同。看吧凳、微波炉、咖啡机、水槽和吊柜是否对得上。Fig. 1 的图注把读者指到同一处（#scene-demo），论文没给这个场景的数字。</figcaption>
+  </figure>
+  <div class="flow"><pre>
+flowchart TD
+  I["<b>Input</b><br/><span class='ex'>厨房多视角 RGB-D</span>"] --> A["<b>VLM agents 写程序</b><br/><span class='ex'>microwave.py 等</span>"]
+  A --> F["<b>NeoSDK 拟合和检查</b><br/><span class='ex'>拟合 θ，扫门的关节</span>"]
+  F --> H["<b>harness 准入</b><br/><span class='ex'>照片说更好才收</span>"]:::win
+  H --> O["<b>Sim-ready 场景</b><br/><span class='ex'>Blender、USD、MuJoCo</span>"]
+  O --> R["<b>双臂真机</b><br/><span class='ex'>碗放进微波炉</span>"]
+  H -.->|不收就改| A
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>6 个 stage，外加两条贯穿全程的机制</h2>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Scene coordinator</b><br/><span class='ex'>厨房 → 背景 + 物体</span>"] --> W
+  subgraph W["每个物体一个 worker"]
+    direction LR
+    S2["<b>2 · 写可调程序</b><br/><span class='ex'>microwave.py</span>"] --> S3["<b>3 · 可微 refinement</b><br/><span class='ex'>拟合 shell 尺寸</span>"]
+    S3 --> S4["<b>4 · 几何和关节验证</b><br/><span class='ex'>门扫 91 个采样</span>"]
+  end
+  W --> S5["<b>5 · 集成回场景</b><br/><span class='ex'>IoU 不降才收</span>"]
+  S5 --> S6["<b>6 · Real-Sim-Real</b><br/><span class='ex'>MuJoCo twin → 双臂</span>"]
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。贯穿全程的两条机制：<a href="#stage-all">NeoSDK · NeoMCP · harness 各管什么</a>，以及 <a href="#stage-rsi">RSI：从重复的代码片段长出新工具</a>。Stage 4 的物体关节检查在 worker 里做；场景级的接触修正和导出检查在集成之后的收尾阶段。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Scene coordinator 拆场景</span>
+      <span class="stage-io">多视角 RGB-D + 相机 → 场景程序（GROUPS 角色、JOINTS）+ 交给 worker 的物体</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>一个厨房有几十个物体，要互相贴合、被每个相机一起看到；所以整个场景只交给一个 author，单个物体再交给 specialist，交回时由 harness 检查（A.2）。</li>
+        <li><b>谁：</b>coordinator 在论文里叫 scene agent 或 scene author，worker 叫 object subagent 或 object specialist；两者用同一套 NeoSDK，NeoMCP 给的工具不同（<a href="#stage-all">三层分工</a>）。</li>
+        <li><b>一个 author，一个 live scene：</b>coordinator 在自己独占的 Blender 里写场景程序，用 Table 6 的 verbs 看照片、用 SAM3 量物体（measure）、按真实相机渲染对比（render_calibrated）、对每帧深度找多出或缺少的几何（scan_discrepancies）、查刚体冲突（inspect_physics）。</li>
+        <li><b>按 role 拆：</b>GROUPS 里每个 body 声明 <code>"role": "background"</code> 或 <code>"role": "object"</code>。场景级 refine 只拟合背景常量和 body 位姿；会动到 object 的常量被排除，回执里写明该由哪次 refine_object 处理。</li>
+        <li><b>交出去：</b><code>refine_object(target, brief)</code> 把一个 body（任一 role）交给 object lane；被 JOINTS 连着的 body 和它的关节部件一起交。</li>
+        <li><b>证据包（harness 打包）：</b>
+          <ul class="tight">
+            <li>mask：body 至少一半可见像素落在一个 SAM3 mask 里，并且是这个 mask 的最大 owner，才绑定；没有绑定、body 又占画面至少 1% 的帧，由 SAM3 现量。</li>
+            <li>遮挡：更近的场景表面和其他照片 mask。</li>
+            <li>视角：裁剪后转正，按 coverage × min(1, θ/30°) 贪心排序，θ 是和已选视角的最小夹角；每个视角都在物体坐标系下给出针孔相机。</li>
+          </ul>
+        </li>
+        <li><b>worker 从头写：</b>specialist 写全新的程序；coordinator 的 blockout 只是提示，只有每个成员恰好就是它的 box 时才当起始源码。</li>
+        <li><b>重复实例：</b>同一 GROUPS 原型行的实例共用一份程序，各有自己的刚体位姿（§3.2、A.2）。</li>
+        <li><b>并发和预算：</b>同一回复里的多个调用并发跑，集成按完成顺序串行；每次 delegation 从 48 次 child calls 的额度里预留 16 次，没用完的退回；结果分 conflict、failed、split_required、rejected、invalid。</li>
+        <li><b>报告的运行：</b>gpt-6-sol，high effort，64 次 author 调用，10 800 s wall（A.2）。</li>
+        <li><b>没有深度时：</b>RoboCasa 的输入是 16 张 RGB 加已知相机，没有传感器深度；MoGe-3 预测深度，再给每个视角拟合一个尺度（可选再加平移），让各视角的重投影互相一致（A.6）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  K["<b>场景观测</b><br/><span class='ex'>厨房多视角 RGB-D</span>"] --> B["<b>Coordinator 写 blockout</b><br/><span class='ex'>GROUPS 里声明 role</span>"]
+  B --> BG["<b>role: background</b><br/><span class='ex'>橱柜、台面（举例）</span>"]
+  B --> OB["<b>role: object</b><br/><span class='ex'>微波炉、咖啡机、吧凳</span>"]
+  BG --> R["<b>scene refine</b><br/><span class='ex'>背景常量 + body 位姿</span>"]
+  OB --> D["<b>refine_object</b><br/><span class='ex'>mask + 遮挡 + 视角</span>"]:::win
+  D --> WK["<b>object worker</b><br/><span class='ex'>预留 16 次 child calls</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 2 左中的 Object handoff：咖啡机连同 Views、Source、Context 交给 object subagent；Fig. 2 的 Articulation 面板说明微波炉也走 worker。Fig. 1 的两把吧凳只连到一个 <code>bar_stool.py</code>，对应 repeated instances。橱柜、台面归 background 是我的举例，论文没列出这个厨房的 GROUPS。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Object worker 写可调程序</span>
+      <span class="stage-io">一个物体的证据包 → Python 构造程序 S + 命名常量 θ + 位姿 T，在 Blender 里生成 native preview</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>程序保留结构：一个共享常量 θ<sub>k</sub> 可以同时控制几个相关零件，保住同宽、对称、贴合这类关系；改错只改一段源码（§3.1）。</li>
+        <li><b>表示：</b>P = (S, θ, T)。S 是 Python 构造程序，θ 是可调的命名常量，T 是每个物体的位姿；执行 S(θ) 得到几何 G，再按 T 放进场景（§3.1）。</li>
+        <li><b>两种修改：</b>structural editing 改 S 本身（加、删、重组 primitive、Boolean 和关节的父子关系）；parameter refinement 不动 S，只调 θ（<a href="#stage-3">Stage 3</a>）。</li>
+        <li><b>worker 的工具：</b>object session 的 catalog 有 workspace inspection、evidence viewing、source reading、geometry creation、exact-anchor editing、native preview、select_candidate、task completion；打开 refinement 时加 observe_parameters 和 refine；关节任务再加 probe_articulation、review_opened_state、select_motion_artifact、record_articulation_unknown（C.2）。</li>
+        <li><b>建模词汇：</b>builder vocabulary 有 spheres、rounded boxes、cylinders、curve tubes、lofted rectangular sections and shells、thick surface grids、revolved 或 extruded profiles（C.1）。它们都有对应的 tensor kernel，所以 Stage 3 能对它们求梯度；任意 Blender Python 不行。</li>
+        <li><b>源码分级准入：</b>syntax → source validation → compilation preflight → execution → receipt，每一级失败都返回 typed failure 当反馈（C.2）。</li>
+        <li><b>preview 不等于选中：</b>候选身份和 selection 分开记。预算用完还没选，harness 就选最近完成的 native preview，并记自己为 selector（harness budget fallback，A.3.4）。</li>
+        <li><b>三种输入 profile（A.3.1）：</b>
+          <ul class="tight">
+            <li>3DCodeBench：4 张照片，orbit 相机的距离和 look-at 未知；harness 给每个候选拟合一个共享距离、look-at 和物体 yaw。这种配准恢复不了真实尺度和朝向。</li>
+            <li>PartNet：3 张 RGB，没有相机；拟合不了相机，所以没法做照片配准的 refinement。</li>
+            <li>Calibrated specialist（场景派来的）：每个视角都有针孔相机；默认每轮拟合并报告 (x, y, yaw) 的刚体修正，不写进源码。</li>
+          </ul>
+        </li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  E["<b>证据包</b><br/><span class='ex'>咖啡机的视角和 mask</span>"] --> W["<b>写全新程序</b><br/><span class='ex'>coffee_machine.py</span>"]
+  W --> C["<b>分级准入</b><br/><span class='ex'>syntax → execution</span>"]
+  C --> P["<b>native preview</b><br/><span class='ex'>Blender 生成并渲染</span>"]
+  P --> F["<b>Real–Sim 对照</b><br/><span class='ex'>渲染和照片并排</span>"]
+  F -->|结构不对，改 S| W
+  F -->|数值不准| N["<b>Stage 3</b><br/><span class='ex'>refine θ</span>"]
+  F -->|满意| SC["<b>select_candidate</b>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 1 印出的程序片段：<code>microwave.py</code> 把机身和门写成两段 box（<span class="ex">shell (0.502, 0.282, 0.255)</span>、<span class="ex">door (0.400, 0.010, 0.243)</span>），旋钮是 <span class="ex">cylinder r=0.021</span>；<code>coffee_machine.py</code> 里喷嘴是 <span class="ex">shell("nozzle", r=0.0035, t=0.0012)</span>。Fig. 2 的 Real–Sim feedback 面板把渲染的咖啡机和照片并排。论文没印这个厨房的完整源码。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">可微 refinement（在程序参数空间里）</span>
+      <span class="stage-io">程序 S + 初始常量 θ + 照片和 mask → 拟合后的 θ⋆，只有照片说更好时才写回源码</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>VLM 逐 token 预测数值，精度不够做精细的几何对齐（§1 的第一个瓶颈）；直接优化 mesh 顶点又会丢掉程序结构，所以在程序的参数空间里优化（§3.3）。</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>Eq. 1–2 的符号</th><th>是什么</th><th>在微波炉上</th></tr>
+          <tr><td>S</td><td>构造程序（Python 源码），refinement 时固定</td><td><code>microwave.py</code></td></tr>
+          <tr><td>θ</td><td>程序里可调的命名常量</td><td>shell 的 (0.502, 0.282, 0.255)、door 的 (0.400, 0.010, 0.243)、旋钮 r = 0.021（Fig. 1）</td></tr>
+          <tr><td>T</td><td>物体位姿：位置和朝向，refinement 时固定</td><td>微波炉在台面上的位置和朝向（论文没给数值）</td></tr>
+          <tr><td>G = S(θ)</td><td>在 Blender 里执行程序得到的几何</td><td>机身、门、旋钮三个部件</td></tr>
+          <tr><td>E<sub>S</sub>(θ)</td><td>同一程序在 Torch 里重放得到的 tensor 几何，可以求导</td><td>同样三个部件，放在 GPU 上</td></tr>
+          <tr><td>O、V、v</td><td>观测照片的集合、视角集合、其中一个视角</td><td>能看到微波炉的那几张照片</td></tr>
+          <tr><td>R<sub>v</sub></td><td>从视角 v 的真实相机渲染</td><td>和第 v 张照片同一机位的渲染</td></tr>
+          <tr><td>L<sub>obs</sub></td><td>渲染和照片的差：silhouette、contour、feature、depth</td><td>微波炉轮廓和照片 mask 的差</td></tr>
+          <tr><td>B</td><td>常量允许的范围；没选中的常量固定不动</td><td>程序里 PARAMS 声明的范围；没声明就用 v ± max(0.25|v|, 25 mm)</td></tr>
+          <tr><td>J<sub>p</sub>(θ)、Δθ、ΔX<sub>p</sub></td><td>零件 p 的顶点对常量的灵敏度（Jacobian）、常量的改变量、顶点的位移</td><td>如果程序把门的位置写成 shell 尺寸的表达式，改 shell 宽度时门会跟着移</td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>Eq. 1 用话说：</b>程序和位姿都不动，只在允许范围里找一组常量，让每个视角按真实相机渲染出的几何和照片最像：θ⋆ = argmin<sub>θ∈B</sub> L<sub>obs</sub>({R<sub>v</sub>(E<sub>S</sub>(θ), T)}<sub>v∈V</sub>, O)。</li>
+        <li><b>Eq. 2 用话说：</b>常量改一点，零件的顶点就跟着移动 ΔX<sub>p</sub> ≈ J<sub>p</sub>(θ)Δθ；一个共享常量会带动所有依赖它的零件，所以拟合只走程序允许的形变。</li>
+        <li><b>Tensor twin（C.1）：</b>把要搜的常量改写成批量 tensor 输入，在 Torch 里重放建模词汇，用 nvdiffrast 一次光栅化一整群候选；不必每步都跑 Blender。</li>
+        <li><b>先对齐再搜：</b>baseline 的 twin/Blender parity 是前提。回放不了报 TwinUnsupported，对不上报 TwinMismatch，无效形状记为 infeasible；这些都不退回到逐个候选跑 Blender。</li>
+        <li><b>搜索（A.3.3）：</b>有界的 cross-entropy 采样，再从 elites 出发跑 Adam；目标是 silhouette、contour 和适用的 depth、interior 项，准入条款以 hinge 的形式加进去。</li>
+        <li><b>不越界：</b>会让源码分支翻转的常量被限制在原来那一侧；mesh torn 条款：最大边长增长除以最大轴向尺寸增长，超过 2.0 就拒（C.1）。</li>
+        <li><b>两条 lane 共用一份实现：</b>scene lane 一次可以同时搜一个 label 的常量、刚体的 x、y、yaw，以及（可选）逐帧相机修正；object lane 只搜常量，估计相机时每轮先拟合相机 rig，最多 3 轮，停在范围端点 2% 以内的常量下一轮区间加宽一倍。</li>
+        <li><b>准入（A.3.4，neosdk.refine.twin.admission）：</b>绑定视角的平均 silhouette IoU 至少升 0.002；最弱视角最多降 0.02，任何重叠视角最多降 0.05；contour、depth、scene、mesh-stretch 条款在有测量的地方成立。留不留由照片决定，不由优化器的 loss 决定。</li>
+        <li><b>默认开关（A.3.2）：</b>object session 里数值 refinement 默认关；tool mode 由模型请求拟合，auto mode（specialist 的默认）由 harness 对每个新 preview 自动 refine。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  T["<b>Trace</b><br/><span class='ex'>S 和 θ → Torch 几何</span>"] --> Q["<b>Parity</b><br/><span class='ex'>twin 和 Blender 一致</span>"]
+  Q --> SR["<b>CEM → Adam</b><br/><span class='ex'>silhouette、contour、depth</span>"]
+  SR --> M["<b>Blender 生成</b><br/><span class='ex'>只生成选中的候选</span>"]
+  M --> AD["<b>Admission</b><br/><span class='ex'>平均 IoU 至少 +0.002</span>"]:::win
+  AD -->|过| K["<b>写回 θ</b><br/><span class='ex'>源码里的常量改了</span>"]
+  AD -->|不过| RJ["<b>保留原状</b><br/><span class='ex'>记下失败条款</span>"]:::gap
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 2 的 Geometry Refinement 面板（θ₁、θ₂、θ₃ 三个滑块）就是这一步：<code>microwave.py</code> 里 shell 尺寸这类常量在 twin 里被采样和梯度更新，只有照片上的 IoU 过了准入才写回源码。论文没给这个厨房拟合前后的数值。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">几何、关节和接触验证（“physics validation”查什么）</span>
+      <span class="stage-io">部件 mesh 和声明的关节 → 修好的边界、admitted / refuted / undeterminable 的关节、修正后的刚体位姿、各种导出</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>没有物理在环检查，程序会产出不封闭的 mesh、配错的关节和零件间碰撞（§1 的第二个瓶颈）。</li>
+        <li><b>一句话：</b>论文说的 physics validation 大部分是几何和运动学检查，加上一步刚体接触修正；质量、摩擦是配置值，不从照片估计（A.4、B.1）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-NeoWorld-3/fig6.jpg" alt="Fig. 6：左边 watertight geometry tools 和 metric physical adaptation，右边 scene articulation 的声明、扫掠和导出，底部 additional configuration evidence"></div>
+        <figcaption><b>Fig. 6</b>（作者原图）Geometry validity and declared articulation：左边是 SDK 的边界检查和保面修复，和 metric 适配、认证分开；右边是源码声明关节、几何驳回、和 native 回放对照的 visual URDF 导出。</figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>Fig. 6 的符号</th><th>是什么</th><th>在微波炉上</th></tr>
+          <tr><td>q<sub>0</sub></td><td>关节的静止值（rest value）；live scene 一直停在这个状态</td><td>门关着时的角度</td></tr>
+          <tr><td>q</td><td>关节位置；导出 URDF 时写成 q − q<sub>0</sub></td><td>门打开的角度</td></tr>
+        </table>
+      </div>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左上 Native indexed geometry：</b>Inspect boundaries（unit-neutral checks）→ Repair explicitly（Preserve surface attributes）→ Reinspect delivered mesh（No implicit remeshing）：先查，再只在明确的地方修，修完必须再查。</li>
+        <li><b>左下 Metric physical adaptation：</b>UnsafeAsset（Metric provenance）→ Plan + adapter（Explicit repair policy）→ SafeAsset（Certified properties）；底注：和当前的场景 URDF 导出器是分开的。</li>
+        <li><b>右 Scene articulation：</b>Named bodies + JOINTS（Author owns axis and limits）→ Place links together（Live scene stays at q<sub>0</sub>）→ Sweep the declared range（Attachment、motion、parent and surrounding clearance）→ 两个出口：Author revises source（unresolved 或 refuted 的不导出），或 Visual URDF + meshes（Check against native playback）。底注：只有 visual 和关节，没有 collision、inertia、dynamics。</li>
+        <li><b>底部 Additional configuration evidence：</b>Second-state masks → Fit scalar q on a declared axis → Value, resolution and parent drift。注明只在合成数据上验证过，真实的第二状态采集还没做。</li>
+      </ol>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>检查</th><th>查什么</th><th>在哪跑、出处</th></tr>
+          <tr><td>边界检查</td><td>一条边只连 1 个面 = open boundary，连超过 2 个面 = non-manifold；Rust inspector 还查 closure、manifoldness、self-intersection、shell containment、材料边界朝向（外壳朝外、空腔朝内）</td><td>NeoSDK；benchmark 导出时由 <code>--watertight</code> 打开（默认关），只跑 edge–face 检查和零位移的接缝重连（§3.4、A.4.4）</td></tr>
+          <tr><td>接缝修复</td><td>只在源码对应或明确重合的边界处重连 index；不动顶点、不补洞、不推断朝向、不合并独立运动的 link；修完要再查</td><td>NeoSDK（§3.4、A.4.4）</td></tr>
+          <tr><td>Metric solid adaptation</td><td>每个物理部件 closed、manifold、无自交、朝向正确、体积为正，且有 metric 来源，才得到 SafeAsset 和 certificate</td><td>独立的 SDK 接口，不在场景导出路径上（A.4.4）</td></tr>
+          <tr><td>场景关节扫掠（joints）</td><td>把导出几何的采样点在声明范围内变换，查静止接口、可观察的位移、保持连接、和父件以及周围物体的间隙；侵入用 ray parity 进封闭实体判断，带深度余量</td><td>scene，只读；结果 admitted / refuted / undeterminable（A.4.2）</td></tr>
+          <tr><td>物体关节探针（probe_articulation）</td><td>每个关节在范围的 0、0.5、1 处渲染；单独扫 91 个采样（其他关节在 q<sub>0</sub>），再全部关节一起到 0.5 和 1.0；结果按下表分类</td><td>object lane（A.4.3）</td></tr>
+          <tr><td>URDF 回放</td><td>从写出的 URDF 做 forward kinematics，必须复现 native 回放的 link 位姿；失败的文件不进 manifest</td><td>场景收尾（A.4.2）</td></tr>
+          <tr><td>刚体接触修正（physics-in-the-loop）</td><td>inspect_physics 查声明刚体的 convex-proxy 冲突；收尾时在接触邻域提出最小运动方案，交给一个自有的 Isaac batch，返回完整 SE(3) 位姿、接触对象和末段运动（每个 body 1 kg、摩擦 0.5、无回弹）；候选再过 native 几何、受保护视角、支撑和连接检查，被拒就恢复原状</td><td>scene pipeline 默认开，启动时冻结（A.4.1）</td></tr>
+          <tr><td>Benchmark 物理导出（USD + UsdPhysics）</td><td>fixed → static，其他 → dynamic；悬空的 body 最多下放 0.05 m 到支撑面；底部 2 mm 切成楔形做碰撞分解；settled 且未被驳回的关节成为 native revolute 或 prismatic，限位相对 q<sub>0</sub></td><td>benchmark 导出（A.4.4）</td></tr>
+        </table>
+      </div>
+      <p class="eyebrow">Table 8 的探针结果分类（照原表重排）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>类别</th><th>Finding</th><th>含义</th></tr>
+          <tr><td>拒掉这次 probe</td><td><code>rest_overlap</code>、<code>collision</code>、<code>closure_gap</code>、<code>combined_collision</code></td><td>静止时几何重叠；单关节扫掠中碰撞；q<sub>0</sub> 处闭合有缝；两个以上关节拉开的 link 之间碰撞</td></tr>
+          <tr><td>需要决定</td><td><code>cover_without_cavity</code>、<code>travel_leaves_parent</code>、<code>joint_dropped</code></td><td>盖板打开后后面没有空腔；滑动件走到头离开父件；原来会动的关节被删了</td></tr>
+          <tr><td>只报告</td><td><code>detached_in_sweep</code>、<code>sequenced_after</code>、<code>weakened_after_report</code></td><td>扫掠中脱开；因其他关节而推迟扫掠；报告后关节范围被缩小</td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>决定怎么下：</b>改源码，或用 record_articulation_unknown 记下 finding 和 link；只有没有拒绝、没有未决 finding 的 probe 才能被 select_motion_artifact 选中（A.4.3）。</li>
+        <li><b>质量从哪来：</b>三条路径各配各的：benchmark exporter 按凸块体积、1000 kg/m³ 的均匀密度算质量和惯量；benchmark evaluator 不用它，按包围盒、500 kg/m³ 自己算；物理在环每个 body 1 kg（A.4.4）。</li>
+        <li><b>关节先验：</b>给单个关节物体的 brief 附了从 525 个 held-out PartNet-Mobility 物体（1031 个面板）挖出的 closed-front 先验，规则在 held-out 上 0.8990，侧铰链在偏心把手对侧 308/308；只作指导，没有 gate 读它（A.4.3）。</li>
+        <li><b>论文自己的措辞：</b>admitted 只表示“现有测量没有驳回”，不是 verified；采样到的是运动学几何，不是物理或连续碰撞；准入不证明真实机构（A.4.2、A.4.3）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  G["<b>部件 mesh</b><br/><span class='ex'>机身、门、旋钮</span>"] --> BD["<b>边界检查</b><br/><span class='ex'>边只连 1 面 = 开口</span>"]
+  BD --> RP["<b>接缝修复</b><br/><span class='ex'>只重连 index，再查</span>"]
+  J["<b>JOINTS 声明</b><br/><span class='ex'>门的轴和范围</span>"] --> SW["<b>扫掠</b><br/><span class='ex'>0 / 0.5 / 1，91 个采样</span>"]
+  SW --> RS["<b>三种结果</b><br/><span class='ex'>admitted 只算未驳回</span>"]:::win
+  FN["<b>场景收尾</b><br/><span class='ex'>inspect_physics</span>"] --> IS["<b>Isaac batch</b><br/><span class='ex'>1 kg、摩擦 0.5</span>"]
+  IS --> CK["<b>候选检查</b><br/><span class='ex'>视角、支撑、连接</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>论文没印这个微波炉的 JOINTS 行和扫掠结果；按 A.4.3 走一遍：门声明成一个关节 → 在范围的 0、0.5、1 处渲染，单独扫 91 个采样 → 如果门在扫掠中撞到机身，就是 <code>collision</code>，这次 probe 被拒，author 改源码或记成 unknown → 干净的 probe 才能被选为交付的 motion artifact。场景级的结果：RoboCasa365 上 P-Pen 0.67%（Table 4）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">集成回场景</span>
+      <span class="stage-io">worker 交回的 label → accept（父场景照做）或 rejected（带失败条款）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>worker 只看到一个物体；交回的结果必须不比它替换的 blockout 差，也不能动到别的东西（A.2）。</li>
+        <li><b>交回的形式：</b>一个独立 label：名字带 label 前缀，GROUPS 行声明 role: object，JOINTS 留在物体坐标系里，整体套一个 label 级变换。</li>
+        <li><b>先在沙盒里试：</b>集成跑在一个从父场景存档恢复出来的 staging runtime 里；所有检查都通过，父场景才做同样的改动。</li>
+        <li><b>四条检查：</b>
+          <ul class="tight">
+            <li>位姿逐个自由度：z 和 scale 从不采纳，被标记的修正不采纳，x、y、yaw 走场景自己的 pose admission。</li>
+            <li>关节：未解决的关节拒收；只有 range 没观测到的关节保留声明值，标成 prior。</li>
+            <li>一致性：交付的 mesh 每个顶点误差不超过 10<sup>−6</sup> m，三角形和材质名相同；不属于它的物体保持原样；apply 失败就回滚。</li>
+            <li>质量：在 body 绑定的视角上和 blockout 比 silhouette IoU：平均 IoU 不降，最弱视角最多降 0.02（和 refine 的最弱视角容差相同）；否则返回 rejected 和失败的条款。</li>
+          </ul>
+        </li>
+        <li><b>场景级反馈：</b>记录的标定相机渲染整个场景，拍摄和渲染一对对比较，暴露漏掉的物体、尺寸错、实例错位和接口错误。</li>
+        <li><b>可选：</b>harness_delegation（默认关）在第一次 finish 时把非背景 body 按 visible pixels × (1 − IoU) 排序，送出最前面的几条提示。</li>
+        <li><b>收尾：</b>保存 native scene 和 GLB；另有导出写 USD，程序化材质可能被近似（A.2）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  ST["<b>staging runtime</b><br/><span class='ex'>咖啡机的 label</span>"] --> C1["<b>位姿</b><br/><span class='ex'>z、scale 不采纳</span>"]
+  ST --> C2["<b>关节</b><br/><span class='ex'>未解决就拒</span>"]
+  ST --> C3["<b>一致性</b><br/><span class='ex'>每个顶点差 1e-6 m 内</span>"]
+  ST --> C4["<b>质量</b><br/><span class='ex'>平均 IoU 不降</span>"]
+  C1 & C2 & C3 & C4 --> AC["<b>accept</b><br/><span class='ex'>父场景照做</span>"]:::win
+  C4 -.->|任一不过| RJ["<b>rejected</b><br/><span class='ex'>带失败条款</span>"]:::gap
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 2 右侧 Scene integration（Validate Object Updates → Accept / Reject）。咖啡机交回后，只有在它绑定的视角上平均 IoU 不低于 blockout、最弱视角降幅不超过 0.02，才进入场景；它的 z 和 scale 保持 coordinator 的值。最终场景见 Level 1 的项目页视频。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">Real-Sim-Real：MuJoCo twin 到双臂真机</span>
+      <span class="stage-io">重建好的场景 + 腕部 RGB-D → twin 里规划并做碰撞检查的轨迹 → 两台 AgileX Piper 带接触反馈执行</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>证明重建出来的 twin 不只是好看，能直接给真机规划；不训练（正文称 training-free，摘要称 zero-shot，§4.6）。</li>
+        <li><b>Twin：</b>W = (G, X, C, A, P)：可视几何、部件和实例变换、碰撞几何、声明的关节、配置的物理属性。质量、摩擦和执行器属性按目标仿真器配置，不从外观推断；装成 MuJoCo twin（B.1）。</li>
+        <li><b>配准：</b>标定板同时被场景采集系统和腕部 RGB-D 看到；20 次标定板观测做 hand–eye（Park's method），标定板位姿自洽到 2.1 mm / 0.22°（held-out 1.8 mm / 0.17°）。论文说这是自洽性，不是绝对精度（B.2）。</li>
+        <li><b>Twin clearance：</b>3 cm 余量；MuJoCo 3.3.1 的 midphase 在 4096 个随机位姿里漏掉 102 对，所以关掉，单次查询从 0.18 ms 变成 0.74 ms（B.2）。</li>
+        <li><b>腕部扫描：</b>贪心覆盖选最多 8 个视角，每段关节路径以 2° 步长在 twin 里检查；8 张静态图用了 411 s（B.2）。</li>
+        <li><b>Repose（NeoMCP 的 repose verb）：</b>SAM 3 分割 → 深度抬到场景坐标、RANSAC 拟合支撑面 → 点到面 ICP 拟合平面位姿 (x, y, ψ) → 奇数和偶数视角两次拟合须在 5 mm / 2° 内一致、位移不超过 8 cm → 和其他位姿候选走同样的准入（B.2）。</li>
+        <li><b>规划：</b>twin 提供障碍几何和物体位姿，做 IK 和碰撞感知的轨迹规划；抓取前腕部再看一次，用局部证据修正目标位姿（B.1）。</li>
+        <li><b>执行：</b>100 Hz 流式执行器，每帧的 guards 查关节跟踪误差、电机电流、温度、驱动故障、控制模式和指尖下限（计划最低点再低 10 mm）；同一个 loop 先在 twin 里跑一遍（B.3）。</li>
+        <li><b>力从电流来：</b>臂上没有力传感器；测得的电流减去重力和摩擦的预测得到外力矩，经 Jacobian 映到指尖力（Table 10）。1 cm/s 下降、5 N 阈值：自由下降时读数 0.61 ± 0.47 N，接触后再走 1.9 mm 在 5.3–5.6 N 触发；停在桌面上方 3 cm 的负对照不触发（B.3）。</li>
+        <li><b>接触控制律：</b>admittance pull 从给定的初始方向和距离拉把手，并把拉的方向转向测得的力，不需要铰链模型；compliant grip 一次夹正把手（3.7 s，原来三遍定心要 13 s）；spline path 一次走完一段的所有 waypoint（B.3）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-NeoWorld-3/fig8-tab9.jpg" alt="Fig. 8 和 Table 9：四个腕部视角里碗和方块在 repose 前后的轮廓，下面是三个物体的位姿提议、IoU 和结果"></div>
+        <figcaption><b>Fig. 8 + Table 9</b>（作者原图）用一次 8 视角腕部扫描给完成的重建 re-pose：品红是碗，黄色是方块，细线是之前、粗线是之后；下表是三个物体的提议、平均和最弱视角的 silhouette IoU、结果。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>上面四个视角（共 8 个）：</b>原始传感器方向的去畸变腕部图，底部黑色是夹爪手指（声明为遮挡物）；粗线比细线更贴合实物。</li>
+        <li><b>Table 9 的 Bowl 行：</b>提议 (−15.6, −6.2) mm，平均 IoU 0.814 → 0.861，最弱视角 0.691 → 0.742，admitted；碗绕竖轴对称，不拟合 yaw。</li>
+        <li><b>Cube 行：</b>提议 (−14.4, +3.4) mm、−4.05°，平均 IoU 0.706 → 0.858，最弱视角 0.590 → 0.737，admitted；yaw 按 90° 折叠。</li>
+        <li><b>Microwave 行：</b>refused（unstable proposal）：两组视角的估计差 9.0 mm / 9.3°，超过 5 mm / 2° 的门槛；碗的两组估计相差在 2.9 mm 以内，方块在 1.4° 以内（原文 respectively）。</li>
+        <li><b>论文顺带发现的两件事：</b>方块的重建体里多了一片从影子建出来的薄方片，SAM 3 的 mask 不含它，于是加了“贴在支撑面上的成员不参与拟合”的规则；重建的桌面比实测桌面低 2–3 cm，这个竖直偏移还没修。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-NeoWorld-3/fig9.jpg" alt="Fig. 9：上面是 twin 里铰链位置信念有误时开门的力曲线，中间是抓方块前的腕部检查和 twin 里的开门计划，下面是电流估计的指尖力"></div>
+        <figcaption><b>Fig. 9</b>（作者原图）Compliant execution：twin 里开门、抓前检查、twin 里执行开门计划、电流估计的力。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>上（twin，目标 30°，铰链信念最多偏 42 mm）：</b>左边 Believed circle followed without adapting：按信念的圆走，铰链信念偏 30 mm 的 6 种情况全部在 7–29° 停住，力 4.6–8.4 N；右边 constrained_follow（adapts to the force）：7 种情况都到 30.3°，力不超过 1.5 N，还反推出铰链位置到 0.23 mm 以内。twin 的力信号没有噪声，这个精度不适用于真机。</li>
+        <li><b>中左：</b>串联任务里抓方块前的腕部检查，原始 640×480 帧；红色是计划的方块，绿色是拟合到的方块。</li>
+        <li><b>中右：</b>用硬件的同一套 loop 和 guards，在 twin 里执行开门计划。</li>
+        <li><b>下：</b>电流估计的指尖力。左边负对照（停在桌面上方 3 cm）始终在 5 N 阈值以下；右边下降到桌面，接触后越过 5 N 停下。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart TD
+  A["<b>MuJoCo twin</b><br/><span class='ex'>碗、方块、微波炉</span>"] --> B["<b>Hand–eye 配准</b><br/><span class='ex'>2.1 mm / 0.22°</span>"]
+  B --> C["<b>腕部扫描 + repose</b><br/><span class='ex'>碗 IoU 0.81 → 0.86</span>"]
+  C --> D["<b>在 twin 里规划</b><br/><span class='ex'>IK + 碰撞检查</span>"]
+  D --> E["<b>真机执行</b><br/><span class='ex'>100 Hz，电流估力</span>"]
+  E --> F["<b>接触补误差</b><br/><span class='ex'>门闩 10–15 N 后 0–2 N</span>"]:::win
+  C -.->|提议不稳| X["<b>微波炉 refused</b><br/><span class='ex'>不写进 twin</span>"]:::gap
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>延伸的例子：桌面上的微波炉、碗和 50 mm 方块。8 视角腕部扫描后，碗和方块被 re-pose（平均 IoU 0.81 → 0.86、0.71 → 0.86，§4.6），微波炉的提议不稳被拒；之后在 twin 里规划，真机执行，结果见 <a href="#exp-5">E5</a>。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿全程</span>
+      <span class="stage-name">NeoSDK · NeoMCP · harness：各管什么</span>
+      <span class="stage-io">NeoSDK 决定几何能表达什么，NeoMCP 决定模型能请求什么，harness 决定留下什么（C.2）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>“An agent's reach over a reconstruction is exactly the set of operations it can invoke”（C.2）：工具面就是 agent 的能力边界，所以单独做成一层，可描述、可度量、可扩展。</li>
+        <li><b>五条设计原则（A.1）：</b>The source is the state（源码就是状态）；The model proposes; the harness admits（模型提议，harness 准入）；Search in the twin, admit in Blender（在 twin 里搜，在 Blender 里准入）；Claims stay bound to evidence（结论绑定证据，没被驳回只叫 unrefuted）；Everything is bounded（调用次数、时间、图片数都有上限）。</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>层</th><th>提供或暴露什么</th><th>出处</th></tr>
+          <tr><td><b>NeoSDK</b></td><td><b>程序状态：</b>P = (S, θ, T)，Python 源码是唯一权威；派生一个可丢弃的 source index（部件范围、常量位置、读取者、几何调用点），绑到源码字节的 hash，编辑按 UTF-8 字节范围定位</td><td>C.1</td></tr>
+          <tr><td><b>NeoSDK</b></td><td><b>建模：</b>builder vocabulary（见 <a href="#stage-2">Stage 2</a>）加一组受限的原生 Blender 操作；编译前查源码有效、操作可用、几何有限、部件归属；渲染出的每个物体都记着自己属于哪个部件</td><td>C.1</td></tr>
+          <tr><td><b>NeoSDK</b></td><td><b>可微执行：</b>tensor twin（Torch 重放 + nvdiffrast 批量光栅化）、twin/Blender parity、TwinUnsupported 和 TwinMismatch 这类显式失败、mesh torn 条款</td><td>C.1</td></tr>
+          <tr><td><b>NeoSDK</b></td><td><b>拟合和准入：</b>CEM 加 Adam 的搜索；准入容差归 SDK 的 admission 模块（<code>neosdk.refine.twin.admission</code>），两条 lane 共用</td><td>A.3.3、A.3.4</td></tr>
+          <tr><td><b>NeoSDK</b></td><td><b>几何有效性：</b>Rust 边界检查、保面的接缝修复、metric solid adaptation（UnsafeAsset → SafeAsset + certificate）</td><td>§3.4、A.4.4</td></tr>
+          <tr><td><b>NeoSDK</b></td><td><b>Native materialization：</b>Blender 只建 baseline 和选中的候选、渲染终稿；导出保留源码、index、native build、位姿和坐标系，之后能接着改</td><td>C.1</td></tr>
+          <tr><td><b>NeoMCP</b></td><td><b>一个 registry，每个 verb 一条记录：</b>名字、一行说明、严格的 input schema（属性全部声明、全部必填、不收额外字段，注册时就校验）、实现、每次调用的 receipt</td><td>C.2</td></tr>
+          <tr><td><b>NeoMCP</b></td><td><b>错误也是反馈：</b>未知 verb、schema 违规、verb 拒绝、意外错误都返回同一种 typed record，不抛异常</td><td>C.2</td></tr>
+          <tr><td><b>NeoMCP</b></td><td><b>Receipt：</b>调用序号、verb、参数摘要、耗时、记录大小、发给模型的图片数、错误状态</td><td>C.2</td></tr>
+          <tr><td><b>NeoMCP</b></td><td><b>两种接法：</b>投影成 function-calling 规格给自家 loop；挂成 tool-protocol server 给外部 coding agent，和它自己的文件、shell 工具并列；两边拿到的 schema、record 和图片字节完全相同</td><td>C.2</td></tr>
+          <tr><td><b>NeoMCP</b></td><td><b>模型看的和度量用的分开：</b>给模型的图是有界的重编码副本，过大的记录只给摘要；度量读原始栅格</td><td>C.2</td></tr>
+          <tr><td><b>NeoMCP</b></td><td><b>Verbs：</b>场景 author 的见下方 Table 6；object session 另有一套 catalog（<a href="#stage-2">Stage 2</a>）；每次运行记录实际挂载的工具，不靠固定的工具数</td><td>Table 6、C.2</td></tr>
+          <tr><td><b>Harness</b></td><td><b>准入和收尾：</b>拥有候选准入和 episode 控制权；finish 只是请求完成，不声明结果好；两阶段 episode 里第一次 finish 触发有界的 assembly 和部件 audit，返回 work list</td><td>C.2</td></tr>
+          <tr><td><b>Harness</b></td><td><b>预算：</b>计数并强制模型调用、wall time、发给模型的图片、child-call 额度；为保存和导出预留 finalization reserve；拒绝、失败、预算用尽分开记</td><td>A.1、C.2</td></tr>
+          <tr><td><b>Harness</b></td><td><b>不替模型过关：</b>从不为了让程序通过而改语义值（尺寸、材质、关节类型、轴、范围）；自己的结构编辑只有四种（撤下交出 body 的行、去掉未定的关节、围绕准入值重设范围、把内联数字提成同值常量），都出 receipt</td><td>C.2</td></tr>
+          <tr><td><b>Harness</b></td><td><b>隔离：</b>每次运行独占一个文件系统隔离的建模进程；不管 episode 怎么结束，都从实际持有的场景保存和导出，不重放</td><td>C.2</td></tr>
+        </table>
+      </div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-NeoWorld-3/tab6.jpg" alt="Table 6：场景 author 的 NeoMCP verbs，分五组：观测和测量、live scene、标定对比和评审、数值拟合放置和委派、诊断关节和结束"></div>
+        <figcaption><b>Table 6</b>（作者原图）The scene author's tools：NeoMCP 的 live-scene 工具面。每个 verb 有严格 schema，返回 typed record；带 † 的只在打开对应选项时挂载。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张表</p>
+      <ol class="read">
+        <li><b>Observation and measurement：</b>read_observation（一张原分辨率照片，带原始相机和深度）、measure（文字提示出 mask 并抬到度量空间：bounds、centroid、principal normal、floor footprint）、sample_depth、scene_planes、triangulate†（2–64 个标定视角定一个地标点）。</li>
+        <li><b>Live scene：</b>inspect、execute_blender_code（在 live scene 里跑一段带 label 的程序，名字跨调用保留）、edit_code（exact-anchor 编辑，先删掉上一版创建的东西再重跑）、read_source、view_image。</li>
+        <li><b>Calibrated comparison and review：</b>render_view、render_calibrated（经真实相机输出照片、渲染、差异三联面板，逐视角给一致度）、review_views†（独立 critic 的排序建议，不回传图片）、scan_discrepancies†（对每帧深度找 missing、extra、seen-through、hidden、never-visible 的几何）。</li>
+        <li><b>Numerical refinement, placement, and delegation：</b>observe_parameters、probe_refinement（只读的 twin 扰动）、refine（harness 准入才写回）、assemble、repose†、inspect_physics†、refine_object†。</li>
+        <li><b>Diagnosis, articulation, termination：</b>audit（排好序的部件差异 work list，每项一个可直接粘贴的动作）、analyze（在场景外对已登记证据跑有界的只读代码）、joints（已声明关节的只读几何扫掠：admitted、refuted 或 undeterminable）、finish（请求完成）。表注：诊断标签和准入报告不是独立的重建质量结论。</li>
+      </ol>
+      <ul class="tight">
+        <li><b>audit 怎么出 work list（C.2）：</b>用物体的 prompt 和部件名分割部件，分成 aligned（每个测到的视角 IoU 至少 0.80）、misshapen、displaced、身份存疑、测不了；按 mask 面积 × (1 − IoU) 排序，最多返回 8 个；每项一个动作：拟合声明的常量、给内联数字命名、声明缺的控制量、拆开 twin 追踪不了的代码块、重写一个构造、或定位源码行；形状步骤一次最多 6 个常量。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  AG["<b>VLM agent</b><br/><span class='ex'>coordinator 或 worker</span>"] --> V["<b>NeoMCP verb</b><br/><span class='ex'>refine，严格 schema</span>"]
+  V --> SD["<b>NeoSDK</b><br/><span class='ex'>twin 拟合 + Blender 生成</span>"]
+  SD --> RC["<b>typed record + receipt</b><br/><span class='ex'>逐视角 before/after</span>"]
+  RC --> HN["<b>harness 准入</b><br/><span class='ex'>IoU 过线才写回</span>"]:::win
+  HN -.->|下一轮| AG
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>coordinator 用 measure、render_calibrated 看厨房，用 refine_object 把咖啡机和微波炉交出去；worker 用 geometry creation 和 exact-anchor editing 写 <code>microwave.py</code>，用 refine 拟合 shell 尺寸，用 probe_articulation 扫门。每次调用都留一张 receipt。这一串调用是按 Table 6 和 C.2 拼出来的，论文没给这个厨房的调用记录。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-rsi">
+    <summary>
+      <span class="stage-n">贯穿全程</span>
+      <span class="stage-name">RSI：从重复的代码片段长出新工具</span>
+      <span class="stage-io">已完成任务的 probe trace 和事后建议 → 候选 source helper → 验证后进带版本的 development library</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>agent 只能做工具允许的事；缺一个操作，就会表现为同一段代码被反复手写（A.5）。</li>
+        <li><b>采集：</b>两个收代码的 verb，一个在 live scene 里跑代码，一个在场景外对证据跑只读代码（对照 Table 6，应是 execute_blender_code 和 analyze）；每次调用记成 probe trace：原样的源码、读了哪些证据、产出的记录、成功或 typed failure，以及 author 下一步动作的结果。</li>
+        <li><b>聚合：</b>按归一化的程序结构（抽掉字面量）和证据绑定分组；按复现次数、跨多少个 run、到下一动作隔了几次模型调用、下一动作被准入的比例排序；复现广、耗 author 轮次、又常出现在被准入的工作之前的组，就是候选 verb。</li>
+        <li><b>事后建议：</b>任务收尾后，原模型在原对话里收到一次有界、禁用工具的请求，说摩擦点、证据、改进想法和可做的实验；另一个 reviser（配置的 review model）据此写 helper，也可以不改。</li>
+        <li><b>验证：</b>目前只收纯算术的 Python helper，不能覆盖 SDK 名字、不能依赖可变的外部状态；可执行 fixture 查 baseline 和 treatment 的几何等价、native/twin parity、helper 确实被调用、在声明的扰动下有效果；再做一次 matched task 实验，要求 treatment 真的用到它，author 调用次数不超过相对 baseline 的上限。</li>
+        <li><b>采纳：</b>显式决定后进带版本的 development library；每个任务启动时锁定一个库快照，开发和运行分开。</li>
+        <li><b>结果：</b>初步试验得到一次 no-change revision，和一个通过了验证和导出、但在配对任务里没被用上的 helper；都没有被采纳（A.5）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  CT["<b>Completed task</b><br/><span class='ex'>事后建议，禁用工具</span>"] --> RE["<b>Retained evidence</b><br/><span class='ex'>建议 + probe trace</span>"]
+  RE --> SR["<b>Separate reviser</b><br/><span class='ex'>写 helper 或不改</span>"]
+  SR --> EX["<b>Executable checks</b><br/><span class='ex'>parity、扰动、配对任务</span>"]
+  EX --> DL["<b>Development library</b><br/><span class='ex'>暂定、带版本</span>"]:::win
+  DL -.->|下个任务锁定快照| CT
+      </pre></div>
+      <p class="note">这张图照 Fig. 7 的五个框重画（为控制页面体积没放原图）。</p>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>如果 worker 每次建厨房电器都手写同一段算外壳尺寸的算术，这段代码会在 probe trace 里反复出现，成为候选 helper；这是我按 A.5 举的例子，论文没给具体的 trace。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>可调程序 P = (S, θ, T)</td><td>Stage 2：<code>microwave.py</code> 的 shell (0.502, 0.282, 0.255) 等命名常量</td></tr>
+        <tr><td>coordinator–worker 拆场景</td><td>Stage 1：咖啡机连同 Views、Source、Context 交给 worker</td></tr>
+        <tr><td>重复实例共用程序</td><td>Stage 1：两把吧凳只连到一个 <code>bar_stool.py</code></td></tr>
+        <tr><td>可微 refinement（tensor twin）</td><td>Stage 3：shell 尺寸作为 θ，在 Torch + nvdiffrast 里拟合</td></tr>
+        <tr><td>照片说了算的准入</td><td>Stage 3 和 5：平均 IoU 至少 +0.002、最弱视角最多 −0.02</td></tr>
+        <tr><td>关节验证</td><td>Stage 4：微波炉门在 0、0.5、1 处渲染，扫 91 个采样</td></tr>
+        <tr><td>封闭性检查和接缝修复</td><td>Stage 4：边只连 1 面是开口，超过 2 面是非流形</td></tr>
+        <tr><td>物理在环的刚体修正</td><td>Stage 4：Isaac batch，每个 body 1 kg、摩擦 0.5</td></tr>
+        <tr><td>集成准入</td><td>Stage 5：咖啡机的 z、scale 不采纳，IoU 不降才收</td></tr>
+        <tr><td>NeoMCP 工具面和 receipt</td><td>贯穿：Table 6 的 verbs，每次调用留 receipt</td></tr>
+        <tr><td>RSI 工具自改进</td><td>贯穿：反复手写的代码变成候选 helper（目前没有采纳的）</td></tr>
+        <tr><td>Real-Sim-Real</td><td>Stage 6：碗、方块 re-pose，在 twin 里规划，双臂执行</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>物体、关节、场景三档都赢过编码 agent baseline；穿插率的大降来自 NeoSDK + NeoMCP；真机只是演示</h2>
+  <p>顺序同论文 §4：<a href="#exp-1">E1</a> 单个物体 → <a href="#exp-2">E2</a> 关节物体 → <a href="#exp-3">E3</a> 整个场景 → <a href="#exp-4">E4</a> 拆开 agent、harness 和工具各贡献多少 → <a href="#exp-5">E5</a> 真机 Real-Sim-Real。E1–E4 比重建质量，没报耗时和成本；E5 只报演示里的测量值，没有成功率。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>单个物体：几何和外观比编码 agent 准吗？<span class="exp-src">§4.2 · Table 2</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-NeoWorld-3/tab2-3.jpg" alt="Table 2 和 Table 3：3DCodeBench 物体重建和 PartNet-Mobility 关节物体重建的定量比较"></div>
+      <figcaption><b>Table 2</b>（作者原图，上半；下半的 Table 3 属于 E2）先看 CD 和 Framed IoU 两列：Ours 0.0365、0.7550，VIGA 0.0680、0.6547。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>几何更准，而且全部能执行。</b>CD 0.0365（最好的 baseline VIGA 0.0680）；Framed IoU 0.7550（VIGA 0.6547）；DINOv3 0.6606（VIGA 0.6351）；SigLIP-2 0.8605（Codex+BlenderMCP 0.8571）；Uni3D 3D–3D 0.6229、Image–3D 0.3202；Exec 100.00%，和 Articraft 持平。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑第二个贡献：可微 refinement 补上 VLM 的数值精度。论文把提升归于它，但没有去掉它的消融。</dd></div>
+      <div><dt>指标</dt><dd>Exec 是程序能执行的比例；其余只在执行成功的资产上算：SigLIP-2、DINOv3 图像相似度，Framed IoU（参考图和渲染的对齐轮廓重叠），CD（和参考几何的 Chamfer distance），Uni3D 3D–3D 和 Image–3D；配置照 3DCodeBench 的评测实现。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>3DCodeBench 的 212 个物体；每个 4 张照片，orbit 相机的距离和 look-at 未知（A.3.1）。</li>
+        <li>baseline：Codex+BlenderMCP、VIGA、Articraft，全部用 GPT-5.6 Terra。</li>
+        <li>交付时在干净的 Blender 里重跑选中的程序，确认能重建出同样的 native 几何（A.3.4）。</li>
+        <li>没写的：这组实验的 object session 有没有打开 refinement（A.3.2 说默认关）、seed 数、方差、耗时和成本。</li>
+        <li>对本文有利的一点（推断）：它的 refinement 和准入直接优化 silhouette IoU，Framed IoU 量的也是轮廓重叠。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>关节物体：会动的部件和怎么动都更准吗？<span class="exp-src">§4.2 · Table 3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-NeoWorld-3/tab2-3.jpg" alt="同一张截图，看下半的 Table 3"></div>
+      <figcaption><b>Table 3</b>（作者原图，同一张截图的下半）先看 AS-gIoU 和 AOR：Ours 0.7792、0.0000，Articraft 0.8904、0.0001。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>部件和关节参数都更准，没有自碰撞。</b>AS-gIoU 0.7792（Articraft 0.8904）；AS-CD 0.1297（0.2031）；AOR 0.0000（0.0001）；Type 90.13%（87.22%）；Axis Error 0.2687 rad（Codex+BlenderMCP 0.3078，Articraft 0.3522）；Pivot Error 0.0962（0.1532）。</dd></div>
+      <div><dt>在故事里</dt><dd>支撑第三个贡献：关节验证和几何修复让部件在运动中仍然对得上，也不互相穿插。</dd></div>
+      <div><dt>指标</dt><dd>AS-gIoU（定义为 1 − gIoU，越低越好）和 AS-CD：多个关节状态下的部件级对应，照 SINGAPO 的协议；AOR：兄弟部件之间的平均重叠比例（来自 CAGE）；Type Acc、Axis Error（rad）、Pivot Error（归一化）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>77 个 PartNet-Mobility 物体，用 SINGAPO 预处理的资产和标注；每个 3 张 RGB、没有相机，所以没法做照片配准的 refinement（A.3.1）。</li>
+        <li>baseline：Codex+BlenderMCP、Articraft，都用 GPT-5.6 Terra；VIGA 不支持关节，被排除。</li>
+        <li>对本文有利的一点：它的 brief 带了从另外 525 个 PartNet-Mobility 物体挖出的 closed-front 先验（测试的 77 个被排除，A.4.3）；论文没说 baseline 有没有类似先验。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>整个场景：布局更准、穿插更少吗？<span class="exp-src">§4.3–4.4 · Table 4、Fig. 3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-NeoWorld-3/tab4-5.jpg" alt="Table 4 和 Table 5：RoboCasa365 场景重建的定量比较和 agent 与工具的分析"></div>
+      <figcaption><b>Table 4</b>（作者原图，上半；下半的 Table 5 属于 E4）先看 P-Pen 和 OCD 两列：Ours 0.67%、25.9445 cm。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-NeoWorld-3/fig3.jpg" alt="Fig. 3：四个物体和四个厨房场景，比较输入、VIGA、Codex+Blender MCP 和 NeoWorld-3"></div>
+      <figcaption><b>Fig. 3</b>（作者原图）上两行是物体，下四行是 RoboCasa365 厨房；列依次是 Input、VIGA、Codex+Blender MCP、NeoWorld-3。对比橱柜的颜色和材质、微波炉和冰箱的位置。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>布局更准，几乎没有穿插。</b>DINOv3 0.8142（VIGA 0.7888）；Layout 4.9333、Function 4.8667 都最高；P-Pen 0.67%（Codex+BlenderMCP 9.21%）；OCD 25.9445 cm（VIGA 41.6275，Codex+BlenderMCP 53.0194）。Complete 4.3667 低于 VIGA 的 4.5333。</dd></div>
+      <div><dt>在故事里</dt><dd>从物体扩到组合场景：coordinator–worker 分工和物理在环检查在多物体的厨房里起作用。</dd></div>
+      <div><dt>指标</dt><dd>DINOv3：参考观测和对应视角渲染的相似度；Complete、Layout、Function：MLLM 打分（论文没说评委模型和分制）；P-Pen：零件互相相交的关节物体所占比例；OCD：重建物体中心和真值中心的距离（cm）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>RoboCasa365 的 10 个目标场景；输入是 16 张 RGB 加已知相机，没有传感器深度，NeoWorld-3 用 MoGe-3 补深度（A.6）。</li>
+        <li>baseline：Codex+BlenderMCP、VIGA，都用 GPT-6 Sol；VIGA 不支持关节，没有 P-Pen。</li>
+        <li>对本文有利的地方（推断）：P-Pen 量的正是它的物理在环检查在修的东西；论文没说 baseline 有没有拿到 MoGe-3 深度。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>提升来自 agent、harness，还是 NeoSDK + NeoMCP？<span class="exp-src">§4.5 · Table 5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-NeoWorld-3/tab4-5.jpg" alt="同一张截图，看下半的 Table 5"></div>
+      <figcaption><b>Table 5</b>（作者原图，同一张截图的下半）从上往下看 P-Pen：45.68 → 11.61 → 45.41 → 0.67。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>穿插率的下降几乎全来自 NeoSDK + NeoMCP。</b>Direct GPT → Codex → NeoWorld-3 w/ BlenderMCP → full：DINOv3 0.6817 → 0.7513 → 0.7644 → 0.8142；P-Pen 45.68% → 11.61% → 45.41% → 0.67%；OCD 107.8875 → 47.6677 → 47.4549 → 25.9445 cm。只加 harness、仍用 BlenderMCP，OCD 几乎不变，P-Pen 还是 45.41%。</dd></div>
+      <div><dt>在故事里</dt><dd>把功劳从“更强的模型”和“有 harness”里拆出来，落到专用的几何构建、验证和修复工具上。</dd></div>
+      <div><dt>指标</dt><dd>同 E3。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>同样的 10 个 RoboCasa365 场景，同样的指标。</li>
+        <li>w/ BlenderMCP：保留 NeoWorld-3 的 harness，把 NeoMCP 和 NeoSDK 换成 BlenderMCP。</li>
+        <li>没写清楚的：Direct GPT 和 Codex 两行的工具和 prompt；Table 5 的 Codex（DINOv3 0.7513）和 Table 4 的 Codex+BlenderMCP（0.7661）不是同一组数。Complete 最高的是 w/ BlenderMCP（4.4667）。</li>
+        <li>没有的消融：单独去掉可微 refinement 或物理在环；A.4.4 提到一个 “w/o watertight check and repair” 消融，但论文没给结果。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>在 twin 里规划的动作能直接在真机上执行吗？<span class="exp-src">§4.6、B.1–B.3 · Fig. 4、5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-NeoWorld-3/fig4-5.jpg" alt="Fig. 4：腕部扫描、twin 里的计划、真机执行三栏；Fig. 5：双臂串联任务的六个阶段"></div>
+      <figcaption><b>Fig. 4 + Fig. 5</b>（作者原图）Fig. 4：左边腕部扫描真实场景，中间在 MuJoCo twin 里执行计划，右边同一计划在真机上执行；上排是初始场景，下排是把碗放进微波炉。Fig. 5：(a) 初始；(b) 一只臂拿起方块；(c) 方块放进碗；(d) 另一只臂开微波炉门；(e) 碗放进微波炉；(f) 关门。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><video src="2026-11-16-NeoWorld-3/web-sim2real.mp4" autoplay muted loop playsinline controls></video></div>
+      <figcaption><b>项目页</b> <a href="https://neoworldproject.github.io/Studio/#scene-demo">Sim2Real transfer</a>：左边 Real World Scanning，右上 Sim Twin Policy，右下 Real World Action，和 Fig. 4 同样三栏，但在动。看右边两格是否同步：twin 里碗进微波炉，真机跟着做。项目页把中间一栏叫 simulation-twin policy；按论文，它是在 twin 里执行的计划，没有训练 policy。</figcaption>
+    </figure>
+    <p class="eyebrow">真机测了什么（按论文正文和附录的数字整理，不是作者的表）</p>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>测了什么</th><th>数字</th><th>出处</th></tr>
+        <tr><td>配准：hand–eye 的标定板位姿自洽性</td><td>2.1 mm / 0.22°（20 个样本）；held-out 1.8 mm / 0.17°</td><td>§4.6、B.2</td></tr>
+        <tr><td>Repose：8 视角腕部扫描</td><td>每个物体 1.4–2.2 s；碗的平均 IoU 0.81 → 0.86，方块 0.71 → 0.86；微波炉的提议被拒</td><td>§4.6、Table 9</td></tr>
+        <tr><td>单臂：把 50 mm 方块放进碗</td><td>抓前检查把方块位姿修正 5.3 mm、6.7°；之后 157 个观测表面点全在 twin 的 5 mm 以内（中位残差 1.8 mm）；夹爪宽度全程不变；关节跟踪误差 0.18–0.33°；做了几次没报告</td><td>§4.6、B.1</td></tr>
+        <tr><td>双臂串联：左臂开门，右臂把方块放进碗、再把碗放进微波炉，左臂关门</td><td>做了 3 次（takes），分别约 136 s、137 s、109 s；成功由现场观察者判定，因为程序只读夹爪宽度和力；碗的放置和关门回放的是为这个布局录的 kinesthetic 示教，只对这个布局有效</td><td>§4.6、B.3</td></tr>
+        <tr><td>真门：admittance pull 开门</td><td>门闩在 10–15 N 松开，之后只需 0–2 N，拉的方向转了 75–77°；握力 0.5、1.0 N·m 分别在约 9、11 N 打滑，2.0 N·m 能握住；这个摆放下最大开度 87–88°</td><td>§4.6、B.3</td></tr>
+        <tr><td>串联任务里抓方块前的检查（2 次）</td><td>修正 (−2.1, −12.5) mm 和 (−2.5, −13.6) mm；测得顶面 50.1 × 50.1 mm 和 50.5 × 51.5 mm（真值 50 mm）</td><td>B.3</td></tr>
+        <tr><td>成功率</td><td>没有：论文说这些是“试验次数有限的开发演示，不是成功率的大规模评测”</td><td>B.1</td></tr>
+      </table>
+    </div>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>能跑通，但只是演示。</b>twin 准到能直接拿来规划真机动作，剩下的误差靠抓前的腕部检查和电流估力的柔顺控制补上；双臂串联任务最快 109 s。没有成功率，没有 baseline。</dd></div>
+      <div><dt>在故事里</dt><dd>闭合 Real-Sim-Real：重建结果不只是看起来像，还能当规划用的 twin，对应摘要的 “successful zero-shot execution”。</dd></div>
+      <div><dt>指标</dt><dd>没有统一的成功指标；成功由现场观察者判定；其余是配准自洽性、IoU、表面残差、关节跟踪误差和用时。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>两台 AgileX Piper，各带一个腕部 RGB-D 相机；只用机器人自己的相机和本体感觉；桌面上有微波炉、碗、50 mm 方块和一块标定板。</li>
+        <li>在 MuJoCo twin 里解抓取和轨迹并做碰撞检查，再在硬件上执行；接触层从电机电流估力（§4.6）。</li>
+        <li>“zero-shot”指不训练；按 B.3，双臂任务里碗的放置和关门回放的是为这个布局录的示教，开门用按测得力转向的 admittance pull。</li>
+        <li>没有 baseline，双臂任务只有 3 次，没有失败统计。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>被动的视觉观测定不了看不见的物理量：内部质量分布、质心偏移、接触摩擦系数、藏在外壳里的关节限位；论文提议用不确定性驱动的主动感知、机器人推一推或触觉来补（§5）。</li>
+    <li>real-to-sim-to-real 的规划吞吐和重规划频率受重建和重新标定的延迟限制（§5）；附录里的例子：8 视角扫描 411 s，重开 Blender 约 11 s（B.2）。</li>
+    <li>真机实验是试验次数有限的开发演示，不是成功率评测；物理属性是配置的假设，执行成功不说明接触动力学被恢复了（B.1）。</li>
+    <li>关节检查只是几何和运动学：admitted 只表示没被驳回；visual URDF 没有 collision、inertia、dynamics；按声明的轴拟合关节位置只在合成数据上测过，真实的第二状态采集还没做（A.4.2、Fig. 6）。</li>
+    <li>RSI 的初步结果：一次 no-change，一个 helper 通过了验证和导出但在配对任务里没被用上，都没有被采纳（A.5）。Table 1 给 RSI 打的 ✓ 是能力，还没有见效。</li>
+    <li>附录自报的误差：重建的桌面比实测桌面低 2–3 cm，还没修；方块的位姿不确定约 5 mm（B.2）。</li>
+    <li>我的观察：Fig. 2 下游画的是 sim-based policy optimization，但实验里没有训练任何 policy，真机走的是 twin 里的 IK 和轨迹规划，加上接触控制律（§4.6、B.1）。</li>
+    <li>我的观察：摘要说在 twin 里规划的轨迹 zero-shot 执行成功；但 B.3 写明，双臂任务里碗的放置和关门回放的是为这个布局录的 kinesthetic 示教，只对该布局有效。</li>
+    <li>我的观察：没有去掉可微 refinement 的消融；A.4.4 提到的 “w/o watertight check and repair” 消融没有结果；MLLM 评委是谁、Table 5 的 Codex 怎么配、Table 2 有没有开 refinement，都没写。</li>
+    <li>我的观察：代码库目前只有 README（写明 documentation only）；论文没有提到前作 NeoWorld-Pro。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>r2s-lite：</b>锅盖那一集第 9 次靠宽松的成功规则过关，场景却是错的。NeoWorld-3 的准入按照片量化（绑定视角的平均 IoU 至少升 0.002、最弱视角最多降 0.02），检查结果分 admitted、refuted、undeterminable，没被驳回不叫 verified，harness 也从不为了过关去改尺寸、关节轴或范围。这几条可以直接搬进 r2s-lite 的 repair loop 和成功判定。</li>
+    <li><b>real2sim-anything-indoor：</b>视频 → Blender 房间可以照 A.2 拆：一个 coordinator 管整间屋子，GROUPS 标 background 和 object，物体用 refine_object 带着 mask、遮挡和视角包交给 worker，交回时 z 和 scale 不采纳、IoU 不降才收；只有 RGB 的视频可以抄 A.6 的 MoGe-3 深度加逐视角尺度拟合。</li>
+    <li><b>WorldClaw：</b>白盒场景本来就是程序，可以学 NeoSDK 的 tensor twin（Torch 重放建模词汇 + nvdiffrast 批量渲染），在不丢程序结构的前提下拟合命名常量；导出到 Genesis 前跑关节扫掠（每个关节 91 个采样）和封闭性检查；NeoMCP 一个 registry 同时出 function-calling 和 MCP server 两种接口，适合 WorldClaw 的 skills。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-16-NeoWorld-3.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>

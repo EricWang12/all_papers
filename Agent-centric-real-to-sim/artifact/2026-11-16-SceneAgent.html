@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>SceneAgent</title>
+<meta name="description" content="给 coding agent 一套 skills，在 Isaac Lab 里渲染、看图、修，把 3D/4D 采集转成可交互仿真：bin 场景 F1@1cm 最高 60.75%（SimFoundry 6.9%），4D 上 Gemini 4 Argon 0.86% → 99.09%。">
+<meta name="paper:title" content="SceneAgent: An Agentic Pipeline from 3D and 4D Captures to Simulation Environments">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.34745">
+<meta name="paper:venue" content="CoRL 2026 Late Breaking Results">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.34745v1">
+<meta name="paper:date" content="2026-10-26">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-16</p>
+  <h1>SceneAgent</h1>
+  <p class="full-title">SceneAgent: An Agentic Pipeline from 3D and 4D Captures to Simulation Environments</p>
+  <p class="meta">Luke Hollis, Tianxing Fan, Heng Yang · Harvard Computational Robotics Group（SEAS） · CoRL 2026 Late Breaking Results（项目页 News） · arXiv 2026-10-26 · 27 页</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.34745">arXiv</a><a href="https://arxiv.org/pdf/2610.34745v1">PDF</a>
+    <a href="https://computationalrobotics.seas.harvard.edu/SceneAgent/">Project page</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：coding agent 带一套 skills，把 3DGS、扫描和视频转成 Isaac Lab 场景，并在仿真器里看图检查、修复，正是 agent 驱动的 real-to-sim。</p>
+  <p class="meta">代码未放出（项目页 Code 写 coming soon）。数字都来自 PDF；取自项目页的内容会注明“项目页”。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>把一次采集转成可交互仿真，要串起分割、mesh 生成、对齐、物理估计等多个模型；单个模型输出看着合理，拼进场景后 mask、scale 或位姿一错，物体就不能用，而且没人检查。</dd></div>
+    <div><dt>Idea</dt><dd>把整条转换写成 coding agent 用的 <b>skills</b>（可复用的说明 + 工具，Fig. 7 里 21 个 agent 角色），每一步都在 Isaac Lab 里渲染、看图、修：每个物体看 overlay + 8 个单独视角 + 2 个场景视角，ICP 四项残差全过阈值才接受；视频则拟合仿真动力学，再和原视频并排对比。</dd></div>
+    <div><dt>Result</dt><dd>GraspClutter6D bin（20 个 YCB 物体）上 6 个 harness 的 F1@1cm 全部从 2.36–9.51% 升到 40.45–60.75%，SimFoundry 6.9%（Fig. 5）；4DCodeBench 三例上 Gemini 4 Argon 的 dynamic IoU 0.86% → 99.09%（Fig. 3）；代价是 token 成倍增加（Codex 10.0M → 271.2M，Fig. 6）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>单个模型都“看着对”，拼进场景后 mask、scale、位姿一错，物体就不能用</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>GraspClutter6D bin（hard/000091）</b>：<span class="ex">13 张 RGB 视图，1920×1080</span>，<span class="ex">20 个 YCB 物体</span>堆在一个 bin 里、互相遮挡 → 想要：Isaac Lab 里可交互的场景，20 个物体各有一份 mesh，尺度和位姿对上数据集的 ground truth，带质量和摩擦，导出为 USD。</p>
+    <p>转换交给 coding agent <b>Antigravity（Gemini 4 Argon）</b>：先不给 skills，再给 SceneAgent skills。之后它还会收到一段视频 <span class="ex">B_09：水坝溃决冲过三根圆柱，130 帧</span>（Stage 5）。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>bin · 13 views</span><br/><span class='ex'>20 YCB objects</span>"]:::example
+  IN --> A1["<b>Coding agent 无 skills</b><br/>Antigravity<br/>Gemini 4 Argon"]
+  A1 --> AX["<b>没做 3D instances 和</b><br/><b>physics（都是 0 token）</b><br/><span class='ex'>F1 2.36% · 9.89 cm</span>"]:::gap
+  IN --> B1["<b>SimFoundry</b><br/>官方模块化 pipeline<br/>图注 stage 10"]
+  B1 --> BX["<b>阶段之间没人检查</b><br/>错的物体直接交付<br/><span class='ex'>F1 6.9% · 4.29 cm</span>"]:::gap
+  V["<b>之后的视频</b><br/><span class='ex'>B_09 · 130 帧</span>"]:::example --> C1["<b>Coding agent 无 skills</b><br/>Gemini 4 Argon<br/>直接写仿真程序"]
+  C1 --> CX["<b>collapsed or broken world</b><br/>三例平均<br/><span class='ex'>dynamic IoU 0.86%</span>"]:::gap
+  </pre></div>
+  <p class="note">有两条“坏在哪”是推断。Antigravity 那条依据 Fig. 6：不带 skills 时 S3 3D instances、S4 Physics priors 都是 0 token；论文没有逐步分析失败原因。SimFoundry 那条依据 §1（错的 mask、scale、transform 会让物体不能用）和 Table 1（它的 agentic inspection 只算 partial）；论文只报告了最终数字。视频那条的 collapsed or broken world 是 Fig. 3 的图例标记。数字：F1@1cm、Chamfer 来自 Fig. 5；dynamic IoU 来自 §4.2。</p>
+  <p class="crux"><b>根本问题：</b>错误出在模型之间的交接处（文件约定、坐标系、分割），而且没人在目标仿真器里看一眼成品。　<b>这篇的切入点：</b>把整条转换写成 skills 交给 coding agent，每一步都渲染出图、检查、修；视频则让仿真去拟合视频里的运动。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>模块化 real-to-sim pipeline</b><br><span class="muted">SimFoundry [47]</span></td><td>从视频建场景，供 policy 训练和评测</td><td>固定模块链：rigid + articulated 物体、URDF 关节，靠仿真运动 + VLM 反馈修关节，估 link 质量、关节摩擦和阻尼；digital cousins 做变体</td><td>检查修复只算 partial，没有 4D、软体、流体、断裂（Table 1）→ 本文让 agent 对每一步渲染检查并修；bin F1 6.9% 对 40.45–60.75%</td></tr>
+      <tr><td><b>Coding agent 直接写 4D 仿真</b><br><span class="muted">4DCodeBench 参考表 18 个 agent [51]</span><br><span class="muted">本文所属的家族</span></td><td>视频 → 可执行的仿真 + 渲染程序</td><td>harness 里的通用 coding agent 看视频、自己写程序</td><td>没有领域 skills → 本文给同一类 agent 加 4D skills（估相机、选 solver、对照视频修、clean-room rebuild）；三例最好 30.57% 对 99.09%</td></tr>
+      <tr><td><b>Splat + mesh 的 real-to-sim 系统</b><br><span class="muted"><a href="2026-11-05-PolaRiS.html">PolaRiS</a> [19]、GASE [68]、Mirage2Matter [12]、SimuScene [26]</span></td><td>给 policy 评测或训练造照片级、可交互的场景</td><td>Gaussian splat 背景 + 生成的物体 mesh；PolaRiS 看仿真成绩是否追踪真机</td><td>都不估物理参数，没有关节和软体，PolaRiS 不自动建场景（Table 1）→ 本文自动建，并加 physics prior、parts、关节、软体</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>物理参数辨识</b><br><span class="muted">Phys2Real [58]、D-REX [29]、ReconPhys [57]</span></td><td>估出真实的质量、形变等物理参数</td><td>VLM 先验 + 交互中在线估计；可微仿真辨识质量；从视频估形变</td><td>它们求真实参数 → 本文明说不解逆物理（§2），只给 MLP + VLM 的近似先验，作为 domain randomization 的起点；4D 才按视频拟合</td></tr>
+      <tr><td><b>从重建合成示范</b><br><span class="muted">Real2Render2Real [67]、RoboSplat [63]、ExoGS [59]、ManiSplat [14]、TwinRL [62]</span></td><td>把少量示范扩成大数据集</td><td>从扫描和人类视频、已有示范或外骨骼示范出发，改位姿、外观、embodiment 后渲染新轨迹</td><td>它们改写已有示范 → 本文在物理里 settle 布局，scripted expert 读仿真状态生成动作，过成功检查才留</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2 Related Work、Table 1、§4.1–4.2 的对比，未另行检索。§2 还对比了用生成视频做评测的 world model（WorldGym、WorldEval、RoboWorld）：本文给出显式的几何、物理参数和关节，可检查、可编辑；限于篇幅未单列。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-SceneAgent/tab1.jpg" alt="Table 1：SceneAgent 与 PolaRiS、Mirage2Matter、SimuScene、GASE、SimFoundry 的能力对比"></div>
+    <figcaption><b>Table 1</b>（作者原图）能力对比，作者自评。✓ 支持，◑ partial，✗ 不支持；最右一列（SceneAgent）全是 ✓。先看第二行 Agentic inspection and repair：只有 SimuScene 和 SimFoundry 是 ◑，其余都是 ✗。</figcaption>
+  </figure>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>coding agent 照 skills 跑工具链，每步都在 Isaac Lab 里渲染、看图、修，过了检查才交付</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-SceneAgent/fig2.jpg" alt="Fig. 2：厨房 iPhone 采集和 prompt，SceneAgent 的六步（3DGS、语义、物理、拆分、关节、sisters），最后打包成 USD 场景"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）SceneAgent pipeline：agent 协调重建、分割、物理建模和导出，用仿真器渲染检查并修中间结果。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左边 “Blender” 面板：</b>输入是一段厨房的 iPhone 采集和一句 prompt：“convert the iPhone capture of this kitchen into a simulation scene with every door, drawer and appliance articulated”。这里的 Blender 指台面上的搅拌机，整张图跟着它走。我们的 bin 对应这一格：13 张图加一个转换任务。</li>
+    <li><b>中间 “SceneAgent” 六格（01–06）：</b>01 3DGS 把 RGB 或其他 3D 数据转成 Gaussian；02 Semantic features 用 GroundingDINO + SAM 给每个 Gaussian 挂语义；03 Predictive physics 生成 per-Gaussian 物理先验；04 Object decomposition 拆 parts；05 Articulation 加关节；06 Object sisters 生成变体（三台不同的搅拌机）。bin 上用到 01–03 和对齐；论文没在 bin 上报告 04–06。</li>
+    <li><b>右边 07 Package scene in USD：</b>整个场景打包成 USDZ，给 Isaac Lab、MuJoCo、Unreal Engine；图里一台 Dexmate 站在转好的厨房里。bin 的产出就是这一步交付的物体。</li>
+    <li><b>图里没画的：</b>谁在跑这些步骤、怎么检查。那是 Fig. 7 的 agent 和 skills（Level 2），以及 §3.1 的检查修复循环（<a href="#stage-all">Stage ∞</a>）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  I["<b>Input</b><br/><span class='ex'>bin · 13 张 RGB</span>"]:::example --> A["<b>Coding agent + skills</b><br/><span class='ex'>Antigravity</span><br/><span class='ex'>Gemini 4 Argon</span>"]
+  A --> T["<b>跑一步工具</b><br/>COLMAP · SAM · SAM3D · ICP"]
+  T --> R["<b>Isaac Lab 渲染 + 看图</b><br/><span class='ex'>overlay + 8 + 2 个视角</span>"]
+  R -- "有错：修位姿或重做" --> T
+  R -- "通过" --> O["<b>Output · USD 场景</b><br/><span class='ex'>F1 52.25% · 1.83 cm</span>"]:::win
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>6 个 stage，加一个贯穿全程的检查修复循环</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-SceneAgent/fig7.jpg" alt="Fig. 7：21 个 agent 角色分在 Input、Conversion、Sisters、Policy 四段，每个框底部写着它用的 SCENEAGENT skill 名"></div>
+    <figcaption><b>Fig. 7</b>（作者原图）Agent workflow and available skills：每个框是一个 agent 角色，底部小字是它用的 skill。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>四段标题（Conversion 占两列）：</b>00 Input 处理 RGB、photogrammetry、3dgs、LiDAR、视频 → 01 Conversion 分割、估属性、打包、检查 → 02 Sisters 从 twin 生成一族变体 → 03 Policy 在 twin 和 sisters 上评测、训练，仿真和真机都有。</li>
+    <li><b>每个框：</b>编号 + 角色名 + 一句职责 + 底部的 skill 名，如 “01 Orchestrator … SCENEAGENT-RUN-PIPELINE”。21 个角色用 18 个不同的 skill 名：04 Step runner、06 Infill、08 Physics、09 Parts 共用 SCENEAGENT-RUN-STEP。</li>
+    <li><b>第一列：</b>01 Orchestrator 规划并管理所有 agent；02 Ingest 把各种输入变成 3dgs；03 Video to 4D 把“人在场景里活动”的视频变成 4D USD + MJCF；04 Step runner 跑每一步，并检查 masks、fields、objects、parts。</li>
+    <li><b>Conversion 两列：</b>05 Alignment 按相机、mask、Gaussian 拟合 scale、位置、旋转；06 Infill 按检测到的平面补背景；07 Orientation 在 Isaac Lab 里跑 sweep，摆正 3DGS 背景；08 Physics 融合 per-Gaussian prior 与 VLM；09 Parts 用 PartSAM 拆、CubePart 补；10 Articulation 用 Articulate Anything 提关节并在 Isaac 里看运动；11 Fracture 用 Warp 材料模型做软体、撕裂、断裂；12 4D timeseries 补全 4D 交互周围的场景、去掉人的影子；13 Packager 发布给编辑器和 Isaac Lab；14 Inspector 在 Isaac Lab 里检查导出的场景并报告要修的地方。</li>
+    <li><b>Sisters（15–18）和 Policy（19–21）：</b>Augmentation 把 twin 扩成 object 和 scene sisters；16–18 分别变物体、布局、任务；19 Researcher 在真机上找失败模式并围绕它设计 sisters，20 Evaluator 用固定 seed 评测，21 Trainer 在 sisters 里微调、由 VLM 做纠正。</li>
+    <li><b>在 bin 上：</b>转换按 Fig. 6 的 S0–S7 走（skill discovery、相机和 3DGS、2D masks、3D instances、physics priors、mesh、pose 和导出、渲染），落在前两段；论文没说实际调用了哪些角色。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Ingest → 3DGS</b><br/><span class='ex'>13 views → splat</span>"] --> S2["<b>2 · mask → mesh → 位姿</b><br/><span class='ex'>GT 20 个物体</span>"]
+  S2 --> S3["<b>3 · 物理 · parts · 关节</b><br/><span class='ex'>physics 8.2M token</span>"]
+  S3 --> S4["<b>4 · USD + Isaac 检查</b><br/><span class='ex'>F1 52.25%</span>"]
+  S4 --> S6["<b>6 · Sisters → 示范 → policy</b><br/><span class='ex'>实验室茄子 · 真机 88.0%</span>"]
+  S5["<b>5 · 4D：视频 → 仿真</b><br/><span class='ex'>IoU 0.86% → 99.09%</span>"] --> S6
+  L["<b>∞ · Skills + 检查修复</b><br/><span class='ex'>8 + 2 视角 · ICP 四项</span>"]:::win
+  L -.-> S2
+  L -.-> S4
+  L -.-> S5
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  click L href "#stage-all"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；绿色的 ∞ 是贯穿全程的 <a href="#stage-all">skills + 检查修复循环</a>。Stage 6 的数字换成了论文做真机实验的实验室场景。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Ingest → 3DGS</span>
+      <span class="stage-io">图像、3DGS、扫描或生成世界 → 一份 Gaussian splat + 相机</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>输入五花八门：RGB 图像序列、现成 3DGS、photogrammetry、LiDAR，还有 World Labs Marble、NVIDIA Lyra、Tencent HY-World 生成的 3DGS 世界；后面每一步都要同一种表示。</li>
+        <li><b>How：</b>RGB 序列用 COLMAP 估相机位姿，再用 Nerfstudio 的 splatfacto-big 训练 3DGS。</li>
+        <li>现成 3DGS、photogrammetry、LiDAR、生成场景直接接收（02 Ingest，SCENEAGENT-INGEST-DATA）。</li>
+        <li>agent 可以检查并修采集问题，例如逐图的颜色校准。</li>
+        <li>动态场景的视频走 <a href="#stage-5">Stage 5</a>。</li>
+      </ul>
+      <p class="eyebrow">场景表示（§3.2）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>bin 里</th></tr>
+          <tr><td>g<sub>i</sub> = (µ<sub>i</sub>, Σ<sub>i</sub>, α<sub>i</sub>, h<sub>i</sub>)</td><td>第 i 个 Gaussian：中心、形状（协方差）、不透明度、球谐颜色</td><td>splat 里的每个点</td></tr>
+          <tr><td>S = (G<sub>bg</sub>, {o<sub>k</sub>})</td><td>输出场景：补好的背景 splat，加 K 个物体</td><td>GT 有 20 个物体</td></tr>
+          <tr><td>o<sub>k</sub> = (P<sub>k</sub>, M<sub>k</sub>, T<sub>k</sub>, θ<sub>k</sub>, J<sub>k</sub>)</td><td>第 k 个物体：它的 Gaussian 集合、mesh、旋转 + 平移 + 一个统一缩放、物理属性、关节（可以为空）</td><td>每个 YCB 物体一份</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>13 张 RGB</b><br/><span class='ex'>1920×1080</span>"]:::example --> b["<b>COLMAP</b><br/>相机位姿"]
+  b --> c["<b>splatfacto-big</b><br/>训练 3DGS"]
+  d["<b>其他输入</b><br/>3DGS · 扫描 · 生成世界"] --> c
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>bin 的 13 张 1920×1080 RGB 走 COLMAP + splatfacto。Antigravity 带 skills 时这一步（S1 Cameras and 3DGS）用了 <span class="ex">6.9M token</span>，不带时 <span class="ex">1.8M</span>；S0 Setup（skill discovery）带 skills 不到 0.1M（Fig. 6）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">物体：mask → Gaussian → mesh → 位姿</span>
+      <span class="stage-io">splat + 相机 → 每个物体一份对齐好的 mesh；背景补洞</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>§3.1 的典型错误：mesh 形状对，插进场景后 scale、朝向或位置却错了；不同视图的 mask 是不是同一个物体也要判。</li>
+        <li><b>How ①：</b>SAM 默认每 10 张输入图出一次 mask（各场景 stride 在 1–10）。</li>
+        <li><b>②</b> OpenCLIP ViT-B-16 给每个 mask 裁图一个 512 维向量，DINOv2 ViT-S/14 给每个物体一个视觉向量；两者只给 physics prior 用，不决定哪些 Gaussian 属于哪个物体。</li>
+        <li><b>③</b> 跨视图合并 mask：两组 Gaussian 的中心相距不到 min(0.10, 0.6 × 物体尺寸) 个重建单位，且包含度 ≥ 0.18 或 Jaccard ≥ 0.08。</li>
+        <li><b>④</b> Gaussian 归属（式 1，见下表）：中心投影落在 mask 里，且深度不超过“同一粗格子里最靠前的深度 + 容差”。物体的 Gaussian = 归入它所有 mask 的并集；可选 camera-consensus（至少 κ 个相机同意），实验用 κ = 1。</li>
+        <li><b>⑤</b> SAM3D 生成 mesh；trimmed similarity ICP（只有一个统一缩放）以 SAM3D 位姿为初值，把 mesh 对齐到物体的 Gaussian。</li>
+        <li><b>⑥ 接受门：</b>normalized median 距离、90th-percentile 距离、coverage、silhouette agreement 四项都过固定阈值才接受（阈值数值未报告）。</li>
+        <li><b>⑦</b> 拿走前景 Gaussian 后，用检测到的平面补背景：新 Gaussian 取附近平面在输入图里的颜色，可选 LaMa 纹理修补（06 Infill）。</li>
+      </ul>
+      <p class="eyebrow">式 (1) 的符号</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>值</th></tr>
+          <tr><td>π<sub>c</sub>(µ<sub>i</sub>) ∈ m</td><td>Gaussian i 的中心投到相机 c 的图上，落在 mask m 里</td><td>—</td></tr>
+          <tr><td>z<sub>c</sub>(µ<sub>i</sub>)</td><td>这个中心离相机 c 的深度</td><td>—</td></tr>
+          <tr><td>ẑ<sub>c</sub>(b<sub>i</sub>)</td><td>同一个粗格子 b<sub>i</sub> 里最小的深度，即“前表面”；格子边长 round(s/192) 像素、最多 16，s 是图像短边</td><td>—</td></tr>
+          <tr><td>ϵ<sub>a</sub></td><td>绝对容差，以重建单位计</td><td>0.08；厨房里约 7 cm（0.90–0.93 m/单位）</td></tr>
+          <tr><td>ϵ<sub>r</sub></td><td>相对容差，乘以前表面深度</td><td>0.03</td></tr>
+        </table>
+      </div>
+      <p class="muted">读法：深度 ≤ 前表面深度 + max（绝对容差，相对容差 × 前表面深度），即只收前表面附近的 Gaussian，挡在后面的不收。</p>
+      <div class="flow"><pre>
+flowchart TD
+  m["<b>SAM masks</b><br/>默认每 10 张图一次"] --> g["<b>合并 + 归属</b><br/>式 1：只收前表面"]
+  g --> s["<b>SAM3D mesh</b>"]
+  s --> icp["<b>trimmed similarity ICP</b><br/>SAM3D 位姿作初值"]
+  icp --> chk["<b>四项残差都过阈值？</b><br/>median · p90<br/>coverage · silhouette"]
+  chk -- "否：agent 提修正再审" --> icp
+  chk -- "是" --> ok["<b>接受，记入 ledger</b>"]:::win
+  g --> bg["<b>背景补洞</b><br/>平面 + 可选 LaMa"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Antigravity 带 skills：S2 2D masks <span class="ex">7.8M</span>、S3 3D instances <span class="ex">5.8M</span>、S5 Mesh generation <span class="ex">9.3M</span> token；不带：3.0M、<span class="ex">0</span>、6.1M（Fig. 6）。没有 skills 时它根本没做 3D instance 分组（推断，依据那个 0）。论文没报告 agent 找到了几个物体、重试了几次。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">物理、parts、关节，以及软体和断裂</span>
+      <span class="stage-io">每个物体 → 材料类别和质量、摩擦等先验；需要时拆 parts、补隐藏几何、加关节</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>采集只给外观，质量、摩擦、关节都看不出来。作者明说不解逆物理，只给“物理上合理”的近似值，作为 domain randomization 的起点（§2）。</li>
+        <li><b>Physics prior：</b>一个 MLP，输入 DINOv2 + OpenCLIP 特征 + 16 个几何量；输出头：材料类别（10 类）、body type（6 种）、碰撞形状（8 种），再回归 9 个数值属性（质量、密度取对数）。</li>
+        <li><b>它的训练标签：</b>GSO、YCB、ABO 的物体记录，标签由 VLM 写，不是实测。</li>
+        <li><b>物体级：</b>per-Gaussian 的类别 logits 和属性在物体的 Gaussian 上取平均；材料类别用加权投票（式 2）；之后 VLM audit 和自动的 material review（由 coding agent 签字，不是人）可以改掉它。</li>
+        <li><b>查表：</b>Young's modulus、Poisson's ratio、渲染材质按材料类别查；rigidity 是 0–1 的分数，deformability ≥ 0.65 的物体变成 soft body。</li>
+        <li><b>进仿真的部分：</b>Isaac Lab 导出只用质量、摩擦、restitution、body type、碰撞近似，其余存为 USD metadata。</li>
+        <li><b>Parts 和关节：</b>PartSAM 拆部件 → VLM 查缺失几何（如笔帽下的笔尖）→ CubePart 生成缺的部分接到 mesh 上 → Articulate Anything 按图或文字提出 URDF 关节和运动范围 → agent 在仿真里看运动。</li>
+        <li><b>软体和断裂：</b>羊皮纸用 Warp 里的正交各向异性薄片 FEM + 不可逆 cohesive 断裂（49 个界面依次断开，撕下的纸盖住碗口 95%）；陶罐用 NVIDIA Blast（抗拉强度 6 MPa、杨氏模量 6 GPa、断裂能 14 J/m²、密度 1850 kg/m³，都是工程假设）；两者都不在自动导出里。</li>
+      </ul>
+      <p class="eyebrow">式 (2) 的符号</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>值</th></tr>
+          <tr><td>y<sub>k</sub>*</td><td>物体 k 最终选的材料类别</td><td>10 类之一</td></tr>
+          <tr><td>V<sub>k</sub></td><td>投票源：physics prior、VLM、由物体名推出的关键词先验</td><td>3 个源</td></tr>
+          <tr><td>y<sub>v</sub></td><td>源 v 提议的类别</td><td>—</td></tr>
+          <tr><td>w<sub>v</sub></td><td>源 v 的权重：它的置信度（关键词先验用固定值）；提议 unknown 时乘 0.4</td><td>0.4</td></tr>
+        </table>
+      </div>
+      <p class="muted">读法：每个类别把投给它的源的权重加起来，取总和最大的类别。</p>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-SceneAgent/fig8.jpg" alt="Fig. 8：白板笔从 mask、Gaussian、mesh、parts 到补全笔尖、笔帽摩擦，最后机器人用它在白板上写字"></div>
+        <figcaption><b>Fig. 8</b>（作者原图）Marker reconstruction and interaction：一张产品图转成几何和 parts，包括补出笔帽下的笔尖。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>01 Masks → 02 Gaussians → 03 Mesh：</b>白板笔先分割、取 Gaussian、生成 mesh，就是 Stage 2 的流程。</li>
+        <li><b>04 Parts：</b>PartSAM 把笔身和笔帽拆开（笔帽红色）。</li>
+        <li><b>05 Under the cap：</b>VLM 发现笔帽下的笔尖缺了，CubePart 把笔尖补出来。</li>
+        <li><b>06 Cap friction：</b>预测的摩擦让笔帽卡在笔尖上；小图标着 3 N 和 lets go，横轴 0–30 mm，正文没解释这条曲线。</li>
+        <li><b>07 Writing：</b>两台 Franka 配 Sharpa Wave 手，拿这支笔在白板上写 “Hello Worl…”。</li>
+        <li><b>和 bin 的关系：</b>YCB 物体是刚体，论文没在 bin 上报告 parts 和关节；这一步的例子只有 marker 和厨房（<a href="#exp-2">E2</a> 的视频里柜门、抽屉能打开）。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart TD
+  p["<b>Physics prior · MLP</b><br/>DINOv2 + OpenCLIP + 16 量"] --> v["<b>加权投票 → 材料</b><br/>prior · VLM · 关键词"]
+  v --> a["<b>VLM audit</b><br/>可改类别"]
+  a --> x["<b>导出到 USD</b><br/>质量 · 摩擦 · restitution"]
+  ps["<b>PartSAM 拆 parts</b>"] --> cp["<b>CubePart 补隐藏几何</b><br/><span class='ex'>marker 的笔尖</span>"]
+  cp --> aa["<b>Articulate Anything</b><br/>URDF 关节 → 仿真里看"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Antigravity 带 skills 在 S4 Physics priors 用了 <span class="ex">8.2M token</span>，不带时 <span class="ex">0</span>（Fig. 6）。bin 里各物体估出的材料和质量论文没报告；parts 和关节 bin 用不上，见上面的 marker。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">打包、settle，在 Isaac Lab 里检查</span>
+      <span class="stage-io">对齐好的物体 + 背景 → OpenUSD 场景（主要 Isaac Lab，也测了 MuJoCo、Unreal）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>错误常出在模型之间的交接处（文件约定、坐标系、分割），只有放进目标仿真器渲染出来才看得到。</li>
+        <li><b>07 Orientation：</b>在 Isaac Lab 里跑 sweep，把 3DGS 背景的朝向摆正（SCENEAGENT-ORIENT-BACKGROUND）。</li>
+        <li><b>13 Packager：</b>打包成 OpenUSD；每个可动物体标为 rigid body，带质量和碰撞几何，摩擦、restitution、密度等存为同一物体的属性（SCENEAGENT-PACKAGE-DATA-PROCESSED）。</li>
+        <li><b>14 Inspector：</b>在 Isaac Lab 里检查导出的场景，报告要修的地方（SCENEAGENT-INSPECT-ISAAC）。</li>
+        <li><b>Fig. 6 的最后两步：</b>S6 Pose and export（registration、settling、USD）和 S7 Rendering（render、verification）。</li>
+        <li><b>跨仿真器：</b>USD 物理 schema 不含软体、断裂、流体；Isaac Lab 靠 PhysX 扩展、Warp、Newton、Blast，MuJoCo 和 Unreal 要在各自引擎里重新设置。</li>
+        <li><b>Three.js viewer：</b>放机器人、裁背景、插 Omniverse 资产、手动改位姿和物理；里面还有一个能跑 pipeline 步骤的 coding agent operator（Fig. 14）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  r["<b>Registration + settling</b><br/><span class='ex'>S6 · 24.8M token</span>"] --> u["<b>USD 打包</b><br/>质量 · 碰撞 · 摩擦"]
+  u --> i["<b>Inspector</b><br/>Isaac Lab 渲染检查"]
+  i -- "报告修改" --> r
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Antigravity 带 skills：S6 <span class="ex">24.8M</span>、S7 <span class="ex">2.3M</span> token，S6 是它最贵的一步。交付的场景对 GT：<span class="ex">F1@1cm 52.25%、Chamfer 1.83 cm</span>；不带 skills 是 2.36%、9.89 cm（Fig. 5）。Codex 更明显：271.2M 里有 176.6M 花在 S6。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">4D：视频 → 可重建的仿真程序</span>
+      <span class="stage-io">动态场景视频 → 相机 + 静态几何 + 每种材料的仿真器和参数 → 每帧 mesh 和持续的粒子轨迹</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>视频里有运动（液体绕障碍、凝胶受冲击、水果碎开），参数可以被运动约束，不用只靠先验。</li>
+        <li><b>估相机：</b>抽参考帧，用容器边缘的消失点和物体轮廓等估相机，再把静态几何投回画面检查。</li>
+        <li><b>选 solver：</b>凝胶、弹塑性固体、和刚体相互作用的液体用 MPM；不可压缩液体用 FLIP；脆性物体用断裂模型。</li>
+        <li><b>拟合：</b>调初始状态和物理参数，让仿真的运动对上视频；每帧从粒子提表面；粒子不删不补，轨迹始终跟着同一块材料。</li>
+        <li><b>检查：</b>用估出的相机渲染，和输入视频在早、中、晚帧做 side-by-side 和 overlay 对比；按差异修相机、静态几何、初始状态或参数，再对比。</li>
+        <li><b>交付：</b>一个不读输入视频、不读外部资产的 build script，从零重建帧、mesh、轨迹，再查格式、帧数、分辨率（Fig. 4 的 S6 Checker：clean-room rebuild）。</li>
+        <li><b>skills：</b>SCENEAGENT-VIDEO-TO-4D、SCENEAGENT-TIMESERIES-4D-SCENE、SCENEAGENT-SIMULATE-FRACTURE。</li>
+      </ul>
+      <p class="eyebrow">式 (3) 的符号</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>B_09 里</th></tr>
+          <tr><td>K, E</td><td>相机内参和外参，都未知，从视频估</td><td>—</td></tr>
+          <tr><td>G</td><td>静态几何：容器、障碍、房间</td><td>透明水箱、刚性圆柱</td></tr>
+          <tr><td>d<sub>m</sub> = (x<sup>0</sup><sub>m</sub>, θ<sub>m</sub>, Φ<sub>m</sub>)</td><td>第 m 种动态材料：初始状态、物理参数、推进它的仿真器</td><td>液体</td></tr>
+          <tr><td>x<sup>t+1</sup><sub>m</sub> = Φ<sub>m</sub>(x<sup>t</sup><sub>m</sub>, θ<sub>m</sub>, G, 其他材料)</td><td>下一帧状态由仿真器根据当前状态、参数、静态几何和其他材料（接触）算出</td><td>—</td></tr>
+          <tr><td>M<sup>t</sup><sub>m</sub>, X<sub>m</sub></td><td>每帧导出的三角网格；所有帧的点轨迹（帧数 × 点数 × 3）</td><td>130 帧</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart TD
+  f["<b>抽帧 + 估相机</b><br/><span class='ex'>B_09 · 1280×720</span>"]:::example --> sg["<b>静态几何</b><br/><span class='ex'>水箱 + 圆柱</span>"]
+  sg --> so["<b>选 solver + 拟合参数</b><br/>MPM · FLIP · 断裂"]
+  so --> rd["<b>渲染 vs 原视频</b><br/>早 · 中 · 晚帧 并排 + 叠加"]
+  rd -- "有差异：改相机、几何、初态或参数" --> so
+  rd -- "对上了" --> cr["<b>clean-room build script</b><br/>不读输入视频"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-16-SceneAgent/web-4d-b09.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://computationalrobotics.seas.harvard.edu/SceneAgent/#pipeline">4DCodeBench</a>：左 = 输入（Goal to create B_09 water tank），右 = Created by SceneAgent。看水从右侧冲下、绕过三根圆柱后的液面和飞溅。项目页没写这段由哪个 harness 生成。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>B_09：透明水箱里的水坝溃决冲过刚性圆柱，<span class="ex">130 帧，1280×720，24 fps</span>。Gemini 4 Argon（Antigravity）带 skills 平均每例 <span class="ex">14.8M token</span>（S3 Physics simulation 10.7M，Fig. 4）；三例平均 dynamic IoU <span class="ex">99.09%</span>，不带 skills 0.86%（Fig. 3 标为 collapsed or broken world）。论文没给 B_09 单例的 IoU。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">Sisters → 示范 → policy</span>
+      <span class="stage-io">twin → 变体场景 → scripted expert 示范 → LoRA 微调 π0.5 → 真机；可选 autoresearch 循环</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>一个 twin 只是一种配置；policy 要见到外观、位置、光照的变化；真机上的失败要能变成仿真里的训练数据。</li>
+        <li><b>Sisters 方法 A（不调模型）：</b>对 twin 自己的 mesh 做有界变形，检查尺寸、体积和是否还能抓；把噪声、色相旋转、斑驳、斑点烘进顶点色。</li>
+        <li><b>Sisters 方法 B（Meshy）：</b>Gemini 2.5 Flash 把物体拆成功能部件并提出变化 → Gemini 3 Pro Image 一次改一个部件的图 → 检查真实感和与场景是否搭 → Meshy image-to-3D 生成带纹理的 mesh；只改外观时用 Meshy-6 retexture，几何和 UV 不变。</li>
+        <li><b>Scene / Task sisters：</b>围绕 task anchor 按空间关系采样布局；改指令和目标。</li>
+        <li><b>示范：</b>采样物体位置和大小、扰动相机和底座 → 在物理里 settle → scripted expert（approach、descend、grasp、lift、carry、lower、release、retreat）用仿真真值规划 → 物体最后在容器里才保留 → 观测 = mesh 前景按深度合成到 splat 背景上。</li>
+        <li><b>Controller：</b>每个平台的 controller 由 VLM（GPT-6 Astra 或 Gemini 4 Argon）写，手指协调、底盘和手臂的配合都在生成的代码里。</li>
+        <li><b>微调：</b>π0.5（DROID）上做 LoRA：Gemma-2B backbone rank 16、α 16，300M action expert rank 32、α 32；SigLIP 和小投影头全参数训练；20k 步、batch 32、单张 H200、约 6.5 小时；评测用 checkpoint 19999。</li>
+        <li><b>Autoresearch 循环：</b>见下图；论文没报告这个循环的数字。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-SceneAgent/fig19.jpg" alt="Fig. 19：真机评测找失败、仿真里 twin 和 sisters、policy 评测、expert 修改、policy 训练、回真机的循环"></div>
+        <figcaption><b>Fig. 19</b>（作者原图）Agentic real2sim2real policy autoresearch，以 Franka + Sharpa Wave 手为例。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左上 Real-world evaluation（Find failure modes）：</b>真机上跑当前 policy，agent 看录像、标出失败片段；项目页的例子是捏住花茎、花留在了杯里。</li>
+        <li><b>中框 SceneAgent Simulations · Digital twin + sisters：</b>为每个失败模式推测原因，从 3D 采集或 4D 重建变出复现它的任务和场景（换物体、摆放或光照）。</li>
+        <li><b>右上 Policy evaluation：</b>在 scene 和 task sisters 里测当前 policy；右侧 Revise / rerun 箭头是改完 expert 后重跑。</li>
+        <li><b>右下 Expert revision：</b>“Agent codes a palm-supported lift”：coding model（GPT-6 Astra 或 Gemini 4 Argon）改 controller 代码，用手掌托起花。</li>
+        <li><b>下中 Policy training（01 Approach、02 Support、03 Lift）：</b>只用通过成功检查的仿真录像微调，在固定的配对验证试验上和上一个 checkpoint 比。</li>
+        <li><b>左下 Real-world improvement：</b>新 policy 回真机再评，记下新的失败模式，开始下一轮。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart LR
+  r["<b>随机初态 + settle</b><br/><span class='ex'>42.9 × 9.8 cm 区域</span>"] --> e["<b>Scripted expert</b><br/>过成功检查才留"]
+  e --> t["<b>LoRA 微调 π0.5</b><br/><span class='ex'>dataset 1 → 2 → 3</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>bin 不进 policy 环节；论文的真机实验换成重建的大学实验室：Franka + UMI 夹爪把<span class="ex">玩具茄子放进篮子</span>。训练时随机：位置在 42.9 × 9.8 cm 框内、偏航 [0, 2π)、大小 ±10%、底座在半径 2 cm 的圆盘里偏移、外部相机 pitch ±2°；评测只随机位置。依次在 dataset 1（2k 条茄子，全随机）、dataset 2（6k 条，茄子、紫色方块、黄瓜各 2k）、dataset 3（2k 条茄子，只变位置）上训出 policy 3：仿真 <span class="ex">170/200</span>，真机 <span class="ex">44/50 = 88.0%</span>（Table 3）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">Stage ∞</span>
+      <span class="stage-name">Skills + 检查修复循环</span>
+      <span class="stage-io">贯穿 Stage 1–6：skills 告诉 agent 怎么做，Isaac Lab 的渲染告诉它做对没有</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Skills 是什么（§1 原文定义）：</b>harness 是 coding agent 运行的软件环境（Codex、Claude Code、Antigravity、Muse、Stirrup、Grok CLI 等）；skills 是“引导它转换流程的可复用说明和工具”（reusable instructions and tools）。</li>
+        <li><b>有哪些：</b>Fig. 7 的 21 个 agent 角色各配一个 skill，共 18 个名字（SCENEAGENT-RUN-PIPELINE、-INGEST-DATA、-RUN-STEP、-ALIGN-SCENE、-INSPECT-ISAAC……）。</li>
+        <li><b>实验里的 “with skills”：</b>同一个任务 prompt，只多一句让 agent 用 SceneAgent skills；所有 run 用同一版 skills，没有人干预（§4.1）。Fig. 6、4 的 S0 Setup 就是 skill discovery 这一步。</li>
+        <li><b>没公开的：</b>skill 的正文（代码 coming soon），所以每个 skill 写了哪些指令、带了哪些脚本，只能从 Fig. 7 的一句职责和 §3 的工具描述去推。</li>
+      </ul>
+      <p class="eyebrow">一次转换里的检查修复（§3.1）</p>
+      <ol class="read">
+        <li><b>规划：</b>Orchestrator 从输入状态规划整条转换和处理步骤；每一步按 manifest 执行。</li>
+        <li><b>执行：</b>Ingest agent 准备数据、建 3DGS；runner 跑处理工具，每一步做 “actor-critic visual review”（论文只给了这个词，没展开谁当 critic）。</li>
+        <li><b>逐物体审：</b>reviewer 依次看 registration overlay → 8 个单独视角（6 个轴向 + 2 个斜向）→ 2 个物体在完整场景里的视角。</li>
+        <li><b>打回：</b>发现对齐、关节或拆分问题，agent 提出修正的位姿或别的修法，再审一遍。</li>
+        <li><b>记账：</b>接受或拒绝的输出记进 ledger；agent 之间通过场景目录里的文件传状态。</li>
+        <li><b>收尾：</b>Alignment 和 Orientation 调物体 transform 和背景摆放；Packager 组装；Inspector 在 Isaac Lab 里审导出结果。</li>
+        <li><b>留下经验：</b>每次转换的做法存成文件，后续转换可以读。论文强调，上面的修正只针对当前这次转换。</li>
+      </ol>
+      <p class="eyebrow">跨转换的 skill 自我改进（§3.1）</p>
+      <ul class="tight">
+        <li>agent 维护 skills 和工具，被要求去调研能改进转换结果的方法；找到后申请评测，再改 skills。</li>
+        <li>候选改动和当前 baseline 一起跑一组静态 3D、动态 4D、video-to-4D 基准；过了固定的改进阈值和回退阈值才保留。</li>
+        <li>公开版的外部用户：通过的改动经用户同意变成 draft PR，作者再跑独立基准、人工 review 后才合并。</li>
+        <li>未报告：ICP 四项和 skill 改动门限的数值、每个物体平均打回几轮、reviewer 用的是不是 harness 自己的模型。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  o["<b>Orchestrator 规划</b><br/>每步一份 manifest"] --> s["<b>Step runner 跑工具</b><br/>actor-critic 视觉评审"]
+  s --> rv["<b>Reviewer 看图</b><br/>overlay + 8 + 2 个视角"]
+  rv -- "有问题：修位姿、关节或拆分" --> s
+  rv -- "通过" --> lg["<b>写进 ledger</b><br/>accepted / rejected"]
+  lg --> pk["<b>Packager → Inspector</b><br/>Isaac Lab 审导出"]
+  pk --> pf["<b>做法存成文件</b><br/>后续转换可读"]
+  rs["<b>跨转换：调研新方法</b><br/>提出 skill 改动"] --> bm["<b>和 baseline 同跑基准</b><br/>3D · 4D · video-to-4D"]
+  bm -- "过改进和回退阈值" --> sk["<b>改 skills</b>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Antigravity 在 bin 上带 skills 共用 <span class="ex">65.2M token</span>，不带 <span class="ex">15.5M</span>（Fig. 6）；F1@1cm 从 2.36% 到 52.25%。论文没报告它的 reviewer 审了几轮、打回了几次。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>Skills（可复用的说明 + 工具，21 个角色）</td><td>Stage ∞：Antigravity 的 prompt 多一句“用 SceneAgent skills”，token 15.5M → 65.2M</td></tr>
+        <tr><td>渲染检查修复（overlay + 8 + 2 视角，ledger）</td><td>Stage ∞、Stage 4：bin 的每个物体都要过 reviewer；轮数未报告</td></tr>
+        <tr><td>ICP 四项残差门限</td><td>Stage 2：每个 SAM3D mesh 对齐到自己的 Gaussian 后才接受</td></tr>
+        <tr><td>多种输入（3DGS、扫描、LiDAR、生成世界）</td><td>Stage 1：bin 是 RGB 图像，其他输入类型没用到</td></tr>
+        <tr><td>Gaussian 归属（式 1）、跨视图合并、背景补洞</td><td>Stage 2：20 个 YCB 物体从 splat 里分出来；不带 skills 时 3D instances 是 0 token</td></tr>
+        <tr><td>Physics prior + VLM 加权投票</td><td>Stage 3：S4 用了 8.2M token，不带 skills 为 0</td></tr>
+        <tr><td>Parts、补隐藏几何、关节</td><td>Stage 3：bin 用不上，换成 marker（Fig. 8）和厨房视频（E2）</td></tr>
+        <tr><td>软体、断裂、流体</td><td>Stage 3 的羊皮纸和陶罐（工程参数）；Stage 5 B_09 的水</td></tr>
+        <tr><td>USD 导出、多仿真器</td><td>Stage 4：交付的场景 F1 52.25%、Chamfer 1.83 cm</td></tr>
+        <tr><td>4D：拟合视频 + clean-room rebuild</td><td>Stage 5：B_09，三例平均 IoU 0.86% → 99.09%</td></tr>
+        <tr><td>Digital sisters、scripted 示范、π0.5 LoRA</td><td>Stage 6：换到实验室茄子场景，真机 88.0%</td></tr>
+        <tr><td>Autoresearch 循环、skill 自我改进</td><td>Stage 6、Stage ∞：只有流程，论文没给数字</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>skills 让每个 harness 的重建都变准、都超过 SimFoundry，4D 上也全部提升；代价是 token 成倍增加</h2>
+  <p>顺序同论文 §4：<a href="#exp-1">E1</a> GraspClutter6D bin 的几何 → <a href="#exp-2">E2</a> 厨房的几何（只有正文数字）→ <a href="#exp-3">E3</a> 4DCodeBench 的动态场景 → <a href="#exp-4">E4</a> token 代价（Fig. 6 和 Fig. 4，正文没讨论）→ <a href="#exp-5">E5</a> 真机 policy。E1–E3 比重建质量（F1、Chamfer、dynamic IoU），E4 比成本，只有 E5 比成功率。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>同一个 coding agent，带不带 skills，bin 能重建多准？比 SimFoundry 呢？<span class="exp-src">§4.1 · Fig. 5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-SceneAgent/fig5.jpg" alt="Fig. 5：六个 harness 带与不带 SceneAgent 的 F1@1cm 和 Chamfer 条形图，以及 SimFoundry"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）左 F1@1cm（越高越好），右 Chamfer（越低越好）；红 = with SceneAgent，灰 = without / baseline；最后一行 SimFoundry 只有灰条。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>更准：6 个 harness 全部提升，全部超过 SimFoundry。</b>F1@1cm：Codex 9.51 → 60.75、Claude Code 5.58 → 60.46、Grok CLI 7.19 → 52.70、Antigravity 2.36 → 52.25、Muse 5.75 → 41.39、GLM-5.3（Stirrup）6.93 → 40.45；Chamfer 从 6.20–9.89 cm 降到 1.43–3.43 cm；SimFoundry 6.9%、4.29 cm。</dd></div>
+      <div><dt>在故事里</dt><dd>主论点：同样的模型，加上 skills 和仿真器里的检查修复，才成为能用的 real-to-sim 转换器，而且比固定 pipeline 好。</dd></div>
+      <div><dt>指标</dt><dd>F1@1cm：交付 mesh 上的点有多少落在 GT 1 cm 内（precision），GT 上的点有多少落在交付 mesh 1 cm 内（recall），取调和平均；对全部 20 个 GT 物体平均，没匹配上的物体记 0。Chamfer：两边最近点平均距离的对称平均，只对匹配上的物体平均。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>hard/000091：20 个 YCB 物体、13 张 1920×1080 RGB；GT = 数据集物体 mesh 放到登记的 6D 位姿。</li>
+        <li>每个 harness 带、不带 skills 各转一次；两边 prompt 相同，只是带 skills 的多一句“用 SceneAgent skills”。</li>
+        <li>整个 run 用一个 similarity transform 对齐到参考，不逐个物体重拟合或修；每个 GT 物体采 10,000 个表面点；用 Hungarian 匹配，代价是 Chamfer。</li>
+        <li>SimFoundry：在同样 13 张图上跑官方 pipeline（图注 NVlabs, stage 10, native scale）。</li>
+        <li>注意：每个配置只跑一次（§5）；Chamfer 只算匹配上的物体，缺物体只罚在 F1 上；SimFoundry 的 F1 6.9% 落在不带 skills 的 2.36–9.51% 区间里。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>换成厨房还成立吗？没有 skills 时会不会连东西都交不出？<span class="exp-src">§4.1 · 正文数字</span></h3>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>Harness</th><th>不带 skills · F1@1cm</th><th>带 skills · F1@1cm</th></tr>
+        <tr><td>Codex</td><td>16.45%</td><td>41.13%</td></tr>
+        <tr><td>Claude Code</td><td>7.07%</td><td>19.29%</td></tr>
+        <tr><td>ZCode</td><td>6.33%</td><td>17.97%</td></tr>
+        <tr><td>Grok Build（只交付 4 个物体中的 3 个，缺 knife block，按这 3 个算）</td><td>5.67%</td><td>17.68%</td></tr>
+        <tr><td>Antigravity</td><td>没有可评分的几何</td><td>20.58%</td></tr>
+        <tr><td>Muse</td><td>没有可评分的几何</td><td>5.14%</td></tr>
+        <tr><td>SimFoundry</td><td colspan="2">10.21%（Chamfer 11.67 cm）</td></tr>
+      </table>
+    </div>
+    <p class="note">表由 §4.1 正文的数字整理，论文没有对应的图表。Chamfer：Codex、Claude Code、ZCode 降了 1.35–2.61 cm；Grok Build 从 5.25 到 2.81 cm。</p>
+    <figure class="paper-fig">
+      <div class="mat"><video src="2026-11-16-SceneAgent/web-kitchen-skills.mp4" autoplay muted loop playsinline controls></video></div>
+      <figcaption><b>项目页</b> <a href="https://computationalrobotics.seas.harvard.edu/SceneAgent/#pipeline">SceneAgent / GPT-6 Astra (Codex)</a>：把 CollectData Messy Kitchen 的一段短视频转成仿真。看上方视角：柜门、抽屉、烤箱门被依次打开（关节）；下方是同一个厨房的另一个视角。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>同样全部提升；没有 skills 时，两个 harness 连可评分的几何都交不出。</b>Codex 16.45 → 41.13；多数带 skills 的配置超过 SimFoundry 的 10.21%，Muse（5.14%）没超过。</dd></div>
+      <div><dt>在故事里</dt><dd>第二个场景，说明 E1 不是 bin 的特例；也说明没有 skills 时 agent 可能根本交不出东西。</dd></div>
+      <div><dt>指标</dt><dd>同 E1 的 F1@1cm 和 Chamfer，但每个物体采 100,000 个点、3 个采样 seed（seed 只改采样，不重跑转换），先对 seed 平均，再对物体平均。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>场景出处前后不一：§4.1 说是 MessyKitchens benchmark [1]，§1 说是 CollectData 的 Messy Kitchen 数据集 [8]，项目页写 CollectData Messy Kitchen capture；GT mesh 来自真实物体的 3D 扫描，共 4 个被评物体。</li>
+        <li>由共同采集坐标系得到的一个刚体变换把 run 对齐到参考，物体尺度保留，不逐个修。</li>
+        <li>同一 prompt、同一版 skills、无人干预；每个配置一次。</li>
+        <li>论文没写厨房里各 harness 用的模型；项目页视频标注 ZCode/GLM 5.3、Grok Build/Grok 4.7、Muse/Muse Spark 1.3、Antigravity/Gemini 3.8 Flash，和 Fig. 5 不同。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>给视频（4D）也有用吗？<span class="exp-src">§4.2 · Fig. 3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-SceneAgent/fig3.jpg" alt="Fig. 3：4DCodeBench 三例平均 dynamic IoU 对每例 token 的散点图，带 SceneAgent 的五个点在上方"></div>
+      <figcaption><b>Fig. 3</b>（作者原图）横轴每例平均 token（对数），纵轴 Z_06、B_09、Z_12 三例平均 dynamic IoU。蓝圈 = 带 SceneAgent 的 5 个 run，橙圈 = 4DCodeBench 参考表的 18 个 agent，虚线圈 = collapsed or broken world，橙虚线 = baseline Pareto frontier。先看最上面的 Gemini 4 Argon + SceneAgent 和最下面的 Gemini 4 Argon, no skills。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>动态 IoU 全部提升，Gemini 4 Argon 从 0.86% 到 99.09%。</b>Grok 4.7 11.10 → 66.50、Claude Opus 5.5 52.16 → 55.95、GLM-5.3 12.31 → 39.28、GPT-6 Astra 7.79 → 36.38；参考表在这三例上最好的是 Claude Opus 5.5 [High]（Claude Code）30.57%。<span class="gap">存疑：</span>Fig. 3 把 GPT-6 Astra + SceneAgent 画在约 0.78、约 60M token 处，和 §4.2 的 36.38%、Fig. 4 的 83.7M 都对不上；其余四个蓝圈和正文一致。</dd></div>
+      <div><dt>在故事里</dt><dd>撑起 §3.6 的 4D 扩展：同一套 agent workflow，在视频上也要靠 skills（估相机、选 solver、对照视频修、clean-room rebuild）。</dd></div>
+      <div><dt>指标</dt><dd>dynamic IoU（式 6）：每帧比较参考与重建里“动态物质”的图像 mask，去掉边界上的一条细带后算交并比，再对帧平均；0–1，越高越好；最后对三例平均。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>三个合成案例（有 3D 真值），都是 24 fps：B_09 水坝溃决冲过刚性圆柱（130 帧，1280×720）；Z_06 一块凝胶或液体和刚性球在透明水箱里相互作用（150 帧，1280×720）；Z_12 分层西瓜撞击后碎开（81 帧，1600×900）。</li>
+        <li>agent 拿到视频、任务描述、world format 和渲染设置，必须交一个不读视频就能重建 4D 场景的 build script。</li>
+        <li>5 个 harness 带、不带 skills 各一次：Antigravity/Gemini 4 Argon、Codex/GPT-6 Astra、Claude Code/Claude Opus 5.5、Grok CLI/Grok 4.7、Stirrup/GLM-5.3。</li>
+        <li>参考表的 18 个 agent 由基准作者用他们自己的设置和 harness 版本跑；token 是 100 个合成任务的平均，不是这三例，所以不是同条件对比。</li>
+        <li>项目页说这三例选的是 4DCodeBench 里“表现最差的视频”：baseline 起点低，增益显得大（推断）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>skills 让 agent 多花了多少 token，花在哪？<span class="exp-src">Fig. 6 · Fig. 4（正文未讨论）</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-SceneAgent/fig6.jpg" alt="Fig. 6：bin 单次转换在 S0–S7 每个 stage 用的 token，六个 harness 带与不带 skills"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）bin 单次转换每个 stage 的 token（M）；每格上红（带 skills）下灰（不带）；表头 total = 带 / 不带。先看 S6 Pose and export 那一行。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-SceneAgent/fig4.jpg" alt="Fig. 4：4DCodeBench 三例平均每个 stage 的 token，五个 harness 带与不带 skills"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）4DCodeBench 三例平均每个 stage 的 token；S6 Checker 就是 clean-room rebuild。先看 Antigravity 一列：总共只有 14.8 / 10.3。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>贵很多：带 skills 时 agent 跑完整条流程，token 成倍增加。</b>bin：Codex 271.2M 对 10.0M、Claude Code 838.2M 对 20.6M、Antigravity 65.2M 对 15.5M、Muse 208.4M 对 8.6M、Stirrup 305.5M 对 91.6M、Grok CLI 118.4M 对 11.6M；带 skills 时 6 个里有 4 个最贵的是 S6 Pose and export（Codex 176.6M）。不带 skills 时 S3 3D instances 有 4 个是 0，S4 Physics priors 有 3 个是 0。4D：Antigravity 14.8M 对 10.3M（最便宜，也最准），Claude Code 193.2M 对 155.9M。</dd></div>
+      <div><dt>在故事里</dt><dd>正文没讨论这两张图；它们说明收益伴随更长的流程，多出的 token 主要花在位姿、导出和检查上（推断，依据 Fig. 6 的分布）。</dd></div>
+      <div><dt>指标</dt><dd>每个转换 stage 用的 token（百万）；bin 是单次 run，4D 是三例平均。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>与 E1、E3 同一批 run。</li>
+        <li>论文没说 token 怎么归到各个 stage，也没报告耗时或费用。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>只用转出的仿真数据训的 policy，能在真机上干活吗？<span class="exp-src">§4.4 · Tables 2–3 · Fig. 22</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-SceneAgent/tab2-3.jpg" alt="Table 2 示范条数与成功率、Fig. 22 真机失败模式、Table 3 三种训练顺序"></div>
+      <figcaption><b>Table 2、Fig. 22、Table 3</b>（作者原图）左上 Table 2：按示范条数看仿真和真机成功率；右上 Fig. 22：真机失败模式（蓝 = success，深红 = miss the object）；下 Table 3：三种训练顺序。先看 Table 3 的 policy 3。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><video src="2026-11-16-SceneAgent/web-real-sim.mp4" autoplay muted loop playsinline controls></video></div>
+      <figcaption><b>项目页</b> <a href="https://computationalrobotics.seas.harvard.edu/SceneAgent/#sim2real">Evaluation</a>：上排真机，中排对应的仿真，下排腕部相机，三个 episode（文件名标 1、5、18）。看茄子被夹起、放进篮子；看起来对应 Fig. 23 的 policy 3。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>能迁移，但示范不是越多越好。</b>按顺序训 dataset 1 → 2 → 3 的 policy 3：仿真 170/200（85.0%），真机 44/50（88.0%）；只用 dataset 1 的 policy 1 真机 11/50（22.0%），policy 2 是 31/50（62.0%）。示范条数：真机在 40 条时最好（24/50，48.0%），2k 条 22.0%、4k 条 12.0%；仿真在 4k 条时最高（63.5%）。作者解读为过拟合。</dd></div>
+      <div><dt>在故事里</dt><dd>第三条贡献里的“初步真机迁移”：转出的场景能产生可用的训练数据。</dd></div>
+      <div><dt>指标</dt><dd>成功 = Franka 抓起玩具茄子、中途不掉、放进篮子；仿真 200 个布局，真机 50 个布局。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>重建的大学实验室；Franka Emika Panda + UMI 夹爪；所有 policy 都是同一个 π0.5（DROID）checkpoint 的 LoRA 微调，没有真机示范。</li>
+        <li>训练时随机位置、偏航、大小、底座、相机 pitch；评测只随机物体位置。</li>
+        <li>没报告：未微调的 π0.5、用真机示范训的对照、sisters 各因素的单独作用；每行只训一次。</li>
+        <li>论文把 policy 1–3 的差别叫 “meta-learning strategies”，实际是按顺序在三个数据集上训练。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>论文自己承认：</b>转换要反复调 VLM，还要一台外部 GPU 工作站；细节多的环境慢且易错。</li>
+    <li>视觉检查只能发现几何不一致，确认不了隐藏几何和物理参数是否准确；背景补全和变体都在“猜”采集里没有的内容。</li>
+    <li>质量、摩擦、刚度、关节参数没有用机器人实测标定；断裂参数是工程估计；splat 带着原场景的光照，重打光和合成 mesh 会有不一致的阴影和反射。</li>
+    <li>评测范围窄：重建只有一个厨房和一个 bin，每个配置一次；4D 只有 3 个合成场景，真实 4D 视频没有 3D 真值、未评；真机只有 pick-and-place；变体、摆放、光照一起随机，没有分开；缺真实与仿真的配对试验，评不了它对 policy 评测的预测力。</li>
+    <li>4D 拟合出的参数能复现观测到的运动，但不一定唯一，也没在别的交互上测过（§3.6）。</li>
+    <li><b>读的时候注意到：</b>Fig. 3 里 GPT-6 Astra + SceneAgent 的点（约 0.78、约 60M）和正文 36.38%、Fig. 4 的 83.7M 对不上；厨房数据集的出处前后不一（§1 [8] 和 §4.1 [1]）。</li>
+    <li>Physics prior 的训练标签是 VLM 写的，material review 由 coding agent 签字；Fig. 9 的 corduroy 帽子，分区刚度标着 Hand-authored reinforcement（350–6,000 N/m，not measured）。</li>
+    <li>门限数值、重试轮数都没报告；skills 本身没公开，“skills 带来多少”拆不成“说明”和“工具”各占多少。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>r2s-lite：</b>pot-lid 那次在第 9 次尝试时按宽松的成功规则过了，场景却是错的。SceneAgent 的接受条件是逐物体、多信号的：ICP 四项残差全过阈值，reviewer 还要看 overlay + 8 个单独视角 + 2 个场景视角，结果记进 accepted/rejected ledger。可以照搬成“每个物体一道门”，不只靠一条任务成功规则。</li>
+    <li><b>real2sim-anything-indoor（视频 → Blender 房间）：</b>借 4D 的 clean-room rebuild：最终 build script 不许读输入视频，从零重建后再在早、中、晚帧和视频并排、叠加对比；既防 agent 直接拷帧，也给出可复现的产物。</li>
+    <li><b>WorldClaw skills：</b>SceneAgent 把 skill 改动也放进一道门：候选改动和当前版本在静态 3D、4D、video-to-4D 基准上一起跑，过了改进和回退阈值才留。同时留意成本：bin 上 Codex 带 skills 用 271.2M token，不带 10.0M。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-16-SceneAgent.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>

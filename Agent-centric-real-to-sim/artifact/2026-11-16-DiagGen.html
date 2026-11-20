@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>DiagGen</title>
+<meta name="description" content="一张照片 → 可仿真的可变形 asset：VLM agent 在 Genesis 里抓、放、看响应，把故障送回出错的 stage 重做；14 个返工 asset 的 PMSC 2.14 → 3.43。">
+<meta name="paper:title" content="DiagGen: Agentic Generation of Deformable Assets with Sim-based Diagnostics for Robotic Simulation">
+<meta name="paper:source" content="https://arxiv.org/abs/2609.23103">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2609.23103v1">
+<meta name="paper:date" content="2026-09-19">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-16</p>
+  <h1>DiagGen</h1>
+  <p class="full-title">DiagGen: Agentic Generation of Deformable Assets with Sim-based Diagnostics for Robotic Simulation</p>
+  <p class="meta">Guanxiong Chen, Yiduo Qu, Qianjun Xia, Pengyu Jing, Yixian Cheng, Bole Ma, et al.（通讯 Ziqiu Zeng, Fan Shi）· UBC、Cambridge、NUS、FAU、UW–Madison · arXiv 2026-09-19（v1）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2609.23103">arXiv</a><a href="https://arxiv.org/pdf/2609.23103v1">PDF</a>
+    <a href="https://diaggen.github.io/">Project page</a><a href="https://github.com/diaggen/diaggen">Code</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：VLM agent 把一张真实照片变成可仿真的可变形 asset，在仿真里 probe、定位故障、送回上游返工；产出的 asset 已接进同一第一作者的 <a href="2026-11-04-AgenticReal2Sim.html">Agentic Real2Sim</a>。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>照片生成的软物体 asset 看着对，一抓就露馅：线缆僵着不下垂、零件一抬就散。现有流程生成完才测，测到的响应不拿回去修上游。</dd></div>
+    <div><dt>Idea</dt><dd>把 physics simulator 放进生成环：diagnostic agent 选一个部位，抓住、位移、放开，看形变和回弹，把故障归到 segmentation、material inference、mesh processing 之一，从那一步起重做。</dd></div>
+    <div><dt>Result</dt><dd>40 个 asset 里 14 个被送去返工：PMSC 均值 2.14 → 3.43（5 分制，+1.29），10 升 4 平 0 降；PAIP 成对重放 9 胜 4 负 1 平。分数都来自 VLM 评审，没有真实材料测量。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>软物体 asset 看着对不算数：一抓就露馅，而且没人告诉上游错在哪一步</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>USB hub</b>：一张 USB hub 的照片（<span class="ex">外壳 + 一截线缆 + 金属插头</span>；Table II、Fig. 4、Fig. 5 都用它）→ 想要：一个能直接装进 Genesis 的可变形 asset，外壳硬、线缆软；机械臂抓住外壳抬起时，<span class="ex">线缆在重力下弯下去，插头自然垂着</span>。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>一张 USB hub 照片</span>"]:::example
+  IN --> A1["<b>OmniPart 直出</b><br/>part mesh 直接四面体化"]
+  A1 --> AX["part 之间没连上<br/><span class='ex'>一抬就散（Fig. 5 左）</span>"]:::gap
+  IN --> B1["<b>开环生成</b><br/>首版直接导出，不诊断"]
+  B1 --> BX["线缆没被单独分出<br/><span class='ex'>线缆僵着不下垂</span><br/><span class='ex'>返工前 PMSC 2.14</span>"]:::gap
+  IN --> C1["<b>真实交互 / 扫描重建</b><br/>PhysTwin、EMPM、Sim1"]
+  C1 --> CX["要标定交互或高精度扫描<br/><span class='ex'>一张照片起不了步</span>"]:::gap
+  </pre></div>
+  <p class="note">第 1 条的“散开”是论文在 toy-with-ring（Cheetah）上演示的（Fig. 5 左），USB hub 上没跑。第 2 条是 USB hub 自己的返工前版本（Fig. 5 右、Table II）；2.14 是被送去返工的 14 个 asset 返工前的 PMSC 均值（§IV-B），论文没给 USB hub 单独的分数，也没说它在不在这 14 个里。第 3 条是 §I、§II-B 的说法，论文没有实际跑这些方法；PhysX-Omni 那种“生成后才测”也没跑，见下面的 Related work。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-DiagGen/fig5.jpg" alt="左：OmniPart mesh 被抓起时散开，DiagGen mesh 保持一体；右：USB hub 返工前线缆僵硬，返工后线缆下垂"></div>
+    <figcaption><b>Fig. 5</b>（作者原图）两种“露馅”和修好之后的样子，都是同一个 grasp-and-lift 动作。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左上 OmniPart mesh · 红框 Mesh breaks：</b>各 part 之间没有弹性连接（论文叫 elastic load path），一抬就分家。<b>左下 DiagGen mesh：</b>连成一个整体后，绿框里还是一只完整的玩具。</li>
+    <li><b>右上 Overly stiff cable · 红框 Not falling：</b>running example 的返工前版本：外壳抬起来了，线缆还保持原来的弯。<b>右下 Revised soft cable：</b>返工后线缆垂下去，绿框里插头挂着。</li>
+  </ol>
+  <p class="crux"><b>根本问题：</b>物理对不对，要在仿真里动一下才看得出来；现有流程把这个响应留在生成之后，不拿来修上游。　<b>这篇的切入点：</b>把 simulator 放进生成环，让 diagnostic agent 主动 probe，再把证据送回负责的那个 stage 重做。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>视觉生成模型直出</b><br><span class="muted">OmniPart、SAM 3D</span></td><td>一张图 → 3D mesh（OmniPart 分 part）</td><td>生成模型一次出几何，不带材料</td><td>不一定能仿真：part 不连通、没有材料 → 本文把 OmniPart 当工具，再配 part-wise 材料并 monolithize（Fig. 5 左）</td></tr>
+      <tr><td><b>Sim-ready 物理 3D 生成</b><br><span class="muted">PhysX-Omni、PhysForge、SOPHY</span></td><td>生成带物理属性的 asset（PhysX-Omni 含可变形）</td><td>模型按 part 预测材料；PhysX-Omni 生成后再测，VLM 按规则打分</td><td>测试在生成之后、只打分 → 本文在环里 probe，并把故障送回出错的那个 stage</td></tr>
+      <tr><td><b>从真实交互或扫描重建</b><br><span class="muted"><a href="2026-11-05-PhysTwin.html">PhysTwin</a>、EMPM、PokeFlex、Sim1</span></td><td>把某个真实软物体变成可仿真的 twin</td><td>录交互拟合 mass-spring 或可微 MPM；或高精度扫描</td><td>要标定采集和逐物体优化，参数不看 part 语义 → 本文只要一张未标定照片，按 part 给材料</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Object-level agentic 生成</b>（本文所属的一族）<br><span class="muted">Articraft、ArtGS</span></td><td>生成单个刚体或铰接 asset</td><td>agent 调 CAD 工具或 foundation model，带 verifier 迭代</td><td>只做刚体 / 铰接，校验是 ad-hoc 的 → 本文做可变形，用 asset 自己的材料响应当诊断信号</td></tr>
+      <tr><td><b>Scene-level agentic 生成 / 重建</b><br><span class="muted">SceneSmith、SceneWeaver、PhyScensis、GRS、<a href="2026-11-04-AgenticReal2Sim.html">Agentic Real2Sim</a></span></td><td>整个场景的布局、视角、光照</td><td>reason → act → observe → revise 的 agent 循环</td><td>管场景，不管单个软物体的材料 → 本文的 asset 可以放进去（Fig. 6 接的是 Agentic Real2Sim）</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §I、§II-A、§II-B 的分类和 §III、§IV-C 的对比，未另行检索。§II-C 的 VLM-as-a-judge（MT-Bench 的换位比较、Scenethesis 的成对判断）是评测方法，在 <a href="#exp-2">E2</a> 讲。论文没有和表里任何一行做定量对比。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>一张照片进，一个在仿真里被抓过、验过的可变形 asset 出</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-DiagGen/fig1.jpg" alt="上排三个组装场景；左下八个单独 asset，各带输入照片小图；右下 dragon toy 被 gripper 挤压"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）DiagGen 生成的 asset：输入照片、生成结果、放进场景、在仿真里形变。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左下 Individual Assets：</b>每格大图是生成的带纹理 asset，角上的小图是输入的手机或网络照片。Curling iron 和 Kitchen tongs 在 <a href="#exp-1">E1</a> 里被注入故障；Toilet plunger 和 Sneaker 出现在 <a href="#exp-2">E2</a> 的成对比较里。</li>
+    <li><b>右下 Dynamic Sim：</b>dragon toy 被 gripper 夹住，图上标了 pull、belly deforms、squeeze：asset 在仿真里真的会形变，不只是能渲染。</li>
+    <li><b>上排 Assembled Scenes：</b>Gaussian 渲染的背景 + DiagGen 的可变形物体 + YCB 的 asset 拼成的场景。</li>
+    <li><b>USB hub 不在这张图里：</b>它出现在 Fig. 4、Fig. 5 和 Table II。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  I["<b>Input</b><br/><span class='ex'>一张 USB hub 照片</span>"]:::example --> G["<b>Generate</b>：几何 + 材料 + mesh<br/><span class='ex'>初版：整件一种材料</span>"]
+  G --> D["<b>Simulate + Diagnose</b>：抓、位移、放开<br/><span class='ex'>想测插头，却选不出来</span>"]:::win
+  D -->|"repair cue：回 segmentation"| G
+  D -->|"accept"| O["<b>Export</b><br/><span class='ex'>线缆、外壳各有材料</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>Fig. 2 的 6 个 stage（A–F）+ 一条返工回路</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-DiagGen/web-architecture.jpg" alt="DiagGen 三层架构：顶层六个 skilled agent，中层 model backends，底层 tools；虚线从 Diagnostics 回到三个上游 stage"></div>
+    <figcaption><b>Fig. 2</b>（作者原图，用的是 <a href="https://diaggen.github.io/#method">项目页</a>的高清版，内容和 PDF 相同）DiagGen 的架构。</figcaption>
+  </figure>
+  <p class="eyebrow">符号表（Fig. 2 右下的 Physical parameters）</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+      <tr><td>E</td><td>Young's modulus，多硬：越大越难压弯</td><td>USB hub 的值论文没给；juice box 返工后 body 0.8、top 0.7、seam 0.6、flap 0.3 GPa（Table II）</td></tr>
+      <tr><td>ν</td><td>Poisson's ratio，压扁时往两边鼓多少</td><td>未报告</td></tr>
+      <tr><td>ρ</td><td>density，密度，决定有多重</td><td>未报告</td></tr>
+      <tr><td>μ</td><td>图里没写全称；对照正文的参数列表应是 friction（我的对应）</td><td>未报告</td></tr>
+      <tr><td>Scale</td><td>物体的真实尺寸</td><td>USB hub 未报告；kitchen tongs 的正确目标是 0.28 m（§IV-A）</td></tr>
+      <tr><td>Part semantics</td><td>每个 part 是什么</td><td>housing、cable、connector、metal plug（Table II）</td></tr>
+    </table>
+  </div>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>最左 Input image：</b>一张照片（图里是带钥匙环的毛绒玩具）。例子里是 USB hub 的照片。</li>
+    <li><b>顶层 Skilled agents，A 到 F：</b>每个 stage 一个 agent 做高层决定，卡片下面写着它的产物：Clean reference → 2D Part masks → Part-wise 3D mesh → Material parameters → Monolithized mesh + scale → Diagnostics cues。下面的 stage 1–6 和 A–F 一一对应。</li>
+    <li><b>F 卡片里的小图：</b>黑底上的 grasp box 和 anchor box，就是 Fig. 3 下排放大画的那两种框。</li>
+    <li><b>虚线 Diagnostic repair routes：</b>从 F 往回指向 B、D、E，就是三条 repair route。USB hub 走的是回 B。</li>
+    <li><b>中层 Model backends：</b>OpenAI 的 logo 和一个彩色四角星（我看着像 Gemini 的标志；正文只点名了 GPT 系列）。</li>
+    <li><b>底层 Tools：</b>GPT Image 2、SAM3、OmniPart、material inference scripts、mesh refinement libraries、Physical Simulator。右边的双向箭头 Tool calls：agent 只做决定，动手的是工具。</li>
+    <li><b>最右 Digital Asset：</b>Textured Mesh 加上符号表里的 Physical parameters。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Image cleanup</b><br/><span class='ex'>干净参考图 + 描述</span>"] --> S2["<b>2 · Segmentation</b><br/><span class='ex'>初版：插头没分出来</span>"]
+  S2 --> S3["<b>3 · OmniPart</b><br/><span class='ex'>线缆不是单独 part</span>"]
+  S3 --> S4["<b>4 · Material inference</b><br/><span class='ex'>整件一种材料</span>"]
+  S4 --> S5["<b>5 · Mesh processing</b><br/><span class='ex'>定尺度，连成一体</span>"]
+  S5 --> S6["<b>6 · Diagnostics</b><br/><span class='ex'>probe 选不中插头</span>"]:::win
+  S6 --> R["<b>↺ Repair</b><br/><span class='ex'>回 2 · Segmentation</span>"]:::win
+  S6 --> X["<b>Export</b><br/><span class='ex'>线缆、外壳各有材料</span>"]
+  R -.-> S2
+  R -.-> S4
+  R -.-> S5
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  click R href "#stage-all"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。虚线是三条 repair route，回到 2、4、5；返工怎么做见 <a href="#stage-all">↺ Evidence-guided repair</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1 · A</span>
+      <span class="stage-name">Image cleanup</span>
+      <span class="stage-io">一张照片 → clean reference + 面向仿真的描述</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>后面要的是物体本身的静止形状和材料线索，不是原始照片里的背景和杂物。</li>
+        <li><b>How：</b>把输入照片变成干净的物体参考图（工具是 GPT Image 2，见 Fig. 2 底层）。</li>
+        <li><b>How：</b>同时写一段 simulation-oriented description，强调 rest shape 和 material cues。</li>
+        <li><b>论文只有一句话</b>（§III-A），没有消融。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>输入照片</b><br/><span class='ex'>USB hub</span>"]:::example --> b["<b>GPT Image 2</b><br/>清出物体"]
+  b --> c["<b>Clean reference</b><br/>+ 面向仿真的描述"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>USB hub 照片 → 干净参考图 + 描述。论文没有展示 USB hub 这一步的产物；之后走 segmentation route 返工时，这一步的结果原样保留。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2 · B</span>
+      <span class="stage-name">Segmentation</span>
+      <span class="stage-io">clean reference + part 描述 → 2D part masks</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>软硬不同的部位要先分开，后面才能各给各的材料、各自被 probe。</li>
+        <li><b>How：</b>SAM3 把参考图分成 2D parts；agent 用 skill 描述物体由哪些部位组成，返工时改的就是这份 part 描述（Table II）。</li>
+        <li><b>会坏在哪：</b>行为不同的区域被并成一块，或一个连续区域被切碎。这正是 segmentation route 要修的（§III-C）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Part 描述</b><br/><span class='ex'>初版：泛泛的<br/>USB 部件</span>"]:::example --> b["<b>SAM3</b><br/>参考图 → 2D masks"]
+  b --> c["<b>2D part masks</b><br/><span class='ex'>插头不是<br/>独立区域</span>"]:::gap
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>初版用的是泛泛的 USB 部件描述，金属插头没有成为独立的可见区域（Table II）。返工后描述换成 <span class="ex">housing、cable、connector、metal plug</span> 四个明确区域。</p>
+        <p>例子延伸 · massager（<a href="#exp-1">E1</a>）：故意让 mask 只盖住金属弹簧的一小部分，下游就没法把弹簧表示成一个完整、能单独 probe 的 part。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3 · C</span>
+      <span class="stage-name">OmniPart</span>
+      <span class="stage-io">2D masks + 描述 → 一组分开的 part-wise 3D mesh</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>后面按 part 给材料、按 part 做 probe，每个 part 都要有自己的 3D 几何。</li>
+        <li><b>How：</b>OmniPart（part-aware 3D 生成，SIGGRAPH Asia 2025）把 masks 和描述抬成一组互相分开、整体协调的 part mesh。</li>
+        <li><b>留下的问题：</b>各 part 之间没有连接。直接四面体化放进 FEM，一受力就分家（Fig. 5 左），所以 Stage 5 要把它们连成一体。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>2D masks + 描述</b><br/><span class='ex'>返工后 4 个区域</span>"]:::example --> b["<b>OmniPart</b><br/>2D → 3D 分 part"]
+  b --> c["<b>Part-wise 3D mesh</b><br/><span class='ex'>各 part 互不相连</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>初版 masks 没把线缆和插头分出来，所以线缆不是单独的可变形 part（§IV-C）。返工后重跑这一步，插头成为独立部件，仿真能稳定选中它（Table II）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4 · D</span>
+      <span class="stage-name">Material inference</span>
+      <span class="stage-io">part mesh + part 语义 → 每个 part 的表示方式和力学参数</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>同一个物体里有软有硬（curling iron 的线和 barrel），整件一种材料就会错。</li>
+        <li><b>How：</b>VLM 按 part 的语义给参数，不做梯度拟合：material class、E、ν、ρ、friction、fill mode。</li>
+        <li><b>How：</b>还要定表示方式：surface 还是 volumetric。物理模型用 Genesis 的 linear elastic。</li>
+        <li><b>注意：</b>参数是 VLM 的先验，没有拿真实物体测过。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Part mesh + 语义</b><br/><span class='ex'>housing、cable…</span>"]:::example --> b["<b>VLM 按 part 判断</b><br/>材料类别、表示方式"]
+  b --> c["<b>每个 part 的参数</b><br/><span class='ex'>E、ν、ρ、friction</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>初版：线缆没分出来，所以下游给整个 asset 只配了一种材料（§IV-C）。返工后线缆和外壳各有各的材料，具体数值论文没给。</p>
+        <p>例子延伸 · juice box（Table II）：Genesis 在 reset 之前就拒绝了这个 asset，日志说局部 self-clearance 小于 shell 厚度阈值。返工把各 part 的 shell 厚度调小，并把统一的 <span class="ex">3.0 GPa</span> 换成 body <span class="ex">0.8</span>、top <span class="ex">0.7</span>、seam <span class="ex">0.6</span>、flap <span class="ex">0.3 GPa</span>。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5 · E</span>
+      <span class="stage-name">Mesh processing</span>
+      <span class="stage-io">part meshes + 材料 → 定了尺度的单个 monolithic mesh（Genesis 可加载）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>分开的 part mesh 之间没有弹性连接，进了 FEM 仿真一受力就分家（Fig. 5 左）。</li>
+        <li><b>How：</b>先定 metric scale。</li>
+        <li><b>How：</b>再把各 part mesh 合成一个 monolithic 的体网格，成为可加载的 Genesis asset。</li>
+        <li><b>评测时的成本线：</b>PMSC 对超过 40,000 个四面体的 mesh 扣 1 分（§III-D）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Part meshes</b><br/>各自独立"] --> b["<b>定 metric scale</b><br/><span class='ex'>tongs：0.28 m</span>"]
+  b --> c["<b>Monolithize</b><br/><span class='ex'>一个四面体 mesh</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>USB hub 的各 part 连成一个可变形整体，所以抬起外壳时线缆始终连着（Fig. 5 右）。它的尺度和四面体数论文没给。</p>
+        <p>例子延伸 · medical bag（Table II）：背带、提手、五金件在 mesh 里丢了。返工提高了这些 part 的 meshing fidelity，重建后 5 个 part label 全部恢复，共 <span class="ex">13,318</span> 个四面体，通过 topology validation。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6 · F</span>
+      <span class="stage-name">Simulator-based diagnostics</span>
+      <span class="stage-io">候选 asset → probe 的证据 + 接受，或一条 repair route</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>一张渲染图看不出软硬；要施加一个受控的交互，看响应。论文把这个 agent 叫作 online critic。</li>
+        <li><b>选哪里测：</b>最多 4 个 semantic anchor。每个是一处能暴露行为的部位（handle、rim、flap、corner、柔软的主体），附一条要检验的物理假设；再配一个 grasp box，指定 end effector 在哪里接触。</li>
+        <li><b>先预览：</b>runtime 编译 grasp box 和 anchor box 并渲染预览；agent 看预览改 target，直到接触位置和运动方向表达了想做的测试。</li>
+        <li><b>怎么测：</b>每个 anchor 开一个新的 episode：物体静止 → end effector 抓住 grasp region → 按规定位移 → 放开 → 静置。协议统一，不同 revision 的证据才可比。</li>
+        <li><b>看什么：</b>top 和 oblique 视角的同步 RGB 三联图、part-grounding overlay、几何和动作 metadata、step summary、runtime log。证据不够时可以暂停、观察、再加 probe。</li>
+        <li><b>归因：</b>geometry、scale、segmentation、representation、material response、discretization、episode setup 之一。</li>
+        <li><b>谁拍板：</b>orchestrator agent 对照完整的 revision history，决定接受、启动 repair，或停止诊断。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-DiagGen/web-diagnostic-workflow.jpg" alt="诊断流程五步 Define、Select、Simulate、Reflect、Assess，两条虚线回路；下排三格显示 grasp 和 anchor 区域、最大形变、放开后回弹"></div>
+        <figcaption><b>Fig. 3</b>（作者原图，<a href="https://diaggen.github.io/#method">项目页</a>高清版，内容和 PDF 相同）diagnostic agent 的工作流。下排的物体有 cord 和 handle，看着是 curling iron（论文没写明）。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>上排 1 到 5：</b>Define 定一个 diagnostic episode → Select 选并预览 anchor region → Simulate 执行编译好的 grasp → Reflect 根据观察反思 → Assess 判断 asset 能不能用。</li>
+        <li><b>两条虚线回路：</b>Preview unsuitable → revise anchor region（预览不对就改位置）；More evidence needed for assessment（证据不够，在同一个 episode 里再测一次）。</li>
+        <li><b>下排 Define Regions：</b>红框 Grasp: cord 是 end effector 要抓、要拉动的地方；蓝框 Anchor: handle 是 hold 住的部位（项目页视频的字幕是 “Hold the handle. Bend the cord.”）。</li>
+        <li><b>下排 Max Deformation、After Release：</b>Compression 箭头是压到最大形变的那一刻，Recoil 箭头是放开后的回弹；agent 看的就是这两刻。</li>
+        <li><b>右侧 Accept OR Revise from an earlier stage：</b>USB hub 走的是后者。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-16-DiagGen/web-diagnostics.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://diaggen.github.io/#method">Method · Test and diagnose</a>：curling iron 的一次完整诊断（26 s）。先看蓝框 anchor（Handle + clamp housing）和红框 grasp region（Cord + plug）；再看 Bend the cord 和 Release 两段里线怎么弯、怎么弹回；最后的 Diagnostic cue summary 判断线软、机身硬，给出 Accept。这是正常版本；<a href="#exp-1">E1</a> 里把线故意改硬的那版被送回 material inference。</figcaption>
+      </figure>
+      <div class="flow"><pre>
+flowchart TD
+  d1["<b>1 Define</b>：开一个 episode<br/><span class='ex'>要测金属插头</span>"]:::example --> d2["<b>2 Select</b>：anchor + grasp box"]
+  d2 --> pv["<b>预览 / 静态三联图</b><br/><span class='ex'>插头在固定的<br/>cable-root 之外</span>"]
+  pv -->|"不合适：改 target"| d2
+  pv --> d3["<b>3 Simulate</b><br/>抓 → 位移 → 放开 → 静置"]
+  d3 --> d4["<b>4 Reflect</b><br/>三联图、overlay、日志"]
+  d4 -->|"证据不够：再测"| d3
+  d4 --> d5["<b>5 Assess</b>：归因 + route"]
+  pv -->|"改了仍选不中"| d5
+  d5 --> acc["<b>Accept</b> → export"]:::win
+  d5 --> rep["<b>Revise</b><br/><span class='ex'>回 segmentation</span>"]:::example
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>从静态三联图看，agent 判断金属端子落在被固定住的 cable-root support 之外；把 target 扩大，还是选不出插头。诊断：<span class="ex">missing visual-ownership/foreground-assignment defect</span>，建议回 segmentation，把银色端子恢复成独立的可见区域（Table II）。</p>
+        <p>这次的证据不是形变不对，而是想测的 part 根本选不中：论文把“无法 probe 到目标部件”也算作暴露缺陷的响应（§IV-A）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">All stages</span>
+      <span class="stage-name">↺ Evidence-guided repair + export</span>
+      <span class="stage-io">诊断归因 → 回到负责的 stage → 它和下游全部重跑 → 同一套 probe 再诊断 → 导出</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>在最终 mesh 上就地打补丁，改不掉上游的错（比如 part 没分对）。</li>
+        <li><b>How：</b>归因映射到三条 route 之一；该 stage 和它下游的每个 stage 都重跑，得到一个完整的新候选，而不是局部修补。</li>
+        <li><b>How：</b>新 revision 回到同一套 probe，可以逐个 anchor 和旧版本比。</li>
+        <li><b>例外：</b>episode setup 的问题（target、动作没选好）留在 diagnostics 内部改，不动上游。</li>
+        <li><b>前提：</b>每个 stage 读带版本的上游 artifact，输出校验过的 output pack。agent 用 skills 做决定（描述物体、给材料、定 anchor 和 grasp、观察和反思、指定 route）；low-level tools 强制 artifact contract，把这些决定落成 masks、mesh、simulator 配置和 probing 动作。</li>
+        <li><b>导出：</b>接受后冻结 asset bundle（manifest、材料规格、诊断记录），记下从输入照片到 repair 决定、simulator 证据的整条 lineage。</li>
+        <li><b>实验里的限制：</b>每次运行最多返工 1 次（§IV）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  D["<b>诊断归因</b><br/><span class='ex'>USB hub：端子没有归属</span>"]:::example --> R1["<b>segmentation route</b><br/>part 被合并或被切碎"]
+  D --> R2["<b>material-inference route</b><br/>几何对，形变或静置不对"]
+  D --> R3["<b>mesh-processing route</b><br/>尺度、拓扑、数值故障"]
+  R1 --> N["<b>新 revision</b>：该 stage 起下游全部重跑"]
+  R2 --> N
+  R3 --> N
+  N --> P["回到同一套 probe，再诊断"]:::win
+      </pre></div>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>Route</th><th>什么时候走</th><th>改什么 · 保留什么</th><th>注入的故障（Table I）</th><th>实际的例子（Table II）</th></tr>
+          <tr><td>segmentation</td><td>行为不同的区域被并成一块，或连续区域被切碎</td><td>改 part masks 和边界；保留 cleaned reference</td><td>massager：弹簧的 mask 只盖住一小部分</td><td>USB hub：插头选不出 → 写明四个区域</td></tr>
+          <tr><td>material inference</td><td>几何没问题，但形变或静置不对</td><td>改 surface / volumetric 和每个 part 的力学参数；保留 reference、masks、OmniPart meshes</td><td>curling iron：线被赋了 barrel 的刚度</td><td>juice box：Genesis 拒绝加载 → 减 shell 厚度，3.0 GPa 拆成 0.8 / 0.7 / 0.6 / 0.3</td></tr>
+          <tr><td>mesh processing</td><td>接触和形变暴露数值或结构故障</td><td>改 scale、topology、和表示有关的几何；另外保留已推断的表示和材料</td><td>kitchen tongs：尺度 0.28 m 改成 2.8 m</td><td>medical bag：背带提手丢了 → 提高 meshing fidelity，5 个 part 全回来</td></tr>
+        </table>
+      </div>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-16-DiagGen/web-repair-before.mp4" autoplay muted loop playsinline controls></video><figcaption>返工前</figcaption></figure>
+          <figure><video src="2026-11-16-DiagGen/web-repair-after.mp4" autoplay muted loop playsinline controls></video><figcaption>返工后</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b> <a href="https://diaggen.github.io/#method">Method · What repair changes</a>：USB hub 在同一个 grasp-and-lift 下的两个版本。盯着线缆和末端的插头：左边外壳抬起后线缆还保持原来的弯，右边线缆垂下去、插头挂着。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>走 segmentation route：repair agent 把泛泛的 USB 部件描述换成 <span class="ex">housing、cable、connector、metal plug</span> 四个明确区域；cleaned reference 原样复用，之后的 OmniPart、material、mesh 全部重跑：插头成为独立部件，线缆有了和外壳不同的材料（Table II、§IV-C）。两个 revision 都留着，才有 Fig. 5 右和上面这对视频。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>一张照片 → part-aware 几何</td><td>Stage 1–3：USB hub 照片 → housing、cable、connector、metal plug</td></tr>
+        <tr><td>VLM 按 part 给材料和表示方式</td><td>Stage 4：线缆和外壳各有材料；例子延伸 juice box 的 0.8 / 0.7 / 0.6 / 0.3 GPa</td></tr>
+        <tr><td>定 metric scale + monolithize</td><td>Stage 5：抬起外壳线缆不掉；Fig. 5 左的 OmniPart 对照（Cheetah toy）</td></tr>
+        <tr><td>simulator 放进生成环：anchor、grasp box、预览、统一协议</td><td>Stage 6：要测插头；curling iron 视频演示同一协议</td></tr>
+        <tr><td>“选不中目标部件”也是证据</td><td>Stage 6：USB hub 扩大 target 仍选不出插头；E1 的 massager 也是这样</td></tr>
+        <tr><td>把故障归到拥有它的 stage，三条 route，orchestrator 拍板</td><td>All stages：USB hub 走 segmentation；juice box 走 material inference、medical bag 走 mesh processing</td></tr>
+        <tr><td>返工 = 该 stage 起下游全部重跑；versioned artifact</td><td>All stages：cleaned reference 被复用，两个 revision 都留着</td></tr>
+        <tr><td>注入故障检验诊断</td><td>E1：curling iron、massager、kitchen tongs（例子延伸）</td></tr>
+        <tr><td>PMSC、PAIP 两个 VLM 评测</td><td>E2：14 个返工 asset；USB hub 没有单独的分数</td></tr>
+        <tr><td>下游操作和 scene-level real2sim</td><td>E3：USB hub 的 pick-and-place（Fig. 4 第三行）；E4：Cheetah toy 接进 Agentic Real2Sim</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>诊断能把故障送回对的 stage，返工带来中等提升；下游操作只有定性演示</h2>
+  <p>顺序同论文：<a href="#exp-1">E1</a> 诊断准不准（RQ1）→ <a href="#exp-2">E2</a> 返工有没有用（RQ2）→ <a href="#exp-3">E3</a> asset 能不能拿来操作 → <a href="#exp-4">E4</a> 能不能放进 scene-level 的 twin。比的是 VLM 给的规格分和成对胜负；没有成功率、没有耗时，也没有和别的生成方法的定量对比。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>agent 能只靠 probe 的响应找到出错的 stage 吗？<span class="exp-src">§IV-A · Table I</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-DiagGen/tab1.jpg" alt="Table I：curling iron、massager、kitchen tongs 三个注入故障的仿真观察、诊断、ground-truth 和是否判对"></div>
+      <figcaption><b>Table I</b>（作者原图）先看第 3 列 Ground-truth stage and issue，再看第 2 列里等宽字体的 route 名是不是同一个 stage。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>3 个注入的故障，3 个都同时说对了问题和 route。</b>curling iron（线被赋了 barrel 的高刚度）→ material_inference；massager（mask 漏掉大部分金属弹簧，改了三次 target 仍选不中）→ segmentation；kitchen tongs（尺度 0.28 m 写成 2.8 m，放开后弯着回不去）→ mesh_processing。定性结果，每条 route 只有 1 例。</dd></div>
+      <div><dt>在故事里</dt><dd>撑起贡献 C1：诊断的依据是主动 probe 出来的响应，不是一张渲染图。</dd></div>
+      <div><dt>指标</dt><dd>一个 case 算对 = agent 既说出了 issue，又把候选送到了那个 stage。执行前先写好 ground-truth 记录（受影响的 part、issue、所属 stage）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>3 个 asset，各注入 1 个只属于一个 stage 的故障，从该 stage 起重跑下游。</li>
+        <li>诊断用 GPT-5.5（high reasoning effort）；agent 不知道有什么故障、来自哪一步。</li>
+        <li>probe 和 frame 预算、输出 schema、重试策略固定；每个 episode 从 fresh reset 开始，先录一段被动基线。</li>
+        <li>没有 baseline；论文没说重复了几次，也没有“无故障”的对照来看误报。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>把诊断送回上游，重做出来的 asset 更好吗？<span class="exp-src">§IV-B · 正文数字 + Table II</span></h3>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>哪些 asset</th><th>数量</th><th>PMSC 均值（1–5）</th><th>逐个比较</th></tr>
+        <tr><td>被建议返工 · 返工前</td><td>14</td><td>2.14</td><td rowspan="2">PMSC：10 升（71.4%）· 4 平（28.6%）· 0 降<br>PAIP：返工后 9 胜 · 返工前 4 胜 · 1 平</td></tr>
+        <tr><td>被建议返工 · 返工后</td><td>14</td><td>3.43（+1.29）</td></tr>
+        <tr><td>第一次就被接受，没返工</td><td>26</td><td>3.12</td><td>—</td></tr>
+      </table>
+    </div>
+    <p class="note">这些数字只在 §IV-B 正文里，论文没有对应的表，这里按正文整理；项目页给的是同一组数字（+1.29、2.14 → 3.43、10 / 4 / 0）。</p>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-DiagGen/tab2.jpg" alt="Table II：USB hub、juice box、medical bag 的诊断线索、被送去的 stage 和上游策略的改变"></div>
+      <figcaption><b>Table II</b>（作者原图）三行各对应一条 route，第一行是 running example。先看 Routed stage，再看最右一列上游到底改了什么。</figcaption>
+    </figure>
+    <p class="eyebrow">符号表（PMSC 的公式 S = max(1, H − F − 1[T &gt; 40,000])）</p>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+        <tr><td>H</td><td>第一个 VLM evaluator 给的整体分，1 到 5：5 = 各静态维度都站得住，1 = 表示或物理规格有根本矛盾</td><td rowspan="4">USB hub 的单项分数论文没给；只有 14 个返工 asset 的均值 2.14 → 3.43</td></tr>
+        <tr><td>F</td><td>第二个 evaluator 的标记：有动摇整体的重大问题记 1，否则 0</td></tr>
+        <tr><td>T</td><td>最终 mesh 的四面体数；超过 40,000 再扣 1（论文说这条计算预算线是经验值）</td></tr>
+        <tr><td>S</td><td>最终分数，最低 1</td></tr>
+      </table>
+    </div>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>返工后规格分更高、没有变差的，但提升是中等的；动态对比里 14 个有 4 个反而是返工前更好。</b>PMSC 均值 2.14 → 3.43，+1.29 分（5 分制），10 升（71.4%）、4 平（28.6%）、0 降；PAIP 返工后 9 胜、返工前 4 胜、1 平（9/14）。论文自己的措辞是 moderate gain。胜的例子：cookie、okra、sneaker 返工后能 probe 到原来够不着的边缘、尖端、窄边；hand brush 小胜；toilet plunger 橡胶杯更软，但回弹不如返工前干净。负的例子：plush kitten、sport watch 返工前的选区和响应更好。</dd></div>
+      <div><dt>在故事里</dt><dd>撑起贡献 C2：repair cue 确实改了上游的生成策略（Table II），并带来可测的改善。</dd></div>
+      <div><dt>指标</dt><dd><ul class="tight">
+        <li><b>PMSC</b>（静态）：两个 VLM evaluator 对照输入照片和常见材料先验，检查分割、part 几何、rest pose、part 语义、材料类别、E、ν、ρ、friction、fill mode、尺度；公式见上表。</li>
+        <li><b>PAIP</b>（动态）：从返工前版本的诊断证据里冻结一个 probe（target part、anchor、动作），在两个版本上用相同的 simulator、controller、camera 重放，各自在自己的 part 上定位；2 个 VLM judge × 2 种呈现顺序。judge 看三件事：目标 part 响应对不对、被抓的 anchor 是否还连着、整体是否真实；四个判断怎么合成胜 / 负 / 平，论文没给规则。</li>
+      </ul></dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>40 个物体：手机实拍和已有数据集（MVImgNet2.0）里的图。返工前后两版用同一张图、同样的上游文件、VLM 设置、simulator 和评测规则；每次运行最多返工 1 次。</li>
+        <li>生成和诊断用 GPT-5.6 Luna（Max reasoning）；PAIP judge 换成 GPT-5.6 Terra（Max reasoning），为的是减少对 Luna 产物的偏好。PMSC 两个 evaluator 用什么模型，论文没写明。</li>
+        <li>PMSC 是事后把 rubric 套到已有的独立 review 上；evaluator 看不到诊断记录、revision 状态、配对候选和对方的判断。</li>
+        <li>没有人工评测，没有真实材料测量：论文说没有公开数据集提供对照真实测量的 part-wise 材料标签。</li>
+        <li>我的观察：被挑去返工的 14 个返工前均分 2.14，低于直接通过的 26 个（3.12），说明诊断挑出的确实是偏差的那批；返工后的 3.43 反超了它们。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>生成的 asset 能直接拿来做接触丰富的操作吗？<span class="exp-src">§IV-C · Fig. 4、Fig. 5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-DiagGen/fig4.jpg" alt="三行 pick-and-place 序列：Toy with Ring、Kitchen Tongs、USB Hub，每行四帧"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）每行从左到右：pick-up、lift、transport、place。第二行是用 kitchen tongs 夹 cookie，第三行是 running example。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>能装进 Genesis 并做完 pick-and-place，但只有画面。</b>toy with keyring 和 kitchen tongs 一次生成就能用，USB hub 用的是 segmentation 返工后的版本。两个对照都在 <a href="#problem">Fig. 5</a>：OmniPart 直接四面体化的 toy mesh 一抬就散，DiagGen 的保持一体；USB hub 返工前线缆僵着，返工后下垂（<a href="#stage-all">返工那一节的视频</a>）。</dd></div>
+      <div><dt>在故事里</dt><dd>撑起贡献 C3 的前半：visual foundation model 直出的 asset 不一定能仿真，DiagGen 的可以直接用；返工后的 asset 动起来更真实。</dd></div>
+      <div><dt>指标</dt><dd>没有量化指标。轨迹优化的停止条件是 gripper 抓牢并拿住 asset，由 agent 看渲染结果判断。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>Genesis 的 implicit FEM solver，gripper 和软物体之间用 SAP 做摩擦接触。</li>
+        <li>轨迹由 GPT-5.6 Sol agent（extra-high reasoning）在 task space 里迭代：提动作序列 → 仿真 → 看图 → 改 gripper pose 和 aperture；先抓牢，再优化搬运和放置。</li>
+        <li>3 个 asset，各 1 条轨迹；没有成功率、重复次数或真机执行。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>能放进 scene-level real2sim 的 twin 里吗？<span class="exp-src">§IV-C · Fig. 6</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-DiagGen/fig6.jpg" alt="左：遥操作采集现场；右上：真实俯视画面三帧；右下：对应的仿真画面三帧"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）左 Data Capture Setup：Airbot 机械臂 + Meta Quest 2 遥操作。右上 Real-world、右下 Synthetic：同一段把毛绒玩具放进篮子的轨迹。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>能替换进 <a href="2026-11-04-AgenticReal2Sim.html">Agentic Real2Sim</a> 重放一段真机 episode，同样只有画面。</b>把原来 SAM3D 生成的 asset 换成 DiagGen 的 Cheetah toy，把 MuJoCo 换成更适合可变形仿真的 Genesis；论文说能 faithfully reconstruct the episode，没有给误差。</dd></div>
+      <div><dt>在故事里</dt><dd>撑起贡献 C3 的后半：DiagGen 的 asset 可以放进由真实场景转成的合成场景。</dd></div>
+      <div><dt>指标</dt><dd>无。只有 real 和 synthetic 的画面并排。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>论文正文：1 段 pick-and-place episode，1 个 asset。</li>
+        <li><a href="https://diaggen.github.io/#real-world">项目页</a>多了两组真机 / 仿真对比视频（Dino twisting、Bottle pick and tilt），论文里没有，也没有数字。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>论文承认：</b>material inference 和 segmentation 的故障症状相似，diagnostic agent 可能分不清 root cause。</li>
+    <li><b>论文承认：</b>大规模并行的数据生成还没测过。articulated asset、asset 多样性和物理保真度对 policy 训练的影响都留作 future work。</li>
+    <li><b>没有 ground truth：</b>所有分数来自 VLM 评审；材料参数是 VLM 按 part 语义给的先验，没有和真实物体的测量对过。</li>
+    <li><b>返工不保证变好：</b>PAIP 里 4/14 返工前更好；每次运行只允许返工 1 次，多轮会不会收敛没有数据。</li>
+    <li><b>下游证据是定性的：</b>pick-and-place、OmniPart 对比、real2sim 重放都没有成功率或误差；token 和时间成本未报告。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>r2s-lite 的验收：</b>锅盖那集第 9 次过了宽松规则，但锅被当成 receiver、锅盖开局在锅旁边（<a href="2026-11-05-Real2SimLandscape.html">Real2Sim 全景</a>）。DiagGen 先定 anchor（hold 住的锅）和 grasp box（要拿的锅盖）再预览；“目标不在该在的位置、选不中”本身就算证据，可能在跑成功规则之前就拦下这类错（我的推断）。</li>
+    <li><b>r2s-lite 的 repair loop：</b>把故障归到拥有它的 stage，从那一步起下游全部重跑，不在最终场景上打补丁；每次返工后冻结同一个 probe 在新旧 twin 上重放、配对比较（PAIP），而不是只看最后一次过没过规则。前提是每一步的产物都有版本。</li>
+    <li><b>软物体和 Genesis：</b>我们的 baseline 之一 <a href="2026-11-04-AgenticReal2Sim.html">Agentic Real2Sim</a> 已经被它接过一次（SAM3D asset 换成 DiagGen 的，MuJoCo 换成 Genesis）；WorldClaw 也在 Genesis 上，可以直接试它的 asset。r2s-lite 在 Isaac Sim 上，要用就得换 deformable 后端（推断）。材料仍是 VLM 猜的，和全景页“质量和摩擦暂时量不出来”的结论一致。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-16-DiagGen.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>

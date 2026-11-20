@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>CoEnv</title>
+<meta name="description" content="CoEnv 把多臂工作台从 RGBD 重建成可查真值的 twin，CoEx 让 Claude Code 在里面写-跑-改整段多臂程序，验证后经扫掠体积碰撞检查上真机：5 个真机任务 70% vs 去掉 code agent 的 50%，真机 rollout 微调 π0.5 达 10/10、7/10。">
+<meta name="paper:title" content="CoEnv: Code-Driven Exploration in Real-to-Sim Digital Twins for Multi-Arm Manipulation">
+<meta name="paper:source" content="https://arxiv.org/abs/2604.05484">
+<meta name="paper:venue" content="arXiv 2026（本页讲 v2，2026-11-02 修订）">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2604.05484v2">
+<meta name="paper:date" content="2026-04-07">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-16</p>
+  <h1>CoEnv</h1>
+  <p class="full-title">CoEnv: Code-Driven Exploration in Real-to-Sim Digital Twins for Multi-Arm Manipulation</p>
+  <p class="meta">Li Kang, Yutao Fan, Rui Li, Heng Zhou, Yiran Qin, Zhemeng Zhang, et al.（通讯 Dongzhan Zhou, Wangmeng Zuo, Lei Bai）· Shanghai AI Lab、SJTU、HIT、USTC、CUHK-Shenzhen、Fudan、DUT、CMU、Oxford · arXiv 2026-04-07（v1）· 本页讲 v2（2026-11-02，换了标题、框架和实验）· 26 页</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2604.05484v2">arXiv</a><a href="https://arxiv.org/pdf/2604.05484v2">PDF</a><a href="https://arxiv.org/abs/2604.05484v1">v1</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：CoEnv 把真实多臂工作台从 RGBD 重建成可查真值的 twin，让 coding agent 在里面练程序；twin 只用来找程序，从不产训练图像。</p>
+  <p class="meta">v1 标题是 <i>CoEnv: Driving Embodied Multi-Agent Collaboration via Compositional Environment</i>。arXiv comment 列了项目页，PDF 里没有，所以本页不放它的链接；Fig. 1、2、5、6 用的是该页的高清版（内容和 PDF 相同），两段视频也取自那里。PDF 只说代码在发表时开源。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>多臂操作的示教很贵，一条遥操作就要几个人同步。coding agent 已经能写、调整段机器人程序，却没地方练：真机每次重试都要 reset，臂会互撞、互相挡住视线；通用仿真的几何、资产、视角又和部署工作台对不上。</dd></div>
+    <div><dt>Idea</dt><dd>把模拟器放在<b>程序</b>上游，而不是数据上游。<b>CoEnv</b>（框架）把工作台从 2–3 路 RGBD 重建成 ManiSkill/SAPIEN 里可 reset、可查特权状态的 twin；<b>CoEx</b>（方法）让 Claude Code 在 twin 里写整段多臂程序、跑、按特权状态 / checkpoint 快照 / 多视角渲染改，最多 10 轮；验证过的轨迹经扫掠体积碰撞检查在真机上回放，真机录下的就是示教。</dd></div>
+    <div><dt>Result</dt><dd>5 个真机任务平均 SR <b>70% vs 50%</b>（去掉 code agent，Table 1；每格 10 次，两边骨干模型也不同）；每个 session 的 verified episode 是 baseline 的 <b>3.8–11.7 倍</b>（Table 2）；200 条真机 CoEx rollout 微调 π0.5 达 10/10、7/10，同一程序在 twin 里录的 200 条加 20 条遥操作只有 3/10、0/10。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>多臂示教贵，coding agent 又没地方练：真机试错会撞，模拟器产的数据还要跨 sim-to-real</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Brush Box</b>（Fig. 1 的 teaser 任务）：三臂工作台上 <span class="ex">1 台 Franka Research 3 + 1 套 AgileX Piper 双臂</span>，<span class="ex">3 路 RealSense D435i</span> 拍 RGBD；任务只给一句 <span class="ex">Grasp a brush and repeatedly sweep the box</span>，刷子和盒子每次 trial 摆得不一样 → 想要：三只臂依次过 Table 5 的三个里程碑 <span class="ex">S1 抓到刷子 → S2 抓到盒子 → S3 刷子扫到盒子</span>，不要人示教、臂不互撞；顺带留下能训练 visuomotor policy 的真机数据。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>Brush Box · 3 臂</span>"]:::example
+  IN --> A1["<b>人类遥操作示教</b><br/>20 条 GELLO 示教"]
+  A1 --> AX["多臂要几人同步，示教少<br/><span class='ex'>π0.5 只到 2/10</span>"]:::gap
+  IN --> B1["<b>twin 渲染数据混训</b><br/>200 条 twin + 20 条遥操作"]
+  B1 --> BX["渲染图不像真相机<br/><span class='ex'>π0.5 掉到 0/10</span>"]:::gap
+  IN --> C1["<b>逐步 VLM</b><br/>w/o code agent<br/>~30+ 次调用"]
+  C1 --> CX["20+ 步漂移，刷子离开盒面<br/><span class='ex'>S2 9/10 → S3 7/10</span>"]:::gap
+  IN --> D1["<b>已有 VLM 规划框架</b><br/>Code-as-Monitor · SimPACT"]
+  D1 --> DX["真机上才发现失败<br/>或只认第一个计划<br/><span class='ex'>0/10 · 4/10</span>"]:::gap
+  </pre></div>
+  <p class="note">数字都是 Brush Box 自己的：第 1、2 条是 Table 2 里 π0.5 的结果（论文自设的参照），第 3 条是 Table 1 的里程碑，第 4 条是 Table 7。原因的出处：第 2 条是 §4.5 的解释（渲染图和真相机在纹理、光照、传感器噪声上不同）；第 3 条是 App E.3 对逐步 agent 在 Brush Box 上的分析，~30+ 次调用来自 Table 6；第 4 条的两种失败是 §4.3 针对 Transfer Cylinder 交接写的，套到 Brush Box 上是我的推断；第 1 条"示教少"也是推断，论文只说多臂遥操作要几个操作员同步（§1）。</p>
+  <p class="crux"><b>根本问题：</b>要么让模拟器去产训练数据（每个任务要人类示教或 reward，策略还得跨 sim-to-real），要么让 agent 一步一想、在真机上试错；缺一个和部署工作台对齐、能免费 reset、能查真值的地方，让 agent 反复调一整段程序。　<b>这篇的切入点：</b>把 twin 放在"程序"上游：在重建的工作台 twin 里写-跑-改整段多臂程序直到验证通过，再经碰撞检查上真机；真机跑出来的轨迹本身就是真实示教。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>人类示教 + 仿真放大 / 混训</b><br><span class="muted">HATS、MimicGen、DexMimicGen、ComSim、sim-and-real co-training</span></td><td>多臂示教太贵、太少</td><td>人遥操作采（HATS 每个 episode 一个操作员），或拿 ~5–30 条人类示教在仿真里放大、和仿真数据混训</td><td>每个任务都要人类示教，策略要学仿真生成的数据 → 本文只给任务描述，策略只学真机录的 rollout；Brush Box 上 20 条遥操作 2/10，再混 200 条 twin rollout 0/10（Table 2）</td></tr>
+      <tr><td><b>重建现场里学策略</b><br><span class="muted"><a href="2026-11-05-RialTo.html">RialTo</a>、<a href="2026-11-05-ACDC.html">ACDC</a>、D-REX、VR-Robo</span></td><td>为部署场景学稳健策略</td><td>重建现场或生成 digital cousins，在里面 RL 或模仿，再靠 domain randomization 迁移</td><td>每个任务要示教和成功条件（RialTo）或示教、reward（ACDC），模拟器产训练数据 →本文的 twin 只搜索、验证程序，不产训练图像</td></tr>
+      <tr><td><b>VLM 规划框架</b><br><span class="muted">Code-as-Monitor、SimPACT</span></td><td>不用示教，靠 VLM 规划操作</td><td>Code-as-Monitor 写约束代码，执行时检测失败；SimPACT 先在仿真里试计划</td><td>前者要等失败在真机上发生，后者没有 verify–refine 循环、接受第一个仿真放行的计划 → 本文在 twin 里先把失败撞完、最多改 10 轮；3 任务平均 20%、40% vs 77%（Table 7）</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>通用 coding agent 控机器人</b>（本文所属的一族）<br><span class="muted">Tsui et al. 2026、RHO、ASPIRE、ENPIRE</span></td><td>不靠示教，让 coding agent 写、改机器人程序或策略</td><td>在 benchmark 场景用特权状态解题、按执行反馈搜策略库、把验证过的修复攒成 skill 库、在机器人队列上改进策略</td><td>练习场是 benchmark 场景或真机 → 本文在部署工作台自己的 twin 里练，验证工具专为多臂遮挡和接触设计</td></tr>
+      <tr><td><b>学出来的 world model</b><br><span class="muted">DreamerV3、Genie、UniSim</span></td><td>行为先在模型里试，再执行</td><td>从数据学一个动作条件的观测预测器</td><td>不暴露特权状态，查不了位姿和接触 → 本文的 twin 是重建的物理仿真，给真值位姿、接触和扫掠体积</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §1、§2 Related Work、§4.3（和 Code-as-Monitor、SimPACT 的真机对比）、App A 的 Table 3（每类 pipeline 每个任务要人给什么），未另行检索。RialTo、ACDC 只在 Table 3 里定性比较，没有对跑。多机器人 LLM 协作（RoCo、MALMM、RoboFactory 等）论文只用一句话划界：本文是集中式规划，不主张去中心化，所以没单列。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>模拟器放在程序上游：在 twin 里找到并验证程序，真机只回放验证过的轨迹</h2>
+  <ul class="tight">
+    <li><b>CoEnv（框架）：</b>把真实工作台重建成 twin，给 twin 配三样验证工具，把验证过的轨迹经碰撞检查送上真机，并存下经验（§3.1、§3.3、§3.4）。</li>
+    <li><b>CoEx（方法）：</b>code agent（Claude Code）在 twin 里写整段多臂程序、跑、看证据、重写（§3.2）。论文的主要结论都押在它上面。</li>
+    <li><b>CoEx w/o code agent（对照）：</b>同一 twin、primitive 和工具，换成 GPT-5.6 Sol 每步选一个 primitive。</li>
+  </ul>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-CoEnv/web-fig1.jpg" alt="左：真实三臂工作台和它的 digital twin；右：(a) real-sim co-training，(b) sim RL，(c) code-driven exploration：代码在 twin 里 explore、refine，verified trajectory 送去真机采数据"></div>
+    <figcaption><b>Fig. 1</b>（作者原图，项目页高清版）Where does the simulator sit? 左：真实工作台和它的 twin；右：用 twin 的三种方式。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>顶栏 Multi-Arm Task：</b>就是例子：3 只臂抓起 brush，反复 sweep box。</li>
+    <li><b>左 Physical World（High Fidelity ✓、Collision Risk ✗）：</b>真实工作台，左边白色的是 Franka，中间和右边黑色的是 Piper 双臂。真实，但每次试错都可能撞臂。</li>
+    <li><b>中 Digital Twin（Free Reset ✓、Exploration ✓）：</b>同一工作台搬进仿真，右上的相机图标表示可以从任意视角渲染。</li>
+    <li><b>右上 (a) Real-Sim Co-Training、(b) Sim RL：</b>(a) 把仿真轨迹混进少量真实数据训练策略；(b) 策略网络（图里写 π<sub>θ</sub>，θ 是网络参数）在仿真里用 action 换 reward 来学。两者都让模拟器产训练数据，所以要跨 sim-to-real。(a) 在例子上就是 <a href="#exp-5">E5</a> 的 "200 in twin + 20 teleop"：0/10。</li>
+    <li><b>下 (c) Code-Driven Exploration (ours)：</b>代码窗里是例子的一段程序：<code>GRASP</code>，<code>target_width -0.8</code>，<code>agent_id 0</code>，然后 <code>checkpoint("brush_grasped", notes="closed on the handle?")</code>；explore 箭头进 twin，refine 箭头回到代码；verified trajectory 送去真机做 real-world data collection。这段代码是示意：按 Prompt 6，−0.8 是 Piper 的夹爪值，而 Fig. 7 和 Fig. 4 里拿刷子的是 Franka（我的观察）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>输入</b><br/><span class='ex'>3 路 RGBD + 一句任务</span>"]:::example --> TW["<b>CoEnv · 重建 twin</b><br/><span class='ex'>刷子、盒子、3 只臂</span>"]
+  TW --> CX["<b>CoEx · 写-跑-改整段程序</b><br/><span class='ex'>Claude Code，≤10 轮</span>"]:::win
+  CX --> DP["<b>CoEnv · 碰撞检查部署</b><br/><span class='ex'>真机 SR 8/10</span>"]
+  DP --> OUT["<b>真机轨迹 = 示教</b><br/><span class='ex'>200 条 → π0.5 7/10</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage，三样验证工具贯穿 Stage 2–3（Fig. 2）</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-CoEnv/web-fig2.jpg" alt="CoEnv 框架：左上 twin 构建（Meshy、Grounded SAM 2、GPT、FoundationPose、多视角位姿平均、迭代标定），右上 Stage I 规划和 Stage II 里 CoEx 的两个环，底部插值加扫掠体积碰撞检查的部署"></div>
+    <figcaption><b>Fig. 2</b>（作者原图，项目页高清版）The CoEnv framework：左上建 twin，右上在 twin 里探索，底部带碰撞检查的部署。</figcaption>
+  </figure>
+  <p class="eyebrow">符号表（Fig. 2 和 Algorithm 1 共用）</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+      <tr><td>W</td><td>twin 本身：结构化状态 + 物理（ManiSkill on SAPIEN）+ 任意视角渲染</td><td>Franka、两只 Piper、刷子、盒子的仿真场景</td></tr>
+      <tr><td>s<sub>0</sub></td><td>twin 的初始状态：每只臂、每个物体的位姿</td><td>这次 trial 刷子和盒子摆在哪（每次不同）</td></tr>
+      <tr><td>G</td><td>任务目标，一句话</td><td>Grasp a brush and repeatedly sweep the box</td></tr>
+      <tr><td>t<sup>(k)</sup>、R<sup>(k)</sup>、K′</td><td>第 k 个视角估出的物体位置、朝向；看到这个物体的视角数</td><td>刷子在每路相机里的位姿；最多 3 路</td></tr>
+      <tr><td>t̂、R̂、M</td><td>融合后的位置（各视角取平均）和朝向（M = 四元数平均）</td><td>刷子写进 twin 的最终位姿</td></tr>
+      <tr><td>H = {h<sub>1</sub>…h<sub>L</sub>}</td><td>子目标列表，每个是一句语义目标</td><td>论文举例 "pick up the red cube"；Brush Box 的没打印</td></tr>
+      <tr><td>E = {e<sub>1</sub>…e<sub>L</sub>}</td><td>执行计划：每步 = 哪只臂 + 哪个 primitive（MOVE / ROTATE / GRASP / RELEASE）+ 参数</td><td>同上，没打印</td></tr>
+      <tr><td>P<sup>(m)</sup></td><td>第 m 轮写出的整段 Python 程序</td><td>Fig. 1(c) 的片段：GRASP 后打 checkpoint "brush_grasped"</td></tr>
+      <tr><td>F<sup>(m)</sup></td><td>第 m 轮的结构化失败反馈：碰撞位置、没达成的子目标；喂给下一轮</td><td>没打印</td></tr>
+      <tr><td>M<sub>max</sub></td><td>最多改几轮</td><td>10</td></tr>
+      <tr><td>P<sup>*</sup>、τ<sup>*</sup></td><td>验证通过的程序，和它跑出的轨迹：每个 primitive 结束时各臂的关节角</td><td>刷盒程序和它的轨迹</td></tr>
+      <tr><td>D</td><td>verified experience：存下的成功经验；实际存的是 agent 写的短笔记（App D.3）</td><td>下次进 prompt 的 Operational Hints</td></tr>
+      <tr><td>c<sub>j</sub>、J</td><td>第 j 个虚拟相机的位姿；相机个数</td><td>渲染 1920×1080，环绕场景中心</td></tr>
+      <tr><td>q<sub>l−1</sub>、q<sub>l</sub>、α</td><td>相邻两个 primitive 结束时的关节角；插值比例，从 0 走到 1</td><td>没报告具体值</td></tr>
+      <tr><td>V<sub>l</sub><sup>(i)</sup></td><td>第 i 只臂沿第 l 段插值路径扫过的空间</td><td>Franka 和两只 Piper 两两不能相交</td></tr>
+    </table>
+  </div>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左上 Object Assets：</b>Object Image（正是一把刷子和一个长盒子）→ Meshy Model（Image → 3D Mesh）→ 3D Asset。= Stage 1 的建模。</li>
+    <li><b>左中 Object Localization：</b>Multi-View RGBD Observations 进来，(a) Grounded SAM 2 检测分割，(b) GPT-5 区分相似实例，(c) FoundationPose 每视角给 6-DoF；下方公式 Multi-View Pose Average：位置取平均，朝向用 M 平均。图里写 GPT-5，正文和附录都写 GPT-5.6 Sol。</li>
+    <li><b>中 SAPIEN Simulator、Iterative Camera Calibration Refinement：</b>建好的 twin（正文说是 ManiSkill on SAPIEN），相机外参靠渲染对比迭代修。</li>
+    <li><b>右上 Stage I: Hierarchical Task Planning：</b>VLM Planner 把 Task Goal 拆成 Subgoal H，再拆成 Execution Plan E；右边 Adaptive Camera Control（Multi-view aggregation for occluded regions）是三样工具之一。= Stage 2。</li>
+    <li><b>右中 Stage II 的 CoEx 框：</b>左环 Execute → Observe → Verify → Adapt（四个 primitive 图标和 Checkpoints Verify）是程序跑起来时的步级环，逐步 baseline 只有这个环；右框 Code Agent (Claude Code) 的 Code Generation P<sup>(m)</sup> → Simulate → Feedback F<sup>(m)</sup> → Evaluate 是程序级环，CoEx 独有。= Stage 3。</li>
+    <li><b>最右 Validated Trajectory τ<sup>*</sup> → Verified Experience：</b>验证过的轨迹入库。= Stage 5。</li>
+    <li><b>底部 Collision-Aware Deployment，从右往左读：</b>Collision Volume Verification 检查任两只臂的扫掠体积不相交（红叉 = 相交，绿勾 = 不相交）→ Safe? → No 走 Re-plan 回到 CoEx，Yes 走 Real-World Execution → Multi-Arm Deployment；最左 Trajectory Interpolation 是相邻关节点之间的线性插值。= Stage 4。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · 重建 twin</b> · CoEnv<br/><span class='ex'>3 路 RGBD → ManiSkill</span>"] --> S2["<b>2 · 分层规划</b> · Stage I<br/><span class='ex'>sweep the box → 分臂</span>"]
+  S2 --> S3["<b>3 · CoEx 程序循环</b> · Stage II<br/><span class='ex'>Claude Code，≤10 轮</span>"]:::win
+  VT["<b>验证工具</b> · twin 提供<br/><span class='ex'>特权状态 · checkpoint</span><br/><span class='ex'>自适应视角</span>"] -.-> S2
+  VT -.-> S3
+  S3 --> S4["<b>4 · 碰撞检查部署</b> · CoEnv<br/><span class='ex'>Brush Box 真机 8/10</span>"]
+  S4 -->|"扫掠体积相交 → 重规划"| S3
+  S4 --> S5["<b>5 · 经验复用</b><br/><span class='ex'>200 条 → π0.5 7/10</span>"]
+  S5 -.->|"笔记 → hints"| S3
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click VT href "#stage-all"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；贯穿 Stage 2–3 的三样工具见 <a href="#stage-all">Grounded verification</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1 · CoEnv</span>
+      <span class="stage-name">重建 digital twin</span>
+      <span class="stage-io">2–3 路标定 RGBD + 每个物体几张参考图 → ManiSkill/SAPIEN 里度量对齐、可 reset、可查状态的 twin W（§3.1、App C.1）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>agent 要在自己的部署工作台里练。通用 benchmark 的几何、资产、相机视角对不上现场，在那里调好的程序搬不过来（§1）。</li>
+        <li><b>Asset：</b>Meshy 从每个物体几张参考图生成网格（不用噪声大的摄影测量网格），缩放到真实尺寸，配低多边形 convex collision proxy，按类别给 mass、friction；每类物体只做一次。</li>
+        <li><b>定位：</b>每个视角 Grounded SAM 2 检测、分割目标；GPT-5.6 Sol 借空间上下文区分长得像的实例；FoundationPose 每个视角给一个 6-DoF 位姿。</li>
+        <li><b>融合：</b>在看到该物体的 K′ 个视角上，位置取算术平均，朝向做四元数平均（Markley 2007），抵消单视角遮挡和外参的小偏差。</li>
+        <li><b>标定：</b>利用仿真随时能 reset，反复渲染当前 twin、和真实画面对比，修相机外参，直到重投影误差稳定在毫米级。</li>
+        <li><b>设计取舍：</b>不追求照片级，要的是 resettable、queryable、和工作台 metrically aligned：agent 对着真值调程序，训练图像永远来自真实相机，不来自 twin。</li>
+        <li><b>没报告：</b>位姿误差和重投影误差的具体数字、各物体 mass 和 friction 的取值、建一个 twin 要多久。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  AS["<b>参考图 → Meshy 网格</b><br/><span class='ex'>刷子、盒子</span>"] --> TW
+  SG["<b>每视角 SAM 2 + GPT 消歧</b><br/><span class='ex'>被夹爪挡住的刷子</span>"] --> FP["<b>每视角 FoundationPose</b><br/><span class='ex'>6-DoF 位姿</span>"]
+  FP --> FU["<b>多视角融合</b><br/><span class='ex'>位置平均 + 四元数平均</span>"]
+  FU --> TW["<b>Twin W</b><br/><span class='ex'>ManiSkill on SAPIEN</span>"]:::win
+  TW --> CA["<b>渲染对比修外参</b><br/><span class='ex'>直到误差稳定在 mm 级</span>"]
+  CA -->|"更新外参"| TW
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>三臂工作台用 <span class="ex">3 路 D435i</span>；刷子和盒子由 Meshy 从参考图生成（Fig. 2 左上的 Object Image 就是它们）；GPT-5.6 Sol 要处理的正是 <span class="ex">被夹爪挡住一部分的刷子</span> 这种情况（App C.1 原例）；看到刷子的那几路相机各给一个位姿，平均后写进 twin。论文没给刷子、盒子的质量、摩擦和位姿误差。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2 · Stage I</span>
+      <span class="stage-name">分层任务规划</span>
+      <span class="stage-io">任务一句话 G + 初始状态 s<sub>0</sub> → 子目标 H、分臂计划 E、过去经验的 hints F<sup>(0)</sup>（§3.2、Algorithm 1 第 1–3 行）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>多臂任务先得定哪只臂做哪步；CoEx 和逐步 baseline 都从这份计划出发（App C：两者共用 Stage I）。</li>
+        <li><b>先看：</b>从多个虚拟相机渲染初始场景再聚合，即自适应视角（第 1 行）。</li>
+        <li><b>再拆：</b>GPT-5.6 Sol 把 G 拆成语义子目标 h<sub>l</sub>，每个配一步 e<sub>l</sub> = (哪只臂, 哪个 primitive, 参数)，由 IK 执行。</li>
+        <li><b>Primitive 的约定：</b>都是相对当前末端位姿的 delta，省掉全局坐标标定；agent_id 可以是整数或列表，列表 = 几只臂同步动作；参数可以广播，也可以逐臂给。</li>
+        <li><b>取经验：</b>从 D 取回过去验证过的经验，当第一轮的 hints（第 3 行）。</li>
+        <li><b>论文没说清：</b>Table 6 把 CoEx 的 Planning 写成 "Structured system prompt"，Prompt 8 又让 code agent 自己写 plan.md；E 怎么进入 code agent 的 prompt，Prompt 5 的骨架里看不到。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  OB["<b>多视角渲染再聚合</b><br/><span class='ex'>初始场景</span>"] --> PL["<b>GPT-5.6 Sol 拆解</b><br/><span class='ex'>G → H → E</span>"]
+  PL --> HO["<b>交给 Stage 3</b><br/><span class='ex'>计划 E + hints</span>"]
+  RT["<b>从 D 取经验</b><br/><span class='ex'>Operational Hints</span>"] --> HO
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>G = <span class="ex">Grasp a brush and repeatedly sweep the box</span>。论文没打印 Brush Box 的 H 和 E。评测里程碑（Table 5）是抓到刷子 → 抓到盒子 → 刷子扫到盒子；项目页视频里是一只 Piper 夹住长盒，Franka 拿起刷子来回扫（视频所见）。三臂任务的代码模板（Prompt 7）把 0、1 号给两只 Piper，2 号给 Franka。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3 · CoEx</span>
+      <span class="stage-name">程序级探索：写、跑、改整段多臂程序</span>
+      <span class="stage-io">计划 E + s<sub>0</sub> + hints → 验证通过的程序 P<sup>*</sup> 和轨迹 τ<sup>*</sup>，最多 10 轮（§3.2、Algorithm 1 第 4–10 行、App C.3.3、Prompt 5–8）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>逐步 agent 每走一步想一次：一个任务 ~30+ 次 VLM 调用（Table 6），推理随 episode 结束就没了，小误差沿时间累积。程序级一次推理覆盖整个任务，失败对着产生它的程序来诊断，留下的是能重跑、能检索、能让人先读一遍的源代码。</li>
+        <li><b>写（CODEGEN）：</b>Claude Code 写一整段 Python：先读状态再算 delta，执行 primitives，在关键处打 checkpoint。规则：对任意初始状态都成立、不许硬编码，每轮自包含。</li>
+        <li><b>跑（EXECUTE）：</b>twin 每轮 reset 到同一初始状态，程序在沙箱（受限命名空间 + 超时）里一次跑完，运行中没有实时画面。</li>
+        <li><b>产出：</b>summary.json（错误状态、最终状态、checkpoint）、execution_stdout.txt（全部 print）、initial_state/ 的 front、top、side 三张图、checkpoints/&lt;name&gt;/ 的图和 states.json。</li>
+        <li><b>改（ANALYZE）：</b>每轮必做：读 stdout 的 target vs actual gap → 读 summary.json 看物体真的动了没 → 看关键 checkpoint 图（pre_grasp、post_lift）→ 找 root cause，不修症状；整理成 F<sup>(m)</sup>（碰撞位置、没达成的子目标）。</li>
+        <li><b>停：</b>通过就停并存进 D；否则带着 F<sup>(m)</sup> 重写，最多 M<sub>max</sub> = 10 轮。另跑的探索脚本不算轮数（Prompt 8）。</li>
+        <li><b>谁判"通过"：</b>§3.2 写的是 code agent 自己 "evaluates the outcome"（读最终状态、日志和快照）；论文没给一个独立于 agent 的自动成功判据（我的读法）。</li>
+      </ul>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-CoEnv/alg1.jpg" alt="Algorithm 1 CoEx 伪代码 12 行；下方 Fig. 3 的接口代码：特权状态查询、四个 primitive、checkpoint"></div>
+        <figcaption><b>Algorithm 1 + Fig. 3</b>（作者原图）上：CoEx 的伪代码；下：程序能调用的 twin 接口（Appendix F.3 的缩略版）。符号见 Level 2 的符号表。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>第 1 行 AGGREGATE(RENDER)：</b>从 J 个虚拟相机渲染初始场景再聚合，即自适应视角。</li>
+        <li><b>第 2–3 行：</b>Stage 2 的拆解、分臂和取经验（hints F<sup>(0)</sup>）。</li>
+        <li><b>第 4–10 行，循环本体：</b>CODEGEN 写整段程序 → EXECUTE 在 twin 里跑（free reset，checkpoint 存状态和视图）→ VERIFIED 就 break，否则 ANALYZE 日志和 checkpoint，得到下一轮的 F<sup>(m)</sup>。</li>
+        <li><b>第 11 行：</b>(s<sub>0</sub>, G, τ<sup>*</sup>) 入库，并从新的初始状态重跑 P<sup>*</sup>，多产 verified rollout。这就是 <a href="#exp-4">E4</a> 吞吐的来源。</li>
+        <li><b>第 12 行：</b>τ<sup>*</sup> 过扫掠体积碰撞检查后上真机（Stage 4）。</li>
+        <li><b>下方代码框（Fig. 3）：</b>三类接口。privileged state：get_robot_state 给 position、orientation、euler_rpy、gripper，get_object_state 给 position、orientation；primitives：MOVE、ROTATE 是 delta，GRASP 给 target_width，RELEASE，agent_id 是 int 或 list；最后是 checkpoint(name, checkpoint_type, notes, suggested_views)。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart TD
+  CG["<b>CODEGEN</b><br/><span class='ex'>整段 3 臂 Python</span>"] --> EXE["<b>EXECUTE in twin</b><br/><span class='ex'>reset → 一次跑完</span>"]
+  EXE --> VF["<b>VERIFIED?</b><br/><span class='ex'>最终状态对照目标</span>"]
+  VF -->|"否"| AN["<b>ANALYZE</b><br/><span class='ex'>stdout + checkpoint 图</span>"]
+  AN -->|"F(m)，至多 10 轮"| CG
+  VF -->|"是"| PS["<b>P* 和 τ*</b><br/><span class='ex'>入库 D</span>"]:::win
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Claude Code 按三臂模板写一整段程序，其中一段就是 Fig. 1(c)：<span class="ex">GRASP target_width −0.8, agent_id 0</span>，接着 <span class="ex">checkpoint("brush_grasped", notes="closed on the handle?")</span>。按 Prompt 8 的流程，跑完后 agent 打开 checkpoints/brush_grasped/ 的多视角图，看夹爪是不是夹在刷柄上，没夹上就改程序再跑（流程推演）。论文没报 Brush Box 实际用了几轮、反馈写了什么；Table 6 只给量级：CoEx 每个任务 ~1–5 次代码生成，逐步 baseline ~30+ 次 VLM 调用。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿 Stage 2–3</span>
+      <span class="stage-name">Grounded verification：twin 提供的三样工具</span>
+      <span class="stage-io">twin 的真值状态 + 任意视角渲染 → 每步 SUCCESS / FAIL、关键步谓词 0 / 1、被挡区域的多视角图（§3.2、App C.3、Prompt 2–8、Table 8）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>多臂工作台里臂会互相挡住接触区，固定视角看不见；风险步（抓前对齐、交接）一错，后面全错（§4.4）。</li>
+        <li><b>给谁用：</b>twin 把这三样工具给"任何在里面行动的 agent"（§3.2）；CoEx 和逐步 baseline 用法不同，见下表。</li>
+      </ul>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>工具</th><th>在 twin 里做什么</th><th>CoEx 里怎么用</th><th>逐步 baseline 里怎么用</th><th>证据</th></tr>
+          <tr><td><b>特权状态检查</b><br><span class="muted">verifier v<sub>l</sub></span></td><td>读真值：TCP 位姿、夹爪开度（1 = 开，−1 = 全合）、物体 6-DoF 位姿；每一步判 SUCCESS / FAIL</td><td>程序先读状态再算 delta；关键 MOVE 后打印 target vs actual 的 gap（够不着时会静默停在最近点，gap 大 = 碰到关节极限）；GRASP + LIFT 前后打印物体 z（不变 = 没抓到）；summary.json 存最终状态</td><td>每一步 VLM 拿当前图和状态；FAIL 就重设参数或插入纠正步；另有卡住检测、动作后漂移纠正、闲置臂稳定</td><td>没有单独 ablation</td></tr>
+          <tr><td><b>Checkpoint 谓词</b><br><span class="muted">φ ∈ {0, 1}</span></td><td>关键步（如抓前夹爪对齐）不动作，只存状态 + 多视角渲染，判谓词</td><td>checkpoint(name, type, notes, suggested_views)，type 是 grasp / lift / handover / place / generic；程序一次跑完、没有实时画面，快照只供跑完后复查</td><td>φ = 1 才往下走：位置误差超过 0.02 m 先 MOVE，朝向误差超过 0.1 rad 先 ROTATE，再转相机确认物体在两指之间</td><td>去掉后 50% → 20%（Table 8）</td></tr>
+          <tr><td><b>自适应视角</b><br><span class="muted">AGGREGATE(RENDER)</span></td><td>从多个虚拟相机渲染 1920×1080 的图再聚合，露出被臂挡住的区域</td><td>Algorithm 1 第 1 行先聚合多视角给规划；checkpoint 的 suggested_views；每轮输出 front、top、side 三张初始图</td><td>CAMERA_ORBIT(yaw, pitch)：规划阶段至少 2 个角度、最多 6 轮；俯视 pitch ≥ 1.2 看布局，侧视 yaw = 0、±1.57、±3.14 看高度和间隙</td><td>去掉后 50% → 30%（Table 8）</td></tr>
+        </table>
+      </div>
+      <p class="note">Table 8 的两个 ablation 都是在逐步 baseline 上做的；CoEx 本身去掉这些工具会怎样，论文没测。</p>
+      <div class="flow"><pre>
+flowchart LR
+  ST["<b>特权状态</b><br/><span class='ex'>TCP、夹爪、物体位姿</span>"] --> VE["<b>verifier</b><br/><span class='ex'>SUCCESS / FAIL</span>"]
+  CK["<b>checkpoint 快照</b><br/><span class='ex'>brush_grasped</span>"] --> PH["<b>谓词 φ</b><br/><span class='ex'>0 / 1</span>"]
+  CM["<b>多相机渲染</b><br/><span class='ex'>CAMERA_ORBIT 或 suggested_views</span>"] --> AG["<b>聚合视图</b><br/><span class='ex'>露出被挡的接触区</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 1(c) 的 <span class="ex">checkpoint("brush_grasped", notes="closed on the handle?")</span> 就是一个抓取后的谓词：夹爪有没有闭合在刷柄上。逐步 baseline 去掉自适应视角或 checkpoint 后，Brush Box 的 S1、S2 都还在（10/10、8/10 和 9/10、8/10），S3 扫动全掉到 <span class="ex">0/10</span>（Table 8）。论文的解释：这是遮挡重的任务，干活的臂从任何固定视角都挡住接触区；没有前提把关，早期误差沿长 horizon 累积。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4 · CoEnv</span>
+      <span class="stage-name">碰撞检查部署：把验证过的轨迹送上真机</span>
+      <span class="stage-io">τ<sup>*</sup>（每个 primitive 结束时各臂的关节角）→ 真机上插值后的关节轨迹，每个插值动作先过扫掠体积检查（§3.3、App C.2）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>twin 里的轨迹只有稀疏的关节点；真机要平滑轨迹，而且几只臂共享工作区，任何一步两只臂扫过的空间相交就会撞。</li>
+        <li><b>记录：</b>仿真里每个 primitive 完成时，记下每只臂 i 的关节角 q<sub>l</sub><sup>(i)</sup>。</li>
+        <li><b>插值：</b>相邻两点线性插值 q̃<sup>(i)</sup>(α) = (1 − α) q<sub>l−1</sub><sup>(i)</sup> + α q<sub>l</sub><sup>(i)</sup>，切成 S 个均匀步给真机控制器（S 没报告）。</li>
+        <li><b>检查：</b>每个插值动作执行前，正运动学沿插值路径、按各臂连杆几何算出扫掠体积 V<sub>l</sub><sup>(i)</sup>；任意两只臂都满足 V<sub>l</sub><sup>(i)</sup> ∩ V<sub>l</sub><sup>(j)</sup> = ∅ 才放行，否则丢掉这个动作，从当前状态重新规划。</li>
+        <li><b>控制器：</b>Franka 走 Deoxys（关节位置控制，用它默认的插值）；Piper SDK 只收关节位置，作者自己在相邻 waypoint 之间线性插值。</li>
+        <li><b>执行方式：</b>真机上是开环回放，不用相机闭环修正（§5 Limitations）；残余位姿偏差因此是主要失败源。</li>
+        <li><b>结果：</b>100 条部署轨迹没有一次臂间碰撞（§4.2；按 Table 1 的 5 任务 × 10 次 × 2 种 agent 正好 100，这是我的推算）。被拒动作、重规划各发生几次，论文没报；按 §3.3 的公式，检查只管臂与臂，不管臂与物体（我的读法）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  TJ["<b>τ* 的关节点</b><br/><span class='ex'>每个 primitive 结束时的 q</span>"] --> IP["<b>线性插值</b><br/><span class='ex'>S 步，S 未报告</span>"]
+  IP --> FK["<b>正运动学算扫掠体积</b><br/><span class='ex'>每只臂一个 V</span>"]
+  FK --> CC["<b>任两只臂的 V 相交吗</b><br/><span class='ex'>Franka、Piper、Piper</span>"]
+  CC -->|"不相交"| RUN["<b>真机执行</b><br/><span class='ex'>开环回放</span>"]:::win
+  CC -->|"相交：丢弃"| RP["<b>从当前状态重规划</b><br/><span class='ex'>回到 CoEx</span>"]:::gap
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-CoEnv/fig4.jpg" alt="四个任务各一对 Sim 和 Real 画面：Cube Stacking、Ball Pickup、Place Cucumber、Brush Box"></div>
+        <figcaption><b>Fig. 4</b>（作者原图）Digital twin to real world：四个任务各一对 Sim | Real，twin 里规划的 rollout 和真机执行并排。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>每组左 Sim、右 Real：</b>twin 里规划的同一时刻和真机执行；Sim 画面里夹爪上的彩色三轴是位姿坐标架（我的读法）。</li>
+        <li><b>右下 Brush Box：</b>例子本身。红框框住 Franka 夹着的刷子，Sim 和 Real 位置一致；右边的 Piper 夹着长盒。</li>
+        <li><b>左下 Place Cucumber：</b>Franka 举着锅盖，绿框是 Piper 夹着、正要放进锅里的黄瓜。</li>
+        <li><b>上排 Cube Stacking、Ball Pickup：</b>双 Franka 工作台；Ball Pickup 两只臂一起夹住足球。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat media-row">
+          <figure><video src="2026-11-16-CoEnv/web-brush-real.mp4" autoplay muted loop playsinline controls></video><figcaption>Brush Box · 真机</figcaption></figure>
+          <figure><video src="2026-11-16-CoEnv/web-cucumber-real.mp4" autoplay muted loop playsinline controls></video><figcaption>Place Cucumber · 真机</figcaption></figure>
+        </div>
+        <figcaption><b>项目页</b>（arXiv comment 所列，PDF 未列）：两个三臂任务的真机自主运行，4× 速，作者说都先在 twin 里规划、验证过。左：一只 Piper 夹住长盒，Franka 从台面拿起刷子，过来回扫（视频所见）；右：Franka 举起锅盖，Piper 把黄瓜放进锅。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Brush Box 的 10 次真机 trial：CoEx <span class="ex">S1 8/10 · S2 8/10 · S3 8/10 · SR 8/10</span>，凡是抓到刷子的都刷完了（Table 1）；没有一次臂间碰撞。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5 · CoEnv</span>
+      <span class="stage-name">复用 verified experience</span>
+      <span class="stage-io">验证过的 episode → ① agent 写的短笔记，当下次的 hints；② 同一程序从新初始状态重跑、在真机上录下的 rollout，当 π0.5 的示教（§3.4、§4.5、App D）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>每条 verified rollout 本身就是一条示教，探索不该白做（§3.4）。</li>
+        <li><b>当范例：</b>框架存下每个验证过的 episode。存的不是原始程序，而是 agent 自己总结的短笔记：过了验证的策略和抓取参数、失败轮的原因；之后经 prompt 的 Operational Hints 字段交给 CoEx。所有实验都开着，没单独 ablate。</li>
+        <li><b>当监督：</b>程序验证通过后，冻结的 agent 收到 reset 指令，从每个新的初始状态重发任务，所以一整个 session 只用一轮探索。每条轨迹展开成 (o<sub>t</sub>, a<sub>t</sub>) 对，按 action chunk 做 behavior cloning（式 1）。</li>
+        <li><b>agent 和 policy 的分工：</b>agent 的程序要查特权状态；policy 只看原始观测，一次前向就出动作，不再逐 episode 推理。</li>
+        <li><b>留作未来：</b>用同样的工具复验 policy 的 rollout，再加进 D。</li>
+      </ul>
+      <p class="eyebrow">符号表（式 1：L<sub>BC</sub>(θ) = E ℓ(π<sub>θ</sub>(o<sub>t</sub>), a<sub>t:t+H</sub>)）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+          <tr><td>o<sub>t</sub></td><td>t 时刻的观测：相机图像 + 本体感觉</td><td>3 路 RGB 640×480、30 Hz，加全部关节角</td></tr>
+          <tr><td>a<sub>t:t+H</sub></td><td>接下来 H 步的动作块（action chunk）</td><td>关节角目标；H 没报告</td></tr>
+          <tr><td>π<sub>θ</sub></td><td>要微调的 visuomotor policy，θ 是它的参数</td><td>π0.5，从公开权重开始</td></tr>
+          <tr><td>ℓ</td><td>policy 自带的模仿损失</td><td>π0.5 的原生 loss</td></tr>
+        </table>
+      </div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-CoEnv/web-fig6.jpg" alt="闭环数据采集：任务指令进冻结的 Vanilla CoEx，轨迹在真机上执行并采集；reset 指令让冻结的 CoEx (Reset) 从新状态重发任务；数据去训练 policy"></div>
+        <figcaption><b>Fig. 6</b>（作者原图，项目页高清版）Closed-loop data collection，用的正是例子的任务。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>左上 Task Instruction：</b>"Grasp a brush and sweep the box."，三个箭头送进 Vanilla CoEx（雪花 = 冻结，不训练）。</li>
+        <li><b>中间一行：</b>Vanilla CoEx 出 Trajectory → 真机执行（照片）→ Data Collection 送去右边的 Closed-Loop Policy Training（火焰 = 这里在训练）。</li>
+        <li><b>Reset Trigger 回路：</b>录完一条就触发 Reset Instruction（"Reset scene with domain randomization"）→ CoEx (Reset)（同样冻结）→ 新初始状态的 twin（灰色图）→ 再交给 Vanilla CoEx 重发任务。</li>
+        <li><b>右上照片：</b>训好的 policy 在真机上跑。</li>
+        <li><b>和实际做法的差别：</b>App D.1 说初始状态是人挑的、场景手动 reset；图上的 domain randomization 在这项研究里没用上。</li>
+      </ol>
+      <div class="flow"><pre>
+flowchart TD
+  PV["<b>P* 已验证</b><br/><span class='ex'>刷盒程序</span>"] --> RS["<b>冻结 agent 重发任务</b><br/><span class='ex'>人挑初始状态、手动 reset</span>"]
+  RS --> RC["<b>真机执行 + 录制</b><br/><span class='ex'>3 路 RGB 30 Hz + 关节角</span>"]
+  RC --> KP["<b>只收完成的</b><br/><span class='ex'>每任务 200 条</span>"]
+  KP --> BC["<b>BC 微调 π0.5</b><br/><span class='ex'>Brush Box 7/10</span>"]:::win
+  PV -.-> NT["<b>agent 写的笔记</b><br/><span class='ex'>→ Operational Hints</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Brush Box：每个 session 9.5 条 verified episode（baseline 2.5，<a href="#exp-4">E4</a>）；真机录 200 条 → π0.5 <span class="ex">7/10</span>，50 条 <span class="ex">4/10</span>，20 条遥操作 <span class="ex">2/10</span>，twin 里 200 条 + 20 条遥操作 <span class="ex">0/10</span>（<a href="#exp-5">E5</a>）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>模拟器放在程序上游（Fig. 1c）</td><td>Level 1：twin 里验证过的刷盒程序上真机，真机录的才是训练数据</td></tr>
+        <tr><td>CoEnv 建 twin：生成 asset、分割 + 消歧、多视角位姿融合、迭代标定</td><td>Stage 1：3 路 RGBD → 刷子、盒子、三只臂的 ManiSkill twin；"被夹爪挡住一部分的刷子"要 GPT 消歧</td></tr>
+        <tr><td>分层规划 + 多臂同步 primitive</td><td>Stage 2：sweep the box → 子目标 → 分臂计划（论文未打印）；agent_id 列表 = 同步</td></tr>
+        <tr><td>CoEx 程序级循环</td><td>Stage 3：Claude Code 写整段三臂程序，checkpoint "brush_grasped"，至多 10 轮</td></tr>
+        <tr><td>特权状态检查、checkpoint 谓词、自适应视角</td><td>贯穿 Stage 2–3：去掉后逐步 baseline 在 Brush Box 的 S3 掉到 0/10</td></tr>
+        <tr><td>碰撞检查部署</td><td>Stage 4：Brush Box 真机 8/10；100 条轨迹 0 次臂间碰撞</td></tr>
+        <tr><td>经验当 hints、当示教</td><td>Stage 5：笔记进 Operational Hints；200 条真机 rollout → π0.5 7/10</td></tr>
+        <tr><td>对比逐步决策、已有框架</td><td>E1：8/10 vs 7/10；E2：Code-as-Monitor 0/10、SimPACT 4/10</td></tr>
+        <tr><td>吞吐</td><td>E4：每 session 9.5 vs 2.5 条（3.8×）</td></tr>
+        <tr><td>失败模式</td><td>E3：Fig. 8 刷子在移动中掉落；逐步 baseline 刷到第三、四下漂离盒面</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>真机上程序级探索更稳（70% vs 50%），验证过的程序还能成批产出真机示教</h2>
+  <p>顺序同论文 §4 的四个问题：<a href="#exp-1">E1</a> 5 个真机任务上 CoEx 对逐步 baseline（Q1）→ <a href="#exp-2">E2</a> 对两个已有 VLM 规划框架（Q2）→ <a href="#exp-3">E3</a> 哪个工具让探索可靠、失败在哪（Q3）→ <a href="#exp-4">E4</a> 每个 session 攒下多少 verified episode、<a href="#exp-5">E5</a> 这些 rollout 能不能当示教（Q4）。E1–E3、E5 比的是真机成功率，E4 比数量；论文没报时间、token 或费用，Table 6 只给了调用次数的量级。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>程序级探索能不能真解多臂任务，比逐步决策强在哪？<span class="exp-src">§4.2 · Table 1</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-CoEnv/tab1.jpg" alt="Table 1：五个任务上 CoEx 和 CoEx w/o code agent 的里程碑 S1 到 S3 和 SR"></div>
+      <figcaption><b>Table 1</b>（作者原图）先看最后一行 Average 的两个 SR（70% vs 50%），再看 S1 → SR 掉了多少：CoEx 80% → 70%，baseline 88% → 50%。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>成功率更高，而且过了第一关就很少再掉。</b>平均 SR 70% vs 50%，5 个任务都领先，Cube Stacking 最高 9/10。baseline 过 S1 反而更多（88% vs 80%），但过了 S1 的 44 次只完成 25 次（57%）；CoEx 是 40 次完成 35 次（88%）。CoEx 的 15 次失败里 10 次在 S1 之前，Ball Pickup 的 4 次失败全在双臂第一次接触球时。例子 Brush Box：CoEx 8/8/8/8，baseline 10/9/7/7。</dd></div>
+      <div><dt>在故事里</dt><dd>Q1，撑起"程序是探索的单位"：在 twin 里端到端验证过的程序把整段多臂动作连贯地写定，要么早早在第一次抓取失败，要么一路做完；逐步决策则让小误差沿时间累积（§4.2）。</dd></div>
+      <div><dt>指标</dt><dd>S<sub>i</sub> = 第 i 个里程碑按顺序达成（Table 5），SR = 最后一个里程碑达成；每个任务、每种 agent 10 次真机 trial。谁来判里程碑，论文没写。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>两套工作台：Franka ×2 做 Cube Stacking、Ball Pickup（双臂抬球）、Transfer Cylinder（交接）；Franka + Piper 双臂做 Place Cucumber（掀锅盖 + 放黄瓜）和 Brush Box。底座固定，物体位姿每次不同；2–3 路 D435i。</li>
+        <li>baseline 是 CoEx w/o code agent：同一 twin、primitive 和工具，GPT-5.6 Sol 每步选 primitive；CoEx 用 Claude Code、M<sub>max</sub> = 10。骨干模型和循环结构同时不同，论文自己承认这点。</li>
+        <li>每格只有 10 次，论文自己说逐任务的差距只能当趋势看；100 条部署轨迹没有一次臂间碰撞。</li>
+        <li>每次 trial 是否重新建 twin、重新探索，论文没写。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>比已有的 VLM 规划框架强吗？<span class="exp-src">§4.3 · Fig. 5(a) · Table 7</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-CoEnv/web-fig5.jpg" alt="Fig. 5 柱状图：(a) 和 Code-as-Monitor、SimPACT 对比，平均 20、40、57、77；(b) 工具 ablation，平均 50、30、20"></div>
+      <figcaption><b>Fig. 5</b>（作者原图，项目页高清版）这里看 (a)：每组四根柱，最右一组 Average 是 20 / 40 / 57 / 77。(b) 在 <a href="#exp-3">E3</a> 讲。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>成功率高过两个已有框架。</b>3 个代表任务平均：CoEx 77%，w/o code agent 57%，SimPACT 40%，Code-as-Monitor 20%（Table 7）。差距最大的是 Transfer Cylinder 交接：Code-as-Monitor 1/10、SimPACT 0/10、CoEx 6/10。Brush Box：0/10、4/10、7/10、8/10。Cube Stacking 上 SimPACT 8/10，高过 w/o code agent 的 6/10。</dd></div>
+      <div><dt>在故事里</dt><dd>Q2：两种失败正好互补。Code-as-Monitor 要等失败在真机上发生才检测到；SimPACT 接受它的模拟器放行的第一个计划。CoEx 在 twin 里先撞上同样的失败，那里重试免费（§4.3）。</dd></div>
+      <div><dt>指标</dt><dd>真机 SR，每个任务 10 次 trial（Table 7 给计数）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>3 个任务分别代表简单双臂（Cube Stacking）、要反应的双臂交接（Transfer Cylinder）、三臂（Brush Box）。</li>
+        <li>Code-as-Monitor（CVPR 2025）做执行时的失败检测，不在仿真里规划；SimPACT（CVPR 2026）在仿真里规划，但没有迭代的 verify–refine 循环。</li>
+        <li>两者用什么模型、能不能用同一个 twin、怎样改成多臂，论文没写。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>哪个工具让探索可靠，失败又在哪？<span class="exp-src">§4.4 · Fig. 5(b) · Table 8 · Fig. 8 · App E</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-CoEnv/tab8.jpg" alt="Table 8：去掉自适应视角或 checkpoint 后，各任务的 S1 到 S3 和 SR"></div>
+      <figcaption><b>Table 8</b>（作者原图）Fig. 5(b) 背后的计数，全部是在 CoEx w/o code agent 上去掉一样工具。先看两边的 SR 列和最后两行 Avg. / Full tools（Full tools = Table 1 的 baseline），再看 Transfer Cylinder、Brush Box 的 S3 列。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>两样工具都不能少，checkpoint 更关键。</b>去掉自适应视角：平均 SR 50% → 30%，Transfer Cylinder、Brush Box 都 0/10；去掉 checkpoint：50% → 20%。Brush Box 两种去法都还能抓到刷子和盒子（S1、S2 为 10/10、8/10 和 9/10、8/10），扫的那一步全掉到 0/10。也有反例：Ball Pickup 去掉自适应视角反而 6/10，高过全工具的 4/10。</dd></div>
+      <div><dt>在故事里</dt><dd>Q3：两样工具对应两类失败：看不见（臂挡住接触区）和前提不可靠（没确认就往下做，早期错误沿长 horizon 累积）。论文据此说两者各自不可少（1.7× 和 2.5×，即 50/30 和 50/20）。</dd></div>
+      <div><dt>指标</dt><dd>同 E1：S<sub>i</sub> 和 SR，每格 10 次真机 trial。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>ablation 只在 CoEx w/o code agent 上做，理由是那里每个工具对单步决策的影响看得见；CoEx 本身去掉工具会怎样，没测。</li>
+        <li>经验 hints 机制所有实验都开着，没单独 ablate。</li>
+        <li>失败分析（App E、Fig. 8）是定性的，没有计数，见下。</li>
+      </ul></dd></div>
+    </dl>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-CoEnv/fig8.jpg" alt="四个失败案例：方块滑落、圆柱交接时掉落、锅盖抓点不稳、刷子在移动中掉落"></div>
+      <figcaption><b>Fig. 8</b>（作者原图）四个代表性失败；图注没说各来自哪种 agent。</figcaption>
+    </figure>
+    <p class="eyebrow">怎么读这张图</p>
+    <ol class="read">
+      <li><b>Cube Stacking：</b>放置时有 sim-to-real 位置偏差，叠上去的方块滑落（红箭头）。</li>
+      <li><b>Transfer Cylinder：</b>接收臂没对准递出臂的夹爪，交接时圆柱掉落。</li>
+      <li><b>Place Cucumber：</b>锅盖抓在不稳的点上（红圈），拿着的时候掉了。</li>
+      <li><b>Brush Box：</b>例子自己的失败：规划错误让刷子在移动阶段掉落（红框）。</li>
+    </ol>
+    <ul class="tight">
+      <li><b>失败模式 1，sim-to-real 位置偏差</b>（5 个任务都有）：外参和位姿估计的残差带来毫米级偏移；Ball Pickup 每只臂 ~2–3 mm 就合不拢，Place Cucumber 的锅口只有 ~12 cm。论文建议接触时做 residual 修正，或在 trial 之间用 fiducial 在线重标外参。</li>
+      <li><b>失败模式 2，重规划停滞：</b>逐步 agent 卡在已经失败的抓法上微调；code agent 有时只把目标挪 1 mm，不碰真正的几何约束，耗光 M<sub>max</sub>。建议用鼓励多样性的 prompt，或记住失败过的策略。</li>
+      <li><b>失败模式 3，agent 特有：</b>逐步 agent 20+ 步后末端漂移，Brush Box 刷到第三、四下时刷子已离开盒面几毫米；CoEx 难在交接这类"一只臂要看另一只臂实际停在哪"的步骤，程序只能预判。建议混合：反应式子步交给逐步控制，其余留在程序级。</li>
+    </ul>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>同样一个 session，能攒下多少条 verified episode？<span class="exp-src">§4.5 · Table 2 左</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-CoEnv/tab2.jpg" alt="Table 2：每个 session 的 verified episode 数，以及不同训练数据下 π0.5 的真机成功率"></div>
+      <figcaption><b>Table 2</b>（作者原图）这里看左半 Verified episodes / session；右半在 <a href="#exp-5">E5</a>。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>verified episode 多 3.8–11.7 倍。</b>Cube Stacking 17.5 vs 1.5（11.7×），Brush Box 9.5 vs 2.5（3.8×）。</dd></div>
+      <div><dt>在故事里</dt><dd>Q4 前半：一个验证过的程序能从新初始状态反复重跑（Algorithm 1 第 11 行），推理摊到很多 rollout 上；逐步 agent 每个 primitive 都要付一次推理。Table 6 的量级：CoEx 每个任务 ~1–5 次代码生成，逐步 baseline ~30+ 次 VLM 调用；twin reset 是瞬时的。</dd></div>
+      <div><dt>指标</dt><dd>每个 agent session 产出的 verified episode 数。论文没定义 session：多长、什么预算、平均了几个 session（17.5 这样的小数说明是平均值），都没写。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>只测了 Cube Stacking 和 Brush Box 两个任务。</li>
+        <li>是在 twin 里还是真机上计数，没明说；紧跟的一句 "Twin resets are instantaneous" 暗示是 twin 里（推断）。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>这些 rollout 能直接当示教训 policy 吗？在哪录更要紧？<span class="exp-src">§4.5 · Table 2 右 · App D</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-CoEnv/tab2.jpg" alt="Table 2：每个 session 的 verified episode 数，以及不同训练数据下 π0.5 的真机成功率"></div>
+      <figcaption><b>Table 2</b>（作者原图）这里看右半 π<sub>0.5</sub> policy SR by training data，从左到右：20 条遥操作；twin 里录的 200 条 + 20 条遥操作；50 条、200 条真机 CoEx rollout。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>真机录的 CoEx rollout 比人类示教和 twin 数据都好用，而且越多越好。</b>Cube Stacking：4/10 → 3/10 → 8/10 → 10/10；Brush Box：2/10 → 0/10 → 4/10 → 7/10。twin 数据混训反而低于只用 20 条遥操作。</dd></div>
+      <div><dt>在故事里</dt><dd>Q4 后半和第 4 条贡献：程序、条数、评测协议都一样，第 2 列和第 4 列只差在哪录（twin vs 真机）：3/10 vs 10/10，0/10 vs 7/10。论文的解释：π0.5 吃的是相机图像，渲染图在纹理、光照、传感器噪声上和真相机不同；程序按物体位姿写，所以能跨过去，像素不能。</dd></div>
+      <div><dt>指标</dt><dd>每个 policy 10 次真机 trial 的 SR，协议同 §4.1。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>每个任务用 CoEx 在真机上录 200 条，只收完成的，50 条是其中的子集；3 路 RGB 640×480、30 Hz，加全部关节角；动作是关节角目标。</li>
+        <li>20 条参照示教用 GELLO 遥操作，同一格式；"200 in twin" 是同一个验证程序在 twin 里录的 200 条。</li>
+        <li>从公开的 π0.5 权重微调，每个任务、每份数据一个 policy：30k 步、batch 64、8×H100，不做数据增强。</li>
+        <li>初始状态是人挑的，episode 之间手动 reset（Fig. 6 画的 domain randomization 没用上）；"没有人类示教"，但有人摆场景。只有 2 个任务。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>论文自己承认：</b>twin 只覆盖刚体、预生成 asset、固定底座、静态场景；协调是集中式的，不谈去中心化，也不谈超过 3 只臂。</li>
+    <li><b>论文自己承认：</b>真机是开环回放，残余位姿偏差是主要失败源；评测规模小（每格 10 次）；CoEx 和它的 ablation 骨干模型不同（Claude Code vs GPT-5.6 Sol）。</li>
+    <li><b>论文自己承认：</b>code agent 可能只做 1 mm 级的小改动，耗光 10 轮；交接这类步骤程序只能预判、不能在线适应；依赖专有模型，版本会变。</li>
+    <li><b>没测的：</b>工具 ablation 只在逐步 baseline 上做，CoEx 去掉 checkpoint 或自适应视角会怎样不知道；经验 hints 没 ablate。</li>
+    <li><b>没报告的：</b>twin 的精度（位姿误差、重投影误差、mass 和 friction 的取值）；实际用了几轮、花多久、多少钱；session 的定义；被碰撞检查拒掉、重规划的次数；插值步数 S；Code-as-Monitor 和 SimPACT 怎么跑的。</li>
+    <li><b>谁判 verified：</b>twin 里的"通过"由 code agent 自己读最终状态、日志和快照来判（§3.2），没有独立的自动判据。</li>
+    <li><b>碰撞检查的范围：</b>按 §3.3 的公式只查臂与臂的扫掠体积，不查臂与物体、臂与桌面。</li>
+    <li><b>图文不一致：</b>Fig. 2 写 GPT-5，正文和附录写 GPT-5.6 Sol；Fig. 6 画的是 domain randomization reset，实际是人工 reset。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>r2s-lite 的成功规则：</b>pot-lid episode 在第 9 次被宽松规则放行、场景却是错的。照 CoEx 拆成按顺序的里程碑谓词（Place Cucumber 就是锅盖任务，S1 = 锅盖掀开并拿稳，Table 5），在风险步打 checkpoint 存状态和多视角图，并要求 agent 每轮先读 target vs actual gap、抓取前后物体 z（Prompt 5、8）再判通过。</li>
+    <li><b>r2s-lite 和 WorldClaw 的修复环：</b>单位换成"自包含的整段程序 + 每轮从同一初始状态 reset + 至多 10 轮 + 结构化反馈"；WorldClaw 的白盒场景本来就能给特权状态，可以照 Fig. 3 暴露 get_object_state、delta primitive 和 checkpoint(suggested_views)。</li>
+    <li><b>twin 拿来找程序，不拿来产图像：</b>CoEnv 不求照片级，只求可 reset、可查、度量对齐，靠渲染对比迭代修外参（real2sim-anything-indoor 对齐 Blender 房间和视频相机时可借用）；Table 2 里 twin 渲染数据混训掉到 3/10、0/10，r2s-lite 若想用 Isaac Sim 渲染图训视觉 policy，要先过这一关。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-16-CoEnv.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>

@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>PhysCodeGym</title>
+<meta name="description" content="156 个真实视频任务：coding agent 写 Blender 物理程序重建视频，评测进场景测量并做 counterfactual 干预；最强的 GPT-6-Astra 总分 0.663，motion 最高 0.324">
+<meta name="paper:title" content="PhysCodeGym: Benchmarking Coding Agents for Physically Verifiable 4D Reconstruction">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.17288">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.17288v1">
+<meta name="paper:date" content="2026-10-12">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-16</p>
+  <h1>PhysCodeGym</h1>
+  <p class="full-title">PhysCodeGym: Benchmarking Coding Agents for Physically Verifiable 4D Reconstruction</p>
+  <p class="meta">Shuai Shao, Jinchen He, Cunxin Fan, Zihan Guo, Shijian Wang, Qihan Ren et al.（Zihan Guo、Jianghao Lin、Weiwen Liu、Weinan Zhang 共同通讯） · SJTU、Sun Yat-sen University、Shanghai Innovation Institute、Southeast University、NTU、CMU · arXiv 2026-10-12 · 39 页</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.17288">arXiv</a><a href="https://arxiv.org/pdf/2610.17288v1">PDF</a>
+    <a href="https://github.com/ShaoShuai0605/PhysCodeGym">Code</a><a href="https://huggingface.co/datasets/ShaoShuai0605/PhysCodeGym">Dataset</a>
+  </p>
+  <p class="note">没有项目页。摘要给的代码仓库 2026-11-18 可以打开，README 里有作者做的 physical-validity 回放视频（下面 E4 用了两段）；156 段参考视频放在 Hugging Face。</p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：评测 coding agent 能不能把真实视频重建成能运行的 Blender 物理场景，并进到场景里检查重建出的物理机制是否真的起作用。它也贴近 LLM-Harness（同一个模型在 Codex 和 Claude Code 里的验证行为对比）。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>Coding agent 已经能从视频写出 4D 仿真程序，可以前的 benchmark 要么只比画面和运动，要么只沿原轨迹查物理：keyframe 做出来的运动、漏了接触的场景照样拿高分。</dd></div>
+    <div><dt>Idea</dt><dd>156 个真实视频任务（刚体、液体、可变形、风驱）。Agent 在终端里看视频、写 Blender <code>scene.py</code>、跑仿真、对比后再改。评测有六项指标；其中 physical validity 由一个 verifier agent 读程序、在原生场景里写 probe 测量，还会复制场景做 <b>counterfactual 干预</b>并配 control 场景。</dd></div>
+    <div><dt>Result</dt><dd>九个配置里 GPT-6-Astra（Codex）最好，S<sub>tot</sub> 0.663，但 motion 最高只有 0.324（Tab. 2）。DeepSeek-V4.1-Flash 的 low effort 靠交卷多而领先（0.476），max 在交出的产物上更好（0.547，Tab. 7）。同一模型在 Codex 里得 0.479，在 Claude Code 里得 0.450（Fig. 5）。原条件检查满分的重建，换个释放点就穿进盘子 158 帧（Fig. 22）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>视频对上了，物理可能是假的：以前的 benchmark 量不出「运动是不是由建模的物理产生的」</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Wooden-piece rolling</b>（论文的 Fig. 6d、Fig. 22、Fig. 25–27 都是这个任务）：一段 8 s 参考视频（<span class="ex">240 帧 · 30 FPS · 3840×2160</span>）。一个线轴状的木件（wooden piece）从画面左侧滚进来，横穿木桌；前景有一个盘子（dish），背景有 knight、pawn 等棋子和杯子。Agent 拿不到源程序，也拿不到物理参数。</p>
+    <p>→ 想要：一个从空 Blender 场景开始的 <span class="ex">scene.py</span>，渲染出同一段运动（<span class="ex">240 帧 · 640×360</span>）。木件必须靠 rigid-body solver 滚动，不能靠 keyframe；要是把它推向盘子或 knight，它应该被挡住。</p>
+  </div>
+  <!-- One lane per family of earlier benchmarks: what its protocol measures on this example and the column it lacks. -->
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>本例输入</b><br/><span class='ex'>木件滚过木桌 · 8 s</span>"]:::example
+  IN --> A1["<b>文本输入的生成类</b><br/>Code4D · 4DBuildBench …"]
+  A1 --> AX["只对照文字要求<br/>不和参考视频比运动<br/><span class='ex'>motion 最高才 0.324</span>"]:::gap
+  IN --> B1["<b>视频重建、按保真打分</b><br/>BVB · 4DCodeBench …"]
+  B1 --> BX["keyframe 也能过<br/>场景里的错看不见<br/><span class='ex'>S_obj = S_evt = 1 仍违规</span>"]:::gap
+  IN --> C1["<b>查场景内部物理</b><br/>4DBuildBench · PhysCodeBench"]
+  C1 --> CX["只沿原轨迹查<br/>原路线碰不到盘子<br/><span class='ex'>原条件 1.0 → 穿盘 4.62 mm</span>"]:::gap
+  </pre></div>
+  <p class="note">三条「坏在哪」都是按 §1、§2、§3.2 和 Tab. 1 推断的：论文没有在木件任务上运行这些旧 benchmark。每条线按它缺的那一列归类，所以同一个 benchmark 可能出现在两条线上。文本类 = Code4D、4DBuildBench、PhysCodeBench（三者都没有 Motion Alignment）；视频重建类 = BVB（禁止物理仿真）、SceneActBench（恢复 keyframe 轨迹）、MPMWorlds、4DCodeBench（允许 keyframe 和预设运动，主要按保真度打分）；查内部物理 = 4DBuildBench、PhysCodeBench，加上范围有限的 VisPhyBench、4DCodeBench，它们都没有 Mechanism Dependence。数字出处：0.324 是本文九个配置里最高的 motion 分（Tab. 2），说明文本类不测的恰是最难的一项；第二条的例证来自其他任务（App. D.2 列了六个 S<sub>obj</sub> = S<sub>evt</sub> = 1 却违反物理的重建，比如 Newton cradle 松手后势能 9.441 mJ，高于初始总能量 4.971 mJ）；第三条就是本例 GPT-6-Astra 的重建（App. D.3.1，Fig. 22）。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-PhysCodeGym/tab1.jpg" alt="Table 1：8 个已有 benchmark 和本文在 Task、Input、Visual Eval.、Event Eval.、Motion Alignment、Internal Physics Checks、Mechanism Dependence、Harness 各列的对比"></div>
+    <figcaption><b>Table 1</b>（作者原表）先看倒数第二列 Mechanism Dependence：只有本文是 ✓。橙色 ✓ 表示范围有限，红 ✗ 表示没评。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张表</p>
+  <ol class="read">
+    <li><b>Task / Input：</b>前三行（Code4D、4DBuildBench、PhysCodeBench）是 Gen.，输入是 Text；其余是 Recon.，输入从合成帧、合成视频到真实视频。本例这种真实视频，只有 BVB、4DCodeBench 和本文在用。</li>
+    <li><b>Behavioral Fidelity：</b>Event Eval. 查目标动作或结果有没有发生，Motion Alignment 拿运动和参考比；三个文本类都没有 Motion Alignment。</li>
+    <li><b>Physical Implementation：</b>Internal Physics Checks 查场景结构、物理参数或仿真状态；Mechanism Dependence 用配对的物理干预去测「看到的运动是不是靠建模的机制产生」。</li>
+    <li><b>Harness：</b>各 benchmark 报告的执行方式。本文让所有模型跑原生 CLI（Codex、Claude Code、Kimi Code）。</li>
+  </ol>
+  <p class="crux"><b>根本问题：</b>只看「结果像不像」或「原轨迹上对不对」，没人检查运动是不是真的依赖建模出来的接触、支撑和力。　<b>这篇的切入点：</b>提交物是程序，核心运动必须来自 solver；评测进到原生场景里测量，再复制场景做 counterfactual 干预（关接触、移释放点、去支撑），配 control 场景来判断机制依赖。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的 benchmark</th></tr>
+      <tr><td><b>4DCodeBench</b>（最接近）<br><span class="muted">[45]</span></td><td>评 agent 把真实和合成视频重建成可执行的动态场景</td><td>比外观、几何、运动，加 state/event 问答和 mesh 完整性诊断；合成子集有 3D 真值</td><td>允许 keyframe、预设运动和物理仿真任选，主要按保真度打分 → 本文要求核心运动出自 solver，并用干预测机制依赖</td></tr>
+      <tr><td><b>其他视频→程序 benchmark</b>（本文所属的一类）<br><span class="muted">BVB、SceneActBench、VisPhyWorld（Tab. 1 记作 VisPhyBench）、MPMWorlds</span></td><td>评 agent 从视频或帧恢复场景结构和动态</td><td>BVB 把真实视频重建成 Blender 动画、禁止物理仿真；SceneActBench 用给定资产恢复 keyframe 轨迹；后两个从合成观测恢复可执行仿真</td><td>没有事件评估，多用合成输入，场景内物理基本不查 → 本文用真实视频，加事件 rubric 和场景内测量</td></tr>
+      <tr><td><b>文本→动态场景 benchmark</b><br><span class="muted">Code4D（Code2Worlds）、4DBuildBench（SimWorlds）、PhysCodeBench</span></td><td>评 agent 按文字生成动态 3D 场景及其物理实现</td><td>4DBuildBench 分开评视觉和内部物理（solver 配置、约束、动画替身）；PhysCodeBench 读引擎状态做物理断言和守恒诊断</td><td>只对照文字要求，没有参考观测可比 → 本文还要和参考视频的事件、运动对齐</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Code as Worlds</b><br><span class="muted">[49]</span></td><td>从文字或真实视频发现可执行的世界</td><td>构造、验证、精炼世界；支持改条件后重跑，再拿这些世界做物理推理的监督</td><td>目标是发现世界、产出推理监督 → 本文把「改条件重跑」变成独立评测：干预配 control，判断机制依赖</td></tr>
+      <tr><td><b>视频物理重建方法</b><br><span class="muted">Vid2Sim、PAC-NeRF、<a href="2026-11-05-PhysTwin.html">PhysTwin</a>、Spring-Mass 3DGS、∆YNAMICS、OVOW</span></td><td>从视频恢复几何、物性和动态，用来预测和重仿真</td><td>几何/外观表示接可微连续体、降阶或弹簧质点仿真；∆YNAMICS 让语言模型写场景配置，在 MuJoCo 里重仿真</td><td>是方法，表示和仿真器事先定好 → 本文把同一目标交给 coding agent 写开放的 Blender 程序，并给出评测</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §1、§2 Related Work 和 Tab. 1，未另行检索。PhysTwin 在 library 里有页面，本文只在 §2 引用，没有数字对比。§2 还提到用代码加视觉反馈做静态或动态 3D 的 Thinking in Blender、VIGA，以及 BlenderGym 等图形编辑 benchmark，这里略去。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>给 coding agent 一段真实视频，让它写出能重跑的 Blender 物理程序；评测既比画面，也进场景测量、做干预</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-PhysCodeGym/fig2.jpg" alt="Fig. 2：三段式流程。Stage 1 Task Input（四类任务和真实视频），Stage 2 Agent Reconstruction（模型加 harness 组成 coding agent，写 scene.py、比对仿真视频、修改），Stage 3 Independent Verification（Factual Evaluation 的 LLM judge 和规则 judge；Counterfactual Evaluation 的场景干预、重仿真和位移表）"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）PhysCodeGym 的重建和验证流程。图里的干预示例是三个球的碰撞，不是木件任务。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>Stage 1 Task Input（左上蓝框）：</b>圆盘是四大类（Rigid body、Liquid、Deformable、Wind-driven）；中间是 Real Video。下方虚线 "Reference evidence for evaluation" 表示参考视频既是任务输入，也是评测证据。本例：木件视频。</li>
+    <li><b>Stage 2 Agent Reconstruction（右上黄框）：</b>Models（各家模型图标）加 Harness（三个 CLI 图标）组成 coding agent。Agent 写 Code → <code>scene.py</code> → Simulated Video，再和 Reference video 做 compare，Revise 箭头回到 agent；虚线向下是 Final submission <code>scene.py</code>。本例：DeepSeek-V4.1-Flash 在 Codex 里改了接触几何，第 20 次启动 Blender 才出最终片（Stage 2）。</li>
+    <li><b>Stage 3 上半 Factual Evaluation：</b>Reference 和 Reconstruction 取同一时刻的帧（2.9 s、3.1 s、3.5 s），分给 LLM as Judge（Object + Event Rubrics）和 Rule-based Judge（SSIM + LPIPS + Motion），汇到右上 Overall Scores：Visual Score（SSIM | LPIPS | Object）、Physical Score（Event | Motion | Validity）。本例：Object 0.286，Event 0 或 1（Stage 3）。</li>
+    <li><b>Counterfactual Evaluation · Scene intervention：</b>Agent 读 <code>scene.py</code>，Inspect → Copy → Edit。Schematic controls 里红色「- … ON」改成绿色「+ … OFF」，就是一次改动：关掉球之间的接触（Ball contact），或关掉发射用的力场（Launch field）。黄底 "Same initial state, Table support preserved"：其他条件都不动。</li>
+    <li><b>Native-state trajectories（t = 3.50 s）：</b>A 是来球，B 是中间球，C 是目标球。Contacts enabled → 目标响应；Ball contacts disabled → A 照样来、C 不动；Launch field disabled → 根本没有发射。</li>
+    <li><b>Rule-based Judge 表：</b>t = 3.50 s 时 A、C 的位移（scene units）。Contact on：0.887、0.581；Contact off：1.349、0；Launch off：0、0。两个 ✓（来球运动保留、目标响应消失）→ "Contact dependence supported"，只针对这一个机制 → 变成 Physical validity evidence，汇入 Physical Score。本例对应的干预是把释放点对准盘子（Stage 5）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>参考视频</b><br/><span class='ex'>木件滚过木桌 · 8 s</span>"]:::example --> A["<b>Coding agent</b><br/><span class='ex'>写 → 跑 → 改 scene.py</span>"]
+  A --> V["<b>Visual score</b><br/>SSIM · LPIPS · Object<br/><span class='ex'>Object 0.286</span>"]
+  A --> P["<b>Physical score</b><br/>Event · Motion · Validity<br/><span class='ex'>Event 0→1 · CF 穿盘</span>"]:::win
+  </pre></div>
+  <p class="flow-hint">S<sub>tot</sub> = (S<sub>vis</sub> + S<sub>phys</sub>)/2。本例的数字分属不同重建：Object 0.286 和 Event 0→1 是 DeepSeek-V4.1-Flash 在 Claude Code 和 Codex 里的两次重建，「CF 穿盘」是 GPT-6-Astra 的重建。</p>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>5 个 stage：建任务 → agent 重建 → 视频五项 → 场景内检查 → counterfactual 干预</h2>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · 建任务</b><br/><span class='ex'>8 s 片段 + 3 份标注</span>"] --> S2["<b>2 · Agent 重建</b><br/><span class='ex'>第 20 次启动才出片</span>"]
+  S2 --> S3["<b>3 · 视频五项指标</b><br/><span class='ex'>Object 0.286 · Event 1</span>"]
+  S2 --> S4["<b>4 · 场景内物理检查</b><br/><span class='ex'>原条件判据 1.0</span>"]
+  S4 --> S5["<b>5 · Counterfactual 干预</b><br/><span class='ex'>穿盘 158 帧</span>"]:::win
+  S3 --> T["<b>汇总 S_tot</b><br/><span class='ex'>(S_vis + S_phys)/2</span>"]
+  S5 --> T
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。Stage 4 和 5 合起来给出第六项指标 physical validity（S<sub>val</sub>），counterfactual 判据是它的一部分。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">建任务（§3.1、App. A.1）</span>
+      <span class="stage-io">公开视频 → 156 个任务，每个是标准化片段 + 物体清单 + 事件标注 + 物理 rubric</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>任务的物理原因要看得出来、要能在 Blender 里表达，评分要有据可查。</li>
+        <li><b>四条原则：</b>P1 运动由画面里可见的物理过程引起；P2 Blender 能表达，排除燃烧、切割、撕裂和断裂、虹吸和吸收、液体混合、磁力；P3 每个任务只属一个主类，刚体和液体再按主导机制分子类；P4 标注只写视频里看得到的，带时间戳（物体短暂出画时的路径不要求）。</li>
+        <li><b>收集：</b>Pexels、Physics-IQ、BAAI-DataCube Physics-aware Videos、IRIS → 自动检查 + 视觉 agent 审 + 人工挑（相机稳、背景简单、事件不被挡、现象多样）。</li>
+        <li><b>标准化：</b>从至少 8 s 的视频里截一段运动最明显的连续 8 s，统一成 3840×2160、30 FPS、240 帧，保持原播放速度；去重并人工终审后留 156 段，一段一个任务。</li>
+        <li><b>三份标注：</b>① 物体清单：类别、数量、外观、初始布局，模型辅助起草 → S<sub>obj</sub>；② 事件标注：参与物体、关键动作、先后顺序、终态是否达成并保持，带时间戳，共 578 条 → S<sub>evt</sub>；③ 物理 rubric：允许的初始条件、驱动方式和等价表示，加检查机制的判据，部分任务含 counterfactual 判据 → S<sub>val</sub>。前两份都用参考视频和无关视频做对照检查。</li>
+        <li><b>构成（Tab. 3、4）：</b>刚体 95（下落反弹 16、滚动与轨道 18、碰撞与连锁 14、摆动与悬挂 16、旋转 20、颗粒与堆积 7、堆叠静平衡 4）；液体 40（倾倒装填 25、射流与表面流 8、液体–物体 7）；可变形 12；风驱 9。来源：Pexels 122、Physics-IQ 27、BAAI 5、IRIS 2。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>收集</b><br/><span class='ex'>Pexels 122 · Physics-IQ 27 …</span>"] --> b["<b>筛选 + 截 8 s</b><br/><span class='ex'>240 帧 · 30 FPS</span>"]
+  b --> o["<b>物体清单</b><br/><span class='ex'>→ S_obj</span>"]
+  b --> e["<b>事件标注</b><br/><span class='ex'>578 条 → S_evt</span>"]
+  b --> r["<b>物理 rubric</b><br/><span class='ex'>含 CF 判据 → S_val</span>"]
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-PhysCodeGym/fig1.jpg" alt="Fig. 1：四个大类各一例，上排参考帧、下排 agent 重建：转臂推倒多米诺、牛奶倒进玻璃杯、布盖住茶壶、旗子在风里飘；中间是 PhysCodeGym 字样的拼贴"></div>
+        <figcaption><b>Fig. 1</b>（作者原图）四个大类各一例，上排参考帧、下排 agent 重建（图注没说是哪个 agent）。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>每格的两排：</b>上排 Reference（参考视频），下排 Recon.（重建），左上角是时间戳。</li>
+        <li><b>Rigid body：</b>转臂推倒一排多米诺（0.00 / 3.20 / 4.00 s）；本例的木件也属刚体。</li>
+        <li><b>Liquid：</b>牛奶倒进玻璃杯，液面上升（0.00 / 4.00 / 7.97 s）。</li>
+        <li><b>Deformable：</b>布落下盖住茶壶（2.50 / 3.30 / 4.50 s）。</li>
+        <li><b>Wind-driven：</b>旗子在风里飘（0.00 / 2.00 / 4.00 s）。</li>
+        <li><b>中间：</b>PhysCodeGym 字样由许多小缩略图拼成，图注没有解释。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>木件滚动是刚体任务；按 Fig. 6 的排法属于 Rolling and tracks（18 个任务、68 条事件）。论文没写这段视频来自哪个来源。</p>
+        <p>它的 rubric 有两类判据：原条件判据检查滚动体的刚性、连续性和桌面支撑（App. D.3.4）；counterfactual 判据把释放点移向旁边的障碍物（盘子、knight、木 token），看障碍物有没有接触响应（App. D.3）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Agent 重建：交一个程序（§3.2、§4.1、§4.2、App. A.3）</span>
+      <span class="stage-io">参考视频（终端容器里）→ <code>scene.py</code> + 原生 Blender 场景 + 240 帧渲染</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>要的不是另一段相似的视频，而是一个能重跑、能检查、能改条件再跑的物理过程模型，所以提交物是程序。</li>
+        <li><b>观测工具：</b>视频元数据、指定帧、帧网格、按给定频率采样的片段。参考场景的源程序和物理参数都不给。</li>
+        <li><b>构建工具：</b>运行场景程序、检查保存下来的场景结构、渲染仿真状态的单帧预览。提交前还有一个检查工具，报格式和策略问题，让 agent 在结束前改掉。</li>
+        <li><b>提交物 <code>scene.py</code>：</b>自包含，从空 Blender 场景用代码建出几何、材质、相机、灯光，设好物理属性、初始条件、约束和力；渲染前 bake 仿真缓存；输出原生场景文件和 240 帧 640×360、30 FPS 的渲染（8 s）。不许解码媒体、联网、开子进程、动态 import。</li>
+        <li><b>什么算有效重建：</b>(i) 复现外观、布局和可见事件；(ii) 运动由建模的物理产生：核心物体的运动必须来自 solver、力、约束和初始条件。Keyframe、脚本位姿、隐藏支撑、视频里没有的力场（例如把球引向观测路径的 attractor）都不算。显式建模的外部驱动可以，但被驱动的物体必须靠物理交互响应。不要求还原真实参数（质量常常看不出来）。</li>
+        <li><b>预算：</b>每个任务最多 3 h、20 次 Blender 启动（运行、检查、预览共用这个配额）；观测命令不占启动次数，但占时间和上下文。默认 high reasoning effort。</li>
+        <li><b>运行环境：</b>Harbor v0.22.0 的 Docker 后端（Ubuntu 24.04、Blender 4.0.2）里跑原生 CLI：Codex 跑 GPT-6-Astra、GPT-5.6-Sol、GPT-6-Luna、GPT-5.6-Luna；Claude Code 跑 DeepSeek-V4.1-Flash、Claude Sonnet 5、Qwen3.8-Flash、GLM-5.3-Flash；Kimi Code 跑 Kimi K2.8 Preview。</li>
+        <li><b>怎么计分：</b>每个模型每个任务排一次。服务端故障另记 recovery run；agent 自己的错（超出上下文、发了坏图）算失败。同一任务跑过多次时，取最后一次产出渲染序列的 run，不取最高分；一次都没产出就记 0。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  o["<b>看视频</b><br/><span class='ex'>帧 · 帧网格 · 片段</span>"] --> w["<b>写 / 改 scene.py</b><br/><span class='ex'>接触几何、斜面</span>"]
+  w --> r["<b>跑 Blender</b><br/><span class='ex'>每次占 20 次中的 1 次</span>"]
+  r --> p["<b>预览、查场景</b><br/>不对就回去改<br/><span class='ex'>发现木件卡住</span>"]
+  p --> w
+  p --> s["<b>检查工具 → 提交</b><br/><span class='ex'>第 20 次启动出片</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-PhysCodeGym/fig27.jpg" alt="Fig. 27：木件滚动任务。Reference、Claude Code、Codex 三行，各取 0.00 s、3.97 s、7.97 s 三帧"></div>
+        <figcaption><b>Fig. 27</b>（作者原图）DeepSeek-V4.1-Flash 在两个 harness 里重建木件任务。Codex 先测试并修改接触设置，再完成最终渲染并检查运动。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>行和列：</b>三行是 Reference、Claude Code、Codex，三列是 0.00 s、3.97 s、7.97 s。两行重建都是 DeepSeek-V4.1-Flash，high effort。</li>
+        <li><b>Reference：</b>木件从左缘滚进来，3.97 s 到桌子中间，7.97 s 到右侧。</li>
+        <li><b>Claude Code 行：</b>没有复现滚动事件（event 0）。它用完 Blender 配额后才改写最终程序，最终版一次也没跑过。</li>
+        <li><b>Codex 行：</b>木件同样从左滚到右（event 1）。但背景、杯子、棋子都不像，两行的 S<sub>obj</sub> 都只有 0.286。</li>
+        <li><b>这些帧从哪来：</b>是 benchmark verifier 用提交的程序重新跑出来的，不是 agent 自己的渲染。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p><b>Codex</b>（App. D.4.1，trace 步号）：起初也做出一个卡住不动的木件 → 发现卡住，测试 collision shape 和桌面分辨率，改接触几何和斜面（132–160）→ 第 20 次启动渲染最终程序 → 检查输出帧和诊断，finalize（163–169）。</p>
+        <p><b>Claude Code</b>：做过原型测量，但在跑最终改写版之前用完了 Blender 配额；最后的检查找不到保存的场景和完整的帧序列，finalizer 拒收（199–205）。Tab. 10：配额用完后改了最终程序，静态检查通过，执行被拦，输出检查失败（166–205）。</p>
+        <p>两边的任务正文逐字相同，都要求验证再 finalize；只是 Codex 的任务 prompt 开头多一句「把最后一次 Blender 启动留给最终验证」（App. D.4.3）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">视频五项指标（§4.3）</span>
+      <span class="stage-io">重新渲染的 240 帧 + 参考视频 → S<sub>SSIM</sub>、S<sub>LPIPS</sub>、S<sub>obj</sub>、S<sub>evt</sub>、S<sub>mot</sub></span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>画面像不像、物体对不对、事件发生没有、哪里动了多久，是四种不同的失败，揉成一个数就分不清了。</li>
+        <li><b>结构相似度（S<sub>SSIM</sub>）：</b>逐帧 SSIM。</li>
+        <li><b>感知相似度（S<sub>LPIPS</sub>）：</b>clip(1 − d, 0, 1)，d 是逐帧 LPIPS（AlexNet）距离，所以越高越好。</li>
+        <li><b>物体准确率（S<sub>obj</sub>）：</b>一个 VLM 按物体清单逐项判断，取总通过率；对光照和纹理的细小差别不敏感。</li>
+        <li><b>事件得分（S<sub>evt</sub>）：</b>VLM 逐条判断事件有没有在候选视频里发生，并引用候选视频里的时间段作证据。它能看到参考视频里每个角色的静帧（只用来认物体）、候选视频和补充的时间帧，但看不到参考视频的动作描述。每个候选独立判 3 次，逐条取多数；得分是通过条目的加权比例；定义任务的关键事件失败，就封顶为 0（例：球没绕着托盘滚，托盘摆得再对也是 0）。</li>
+        <li><b>运动得分（S<sub>mot</sub>）：</b>借用 Physics-IQ 的运动掩膜：灰度帧做高斯模糊，减去滑动平均背景，再阈值化和形态学处理。Spatial IoU 比「哪里动过」；Weighted IoU 再比「动了多久」（每个像素在参考和候选里运动帧的占比，取 Σ 较小值 / Σ 较大值）。两者平均。不用认物体，能补上事件标注没写的细节，比如摆幅衰减、液流范围。</li>
+        <li><b>汇总：</b>S<sub>vis</sub> = (S<sub>SSIM</sub> + S<sub>LPIPS</sub> + S<sub>obj</sub>)/3；S<sub>phys</sub> = (S<sub>evt</sub> + S<sub>mot</sub> + S<sub>val</sub>)/3；S<sub>tot</sub> = (S<sub>vis</sub> + S<sub>phys</sub>)/2。没交出有效产物的任务，每项都记 0 并计入分母。</li>
+        <li><b>为什么 event 和 motion 都要：</b>两个摆的任务里，GPT-5.6-Luna 的 motion IoU 最高（0.318）但 event 0；GPT-6-Astra motion 0.242、event 1（Fig. 11，App. D.1.1）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  v["<b>候选视频</b><br/><span class='ex'>240 帧 · 640×360</span>"] --> px["<b>逐帧比</b><br/>SSIM · LPIPS"]
+  v --> j["<b>VLM judge ×3</b><br/><span class='ex'>Object 0.286 · Event 1</span>"]
+  v --> m["<b>运动掩膜 IoU</b><br/>空间 + 时长"]
+  px --> vis["<b>S_vis</b><br/>SSIM、LPIPS、Object 平均"]
+  j --> vis
+  j --> ph["<b>S_phys</b><br/>Event、Motion、Validity 平均"]
+  m --> ph
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>DeepSeek-V4.1-Flash 的两次木件重建：S<sub>obj</sub> 都是 0.286（物体和外观都不太像）；S<sub>evt</sub> 在 Claude Code 里是 0，在 Codex 里是 1（滚动事件找回来了）。论文没报这两次重建的 SSIM、LPIPS 和 motion。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">场景内物理检查：原条件（§4.3、App. B.1）</span>
+      <span class="stage-io"><code>scene.py</code> + 原生场景 + 任务 rubric → 每条判据的判定和测量证据 → S<sub>val</sub></span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>视频上的检查看不到场景里的穿模、凭空多出的能量、比物体大一圈的碰撞体（E4 有六个例子）。</li>
+        <li><b>谁来查：</b>一个当 verifier 的 agent，按人工标注的 rubric 查。判据覆盖数值稳定、重力、质量、驱动，以及任务特定的接触、支撑、结构完整；同一任务的所有候选用同一份 rubric。</li>
+        <li><b>怎么查：</b>读提交的程序和原生场景 → 把 rubric 里的语义角色对到场景物体上 → 追踪它们的运动是怎么实现的 → 定测量计划，按这份实现写 probe → 在 Blender 里测几何、物体状态、接触和支撑关系、随时间的运动，用 Python 分析 → 证据不够就再测。</li>
+        <li><b>报告：</b>每条判据一个判定，附源码位置和实测证据；评测 harness 按 rubric 的聚合规则算分。漏掉参考事件归 event 管，本身不算物理违规。</li>
+        <li><b>分数口径：</b>validity 结果仍是 provisional，取 rubric 分数区间的下界；已有产物但测不了的技术缺口不计入，登记过的缺产物 0 分保留。S<sub>phys</sub> 先按任务算再平均，只用有 validity 的任务。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>读程序 + 原生场景</b><br/><span class='ex'>scene.py、场景文件</span>"] --> b["<b>rubric 角色 → 场景物体</b><br/><span class='ex'>滚动体、桌面</span>"]
+  b --> c["<b>写 probe，在 Blender 里测</b><br/><span class='ex'>刚性、连续、支撑</span>"]
+  c --> d["<b>逐条判定 + 证据</b><br/><span class='ex'>原条件判据 1.0</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>木件任务的原条件判据检查滚动体的刚性、连续性和桌面支撑。GPT-6-Astra、GPT-5.6-Sol、GPT-5.6-Luna 的三个重建在这些判据上都拿 1.0（App. D.3）。可它们各自场景里都有一个原路线碰不到的障碍物没有碰撞，这一步看不出来，要靠 Stage 5。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Counterfactual 干预（App. B.2、D.3）</span>
+      <span class="stage-io">原生场景 + rubric 的 CF 判据 → 干预后的测量，和 control 对照 → CF 判定（计入 S<sub>val</sub>）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>有些交互原轨迹从来不触发（木件的原路线不经过盘子），缺了这个接触，原条件下永远查不出来。</li>
+        <li><b>rubric 先写好：</b>要测哪种物理依赖、干预后预期什么响应。</li>
+        <li><b>做法：</b>在程序里找到对应机制 → 复制出一个独立的场景副本 → 实施规定的干预（改一个力、去掉一个接触、改一个初始条件，其余相关条件不变）→ 重仿真，和没改的 baseline 比。</li>
+        <li><b>解读之前：</b>先确认干预真的生效，再用 control 场景检验测量本身。</li>
+        <li><b>判失败的门槛：</b>要有实测的材料侵入或无支撑运动，外加一个会正常响应的 control；只看到轨迹变了不算。</li>
+        <li><b>计分：</b>CF 检查是 validity rubric 里的判据。论文只说「selected tasks」，没给数量；代码仓库 README 写 43 个任务带 CF，评分文档写这些任务的原条件判据合计权重 50、CF 权重 50。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>复制场景</b><br/><span class='ex'>同一初始状态</span>"] --> b["<b>干预</b><br/><span class='ex'>释放点移向盘子</span>"]
+  b --> c["<b>候选重仿真</b><br/><span class='ex'>158 帧在盘里 · 4.619 mm</span>"]:::gap
+  b --> d["<b>Contact control</b><br/><span class='ex'>被挡住 · 0.110 mm</span>"]
+  c --> e["<b>CF 判据失败</b><br/><span class='ex'>盘子没有接触</span>"]
+  d --> e
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-PhysCodeGym/fig22.jpg" alt="Fig. 22：GPT-6-Astra 的木件穿过盘子。(a) CF 起点第 1 帧，(b) 第 30 帧压进盘沿，(c) 俯视质心轨迹和盘子投影，(d) 顶点侵入深度随帧变化，最深 4.62 mm，158 帧在盘子材料里"></div>
+        <figcaption><b>Fig. 22</b>（作者原图）GPT-6-Astra 的木件重建：原释放点绕开盘子，移动释放点后木件直接穿过盘子。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(a) CF launch, frame 1：</b>干预后的起点：木件被放到盘子左边、朝盘子滚，离盘面 32.25 mm。</li>
+        <li><b>(b) CF rim crossing, frame 30：</b>木件压进盘沿，没有被挡住。</li>
+        <li><b>(c) Aim the wooden piece at the dish：</b>俯视的质心（COM）轨迹，单位 m。黑点 Release 是释放点；灰圆 Dish footprint 只是盘子的投影；红线 Candidate 穿过整个盘子，蓝线 Contact control 到盘边就停了。</li>
+        <li><b>(d) Measured intrusion into dish material：</b>纵轴是木件顶点侵入盘子三维材料的最大深度（mm），横轴是帧号。红线最深 4.62 mm（正文 4.619 mm），共 158 帧在盘子材料里；蓝线几乎贴着 0（正文：最多 0.110 mm）。</li>
+        <li><b>正文补充：</b>把盘子删掉，候选的质心轨迹完全不变，说明盘子在物理上不存在。Control 用同一个 mesh、质量、惯量和积分步长，只让盘子有接触。所以问题是障碍物没有响应，不是图像或俯视投影上的重叠。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>同一个木件任务，三个模型各漏掉一个原路线碰不到的障碍物，原条件判据都是 1.0：</p>
+        <p><b>GPT-6-Astra · 盘子</b>：158 帧在盘子材料里，最深 4.619 mm（Fig. 22）。<b>GPT-5.6-Sol · knight</b>：knight 的五个材料 mesh 都没有碰撞体；两个释放点分别有 46、29 帧在 knight 里，最深 0.295、0.105 scene units；左侧释放时删掉 knight，122 个采样的位置和速度完全不变（Fig. 25）。<b>GPT-5.6-Luna · 木 token</b>：实心圆柱、没有接触体；两个释放点各连续 32 帧相交，最小符号距离约 −0.110 scene units（Fig. 26）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>156 个任务、四大类、P1–P4 原则</td><td>Stage 1：木件滚动是刚体任务（按 Fig. 6 属 Rolling and tracks）</td></tr>
+        <tr><td>三份标注对应三项指标</td><td>Stage 1：物体清单 → S<sub>obj</sub>，事件 → S<sub>evt</sub>，rubric → S<sub>val</sub></td></tr>
+        <tr><td>提交物是程序，核心运动必须来自 solver</td><td>Stage 2：<code>scene.py</code> 从空场景建起，bake 后渲染；不许 keyframe</td></tr>
+        <tr><td>观测、构建、检查工具；3 h + 20 次启动</td><td>Stage 2：Codex 第 20 次启动才出最终片；Claude Code 配额用完，最终版没跑过</td></tr>
+        <tr><td>Harness 不同，验证行为不同</td><td>Stage 2、E3：同一个 DeepSeek-V4.1-Flash，Codex event 1，Claude Code event 0</td></tr>
+        <tr><td>像素和感知相似度</td><td>Stage 3：本例没报；整体见 Tab. 2</td></tr>
+        <tr><td>VLM 按物体清单判分</td><td>Stage 3：两个 harness 都是 0.286</td></tr>
+        <tr><td>VLM 判事件（三票多数，关键事件失败封顶为 0）</td><td>Stage 3：滚动事件 0 → 1</td></tr>
+        <tr><td>运动掩膜 IoU</td><td>Stage 3：本例没报；Fig. 11 说明 motion 高不等于事件发生</td></tr>
+        <tr><td>Verifier agent 进场景测量（原条件）</td><td>Stage 4：刚性、连续、桌面支撑，三个重建都是 1.0</td></tr>
+        <tr><td>Counterfactual 干预 + control</td><td>Stage 5：移释放点 → 穿盘 158 帧、4.619 mm；control 只有 0.110 mm</td></tr>
+        <tr><td>汇总，缺产物记 0</td><td>Stage 3 的公式；E1、E2</td></tr>
+        <tr><td>Reasoning effort：完成率和质量的取舍</td><td>例子没涉及（论文只有整体统计），见 E2</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>最强的 GPT-6-Astra 总分 0.663，motion 最高 0.324；画面和事件满分的场景照样有物理错</h2>
+  <p>顺序同 §5：<a href="#exp-1">E1</a> 九个配置的总表 → <a href="#exp-2">E2</a> reasoning effort：完成率和质量的取舍 → <a href="#exp-3">E3</a> 同一模型换 harness，验证行为和分数 → <a href="#exp-4">E4</a> 物体和事件满分时的物理错误 → <a href="#exp-5">E5</a> counterfactual 多抓到的错。比的都是分数（重建质量）；E1 还比成本，E2 还比完成率。</p>
+  <p class="eyebrow">表和图里的符号</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>符号</th><th>白话</th><th>在木件例子里</th></tr>
+      <tr><td>S<sub>SSIM</sub></td><td>逐帧结构相似度</td><td>没报</td></tr>
+      <tr><td>S<sub>LPIPS</sub></td><td>感知相似度：1 减 LPIPS 距离，截到 0–1</td><td>没报</td></tr>
+      <tr><td>S<sub>obj</sub></td><td>VLM 按物体清单判的通过率</td><td>0.286（DeepSeek-V4.1-Flash，两个 harness）</td></tr>
+      <tr><td>S<sub>vis</sub></td><td>visual score：上面三项的平均</td><td>没报</td></tr>
+      <tr><td>S<sub>evt</sub></td><td>VLM 三票多数判事件，关键事件失败记 0</td><td>Claude Code 0，Codex 1</td></tr>
+      <tr><td>S<sub>mot</sub></td><td>运动掩膜的空间 IoU 和时长加权 IoU 的平均</td><td>没报</td></tr>
+      <tr><td>S<sub>val</sub></td><td>physical validity：verifier agent 在场景里测出来的，含 CF 判据</td><td>GPT-6-Astra：原条件判据 1.0，CF 判据失败</td></tr>
+      <tr><td>S<sub>phys</sub></td><td>physical score：event、motion、validity 的平均</td><td>没报</td></tr>
+      <tr><td>S<sub>tot</sub></td><td>总分：(S<sub>vis</sub> + S<sub>phys</sub>)/2</td><td>没报</td></tr>
+    </table>
+  </div>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>九个 agent 配置，谁重建得最好？<span class="exp-src">§5.1 · Tab. 2 · Fig. 3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-PhysCodeGym/tab2.jpg" alt="Table 2：九个模型–harness 配置的六项指标和三个汇总分"></div>
+      <figcaption><b>Table 2</b>（作者原表）先看最右列 S<sub>tot</sub>，再比 S<sub>obj</sub> 和 S<sub>evt</sub> 两列的落差，最后看 S<sub>mot</sub>（全表最低的一列）。粗体第一，下划线第二。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>GPT-6-Astra（Codex）三项汇总都第一：</b>S<sub>tot</sub> 0.663、S<sub>vis</sub> 0.693、S<sub>phys</sub> 0.633；GPT-5.6-Sol 第二（0.570）；Claude Code 组最好的是 DeepSeek-V4.1-Flash（0.450），全表最低是 GLM-5.3-Flash（0.252）。九个配置都是物体分高于事件分（Sol 0.835 vs 0.687），motion 最高只有 0.324。排名还随维度变：GPT-6-Luna 的 visual 略高于 GPT-5.6-Luna（0.505 vs 0.500），event 和 motion 却更低（0.393 vs 0.448，0.128 vs 0.157）。成本（Fig. 3，正文数字）：Sol 每任务约 $3.40 得 0.570，Astra $11.57（3.4 倍）得 0.663，两者在估算成本的 Pareto 前沿上；DeepSeek-V4.1-Flash 每任务累计 16.98M token，约是 Sol（5.70M）的 3 倍，却只得 0.450，估算成本 $0.72。</dd></div>
+      <div><dt>在故事里</dt><dd>Agent 认得出物体，难在重建运动和物理交互：这正是这个 benchmark 要量、旧 benchmark 量不到的部分。</dd></div>
+      <div><dt>指标</dt><dd>六项加三个汇总，越高越好（符号见上表）。缺产物的任务每项记 0 并计入分母；S<sub>val</sub> 取 rubric 区间下界；S<sub>phys</sub> 只在有 validity 的任务上平均，所以 S<sub>tot</sub> 列等于表里 S<sub>vis</sub> 和 S<sub>phys</sub> 两列的平均。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>156 个任务；high effort、3 h、20 次 Blender 启动；每个模型每任务排一次，取最后一次有渲染序列的 run。</li>
+        <li>每个模型只在一种 harness 里跑（OpenAI 模型都在 Codex），模型和 harness 的影响分不开。</li>
+        <li>换口径时前两名不变：对齐任务子集（Tab. 5）Astra 0.664、Sol 0.570；只算有产物的任务（Tab. 6）Astra 0.663、Sol 0.574。但只算有产物时 GLM-5.3-Flash 是 0.488、Qwen3.8-Flash 是 0.470，远高于 Tab. 2 的 0.252、0.293。我的读法：低分配置很大一部分输在没交出产物。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>Reasoning effort 越高越好吗？<span class="exp-src">§5.2 · Fig. 4 · Tab. 7 · App. C.3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-PhysCodeGym/fig4.jpg" alt="Fig. 4：DeepSeek-V4.1-Flash 在 low、high、max 三档 reasoning effort 下的 visual 三项、physical 三项和汇总分"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）(a) visual 三项、(b) physical 三项、(c) 汇总；右边标的是 max 的值。这张图把缺产物记 0（benchmark aggregate）；low 和 high 的数值图上没标，总分看下面的 Tab. 7。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-PhysCodeGym/tab7.jpg" alt="Table 7：三种平均集合下 low、high、max 的总分"></div>
+      <figcaption><b>Table 7</b>（作者原表）同一批分数的三种平均法：第一行缺产物记 0；第二行只算各自交出的产物；第三行只算三档都有产物和物理判定的共同任务。每行看哪一档加粗。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>完成率和质量此消彼长。</b>缺产物记 0 时 low 最高（0.476；max 0.460，high 0.450）；只算交出的产物，max 最高（0.547；low 0.527，high 0.525），max 的 event 和 physical 也最高（0.615、0.492）；共同任务上 max 0.564（low 0.533，high 0.535），event 0.628 vs low 0.551。low 比 max 多出的 +0.016 = 缺产物不对称贡献 +0.036 + 双方都有产物的任务贡献 −0.020；只用原条件 validity 时，这个差距只缩小约 0.003，CF 是次要因素。代价：max 的输出 token 是 low 的 2.46 倍，平均执行时间从 93.3 涨到 110.7 分钟；多出来的缺产物集中在超时、最终提交跑不通或缺文件。</dd></div>
+      <div><dt>在故事里</dt><dd>固定预算下想得多不一定赢：benchmark 总分同时考质量和交卷，两者要分开看。</dd></div>
+      <div><dt>指标</dt><dd>S<sub>tot</sub> 在三种平均集合下的值（Tab. 7），Fig. 4 用第一种。max 减 low 的逐任务配对差平均 0.030，task bootstrap 95% 区间 [−0.001, 0.061] 含 0，作者说不能当作普遍的 effort 优势。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>只测 DeepSeek-V4.1-Flash，在 Claude Code 里跑 low、high、max；high 档的总分和 Tab. 2 里 DeepSeek 那一行相同（0.450）。</li>
+        <li>三档同样 3 h + 20 次 Blender 启动。</li>
+        <li>Bootstrap 只反映任务抽样；没有重复跑，run 间方差没有估计。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>同一个模型换 harness：验证行为和分数有关吗？<span class="exp-src">§5.2 · Fig. 5 · App. D.4</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-PhysCodeGym/fig5.jpg" alt="Fig. 5：DeepSeek-V4.1-Flash（high effort）在 Claude Code 和 Codex 里的九项分数条形图"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）蓝条 Claude Code，橙色斜线 Codex；都是 DeepSeek-V4.1-Flash、high effort。先看 S<sub>evt</sub> 一行（差最大），再看最底下的 S<sub>tot</sub>。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>Codex 总分更高（0.479 vs 0.450），差得最多的是 event（0.550 vs 0.446）。</b>S<sub>obj</sub>（0.673 vs 0.615）和 S<sub>val</sub>（0.547 vs 0.522）也更高，S<sub>LPIPS</sub>（0.391 vs 0.398）和 S<sub>mot</sub>（0.187 vs 0.200）略低。两条 trace：木件 event 0 → 1，S<sub>obj</sub> 都是 0.286（见 <a href="#stage-2">Stage 2</a>）；倒红酒 event 0 → 0.857，S<sub>vis</sub> 0.521 → 0.601，但 Codex 仍没做出「倾斜、有可见支撑的杯子」那一条。区别在最终修改之后有没有一次成功运行和输出检查：Codex 两例都有，Claude Code 两例都没有（Tab. 10）。</dd></div>
+      <div><dt>在故事里</dt><dd>把验证行为和重建质量连起来：发现问题 → 改 → 重跑 → 看输出，而且预算里要留够这最后一次。</dd></div>
+      <div><dt>指标</dt><dd>同 Tab. 2。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>DeepSeek-V4.1-Flash，high effort，同样 3 h + 20 次启动；Codex 0.150.1 对 Claude Code（历史完整 system prompt 没保留，用 2.1.274 和 2.1.278 的本地抓取对比）。</li>
+        <li>Prompt 差异（Tab. 9）：任务正文逐字相同，都要求验证和 finalize；Codex 的原生 prompt 有 "proactively run tests, lint and do whatever you need to ensure you've completed the task"，任务 prompt 开头还多一句「把最后一次 Blender 启动留给最终验证」。这句提醒本身偏向 Codex。</li>
+        <li>只有一个模型、两条 trace，作者的措辞是 "may relate"：这是相关，不是因果。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>物体和事件都满分，物理就对了吗？<span class="exp-src">§5.2 · App. D.2 · Fig. 16–21</span></h3>
+    <figure class="paper-fig">
+      <div class="mat media-row">
+        <figure><video src="2026-11-16-PhysCodeGym/web-cradle.mp4" autoplay muted loop playsinline controls></video><figcaption>GPT-6-Astra · Newton cradle</figcaption></figure>
+        <figure><video src="2026-11-16-PhysCodeGym/web-gripper.mp4" autoplay muted loop playsinline controls></video><figcaption>DeepSeek-V4.1-Flash · 夹爪</figcaption></figure>
+      </div>
+      <figcaption><b>代码仓库</b> <a href="https://github.com/ShaoShuai0605/PhysCodeGym#physical-validity-checks">README · Physical Validity Checks</a>：作者把场景实测值和回放同步画出来，对应 Fig. 16 和 Fig. 18。左：参考（上）和重建（下），右边势能曲线一路走高，第 236 帧 9.44 mJ，超过 4.97 mJ 的初始估计。右：放慢的夹爪回放，夹爪中心在第 99 帧进入蓝块内部 46.3 mm。两段都是 Object 1.00 / Event 1.00。</figcaption>
+    </figure>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>配置</th><th>场景</th><th>错在哪</th><th>实测证据</th><th>raw S<sub>val</sub></th></tr>
+        <tr><td>GPT-6-Astra</td><td>Newton cradle</td><td>夹爪松开后能量变多</td><td>第 236 帧势能 9.441 mJ，四次拟合的初始总能量约 4.971 mJ（Fig. 16）</td><td>0.80</td></tr>
+        <tr><td>GPT-5.6-Sol</td><td>桌上的蛋（九个静止，一个在动）</td><td>静止的蛋嵌进桌面</td><td>九个蛋 240/240 帧都与桌面相交，深 0.309–1.298 scene units（Fig. 17）</td><td>0.50</td></tr>
+        <tr><td>DeepSeek-V4.1-Flash</td><td>夹爪和木块</td><td>夹爪穿进松开的木块</td><td>第 95–100 帧夹爪中心在块内，第 99 帧距最近面 46.3 mm（Fig. 18）</td><td>0.50</td></tr>
+        <tr><td>GLM-5.3-Flash</td><td>桌上的板条箱</td><td>箱底嵌在桌面里</td><td>箱底 57.47% 的体积在桌子里，240 帧不变（Fig. 19）</td><td>0.68</td></tr>
+        <tr><td>Claude Sonnet 5</td><td>旋转的球</td><td>超大碰撞体隔空支撑、带动球</td><td>采样到的材料与支撑间距始终大于 0（Fig. 20）</td><td>0.72</td></tr>
+        <tr><td>GPT-6-Luna</td><td>旗子</td><td>不相邻的布料穿过自己</td><td>第 54 帧 41 对、第 60 帧 352 对非局部三角形相交（Fig. 21）</td><td>0.50</td></tr>
+      </table>
+    </div>
+    <p class="note">上表根据 App. D.2 正文整理，不是作者原表。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>画面和事件全对，场景里照样违反物理：</b>六个 S<sub>obj</sub> = S<sub>evt</sub> = 1 的重建都有明确的 validity 失败，raw S<sub>val</sub> 只有 0.50–0.80。</dd></div>
+      <div><dt>在故事里</dt><dd>说明 S<sub>val</sub> 必须进场景测量：VLM 看视频的 judge 不够。</dd></div>
+      <div><dt>指标</dt><dd>raw S<sub>val</sub> 是原条件 rubric 的已解析分数，没有默认通过；每例各找一个失败证据（判据编号 N3、E1、K1、B1、S2、F2）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>挑出来的示例，论文明说不估计失败的普遍程度；参考帧和重建帧取同一帧号，像素保真度和时间对齐各例不同。</li>
+        <li>这六例只看原条件判据；CF 判据的例子在 E5。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>Counterfactual 干预能多抓到什么？<span class="exp-src">§5.2 · App. D.3 · Fig. 22–26</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-PhysCodeGym/fig23.jpg" alt="Fig. 23：GPT-6-Astra 的台球重建。(a) 向外释放后母球越过台边仍悬空，(b) 有限支撑 control 里球掉下，(c) 球心高度对 y 的轨迹，(d) 115–127 帧的球高"></div>
+      <figcaption><b>Fig. 23</b>（作者原图）GPT-6-Astra 的台球重建：把母球向外放出台边，它悬在空中不掉。</figcaption>
+    </figure>
+    <p class="eyebrow">怎么读这张图</p>
+    <ol class="read">
+      <li><b>(a) Counterfactual, frame 120：</b>向外释放后，母球已经整个越过台边（黑色是台面边缘），仍然悬在半空。</li>
+      <li><b>(b) Finite-support control, frame 120：</b>支撑只限于有限台面的 control，球已经往下掉。</li>
+      <li><b>(c) Outward release beyond finite support：</b>横轴是球心 y（m），纵轴是球心 z（m）；竖虚线是真实台边 y = 1.100 m。红线 Candidate 过了台边还是水平，蓝线 control 过了台边就抛物线下落。</li>
+      <li><b>(d) Effective gravity before floor contact：</b>第 115–127 帧的球高（mm）；从第 117 帧起整个球越过台边；control 的竖直加速度 a<sub>z</sub> = −9.8101 m/s²，正好是重力，候选始终水平。</li>
+      <li><b>正文补充：</b>候选的球心一直停在约 28.575 mm 高，直到第 240 帧（124 个采样）。一个「支撑无限大」的 control 能逐帧复现候选轨迹，说明问题是支撑没有边界，而不是重力没生效。</li>
+    </ol>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>配置</th><th>干预</th><th>候选的表现</th><th>control</th></tr>
+        <tr><td>GPT-6-Astra</td><td>木件释放点移向盘子</td><td>158 帧在盘子材料里，最深 4.619 mm；删掉盘子，轨迹不变（Fig. 22）</td><td>有接触的 control 被挡住，最多侵入 0.110 mm</td></tr>
+        <tr><td>GPT-6-Astra</td><td>母球向外放出台边</td><td>第 117 帧起整个球越过台边，仍停在约 28.575 mm 高（Fig. 23）</td><td>有限支撑 control 下落，a<sub>z</sub> = −9.8101 m/s²</td></tr>
+        <tr><td>DeepSeek-V4.1-Flash（max）</td><td>第 120 帧后拆掉唯一的轴承铰链</td><td>第 123–126 帧穿进桌面，第 127 帧整个在桌底下（Fig. 24）</td><td>给同一桌面加上有效碰撞，物体停在桌面上</td></tr>
+        <tr><td>GPT-5.6-Sol</td><td>木件从两侧滚向 knight</td><td>46 / 29 帧在 knight 里，最深 0.295 / 0.105 scene units（Fig. 25）</td><td>加上被动接触后有响应、不侵入</td></tr>
+        <tr><td>GPT-5.6-Luna</td><td>木件从两侧滚向木 token</td><td>各连续 32 帧相交，最小符号距离约 −0.110 scene units（Fig. 26）</td><td>原生接触 control 和候选一致到第 111 帧，然后停住</td></tr>
+      </table>
+    </div>
+    <p class="note">上表根据 App. D.3 正文整理，不是作者原表。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>原条件判据拿满分的重建，一干预就露出缺失的接触和支撑。</b>五个例子的原条件检查都是 1.0，却各挂一条 CF 判据；木件任务上三个模型（Astra、Sol、Luna）各漏掉一个原路线碰不到的障碍物。</dd></div>
+      <div><dt>在故事里</dt><dd>Tab. 1 的 Mechanism Dependence 列只有本文有；这组例子说明它确实能抓到原轨迹查不到的错。</dd></div>
+      <div><dt>指标</dt><dd>判 CF 失败要有实测的材料侵入或无支撑运动，再加一个会响应的 control；只看到轨迹变了不算。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>挑出来的示例，论文明说不估计失败率；每对报告用相同的源码和场景 hash。</li>
+        <li>论文没报 CF 判据整体通过多少；唯一的整体数字在 E2：只用原条件 validity 时，low 和 max 的差距缩小约 0.003。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>只覆盖 Blender 能表达的过程，物理检查也只到 rubric 写了的判据为止（§6）。</li>
+    <li>Validity 判定仍是 provisional（等语义和证据复核），分数取区间下界；已有产物但测不了的任务不进 physical 分，所以各配置的 physical 列覆盖的任务集合不同（§4.3、App. C.1）。</li>
+    <li>每个模型每个任务只跑一次，run 间方差没有估计；max 和 low 的差异，95% 区间 [−0.001, 0.061] 含 0（App. C.3）。</li>
+    <li>Tab. 2 里每个模型只配一种 harness，模型和 harness 的影响分不开；harness 对比只有一个模型、两条 trace，而且 Codex 的任务 prompt 多一句「保留最后一次启动做验证」（App. D.4.3）。</li>
+    <li>D.1–D.3 的案例都是挑出来的，作者明说不估计失败率；没有报告 CF 判据的整体失败率，也没报告 CF 只在多少任务上有（仓库 README 写 43 个）。</li>
+    <li>不要求还原真实的质量、摩擦等参数，只要求复现观测并满足 rubric（§3.2）：分数高不代表物理参数对。</li>
+    <li>我的观察：§1 说用扰动提交的场景、注入已知缺陷人工验证过协议，但正文和附录都没给检出率。论文也没写 VLM judge 和 verifier agent 用的是什么模型（仓库评测文档写 event judge 是三次 high-effort Gemini 投票）。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>r2s-lite：</b>pot-lid episode 第 9 次尝试按宽松的成功规则过了，场景却是错的，这正是 E4「物体、事件满分仍违反物理」的情形。可以把成功判定换成 verifier 在原生场景里测量（穿模、支撑、能量），再加一次 counterfactual：关掉一个接触或移开释放点，配一个打开接触的 control，像 Fig. 22 那样分清「缺接触」和「测量本身有问题」。</li>
+    <li><b>real2sim-anything-indoor（video → Blender room）：</b>同样是视频 → Blender 程序，可以直接借它的提交规则（自包含 <code>scene.py</code>、bake 后渲染、核心运动不许 keyframe）和打分（物体清单、事件 rubric、Physics-IQ 运动掩膜 IoU）。GVHMR 的人体动作在这套规则里相当于显式 actuator：动作可以预设，但被人碰到的物体必须靠物理响应。另外 motion 是最难的一项（最高 0.324）。</li>
+    <li><b>Harness（r2s-lite 和 WorldClaw）：</b>把最后一次仿真或渲染留给最终验证，改完必须重跑并看输出（Codex 0.479 vs Claude Code 0.450，event 0.550 vs 0.446）；固定预算下先保证能交出产物（low 0.476 &gt; max 0.460）。WorldClaw 是白盒场景，「复制场景 → 关一个接触 → 重跑 → 对 control」可以直接写成它的自检 skill。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-16-PhysCodeGym.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>

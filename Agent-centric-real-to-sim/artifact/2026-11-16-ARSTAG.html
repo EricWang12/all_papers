@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>ARSTAG</title>
+<meta name="description" content="一张照片 + 一句指令 → GPT-5.5 coordinator 带三个 agent 建 task-scoped Isaac Sim 场景、写 expert、配随机化，每任务产出 1000 条 demo；7 个真机任务 π0.5 平均 74.6%。">
+<meta name="paper:title" content="ARSTAG: An Agentic Real2Sim2Real System for Task-Specific Robot Data Generation">
+<meta name="paper:source" content="https://arxiv.org/abs/2609.24563">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2609.24563v1">
+<meta name="paper:date" content="2026-09-21">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-16</p>
+  <h1>ARSTAG</h1>
+  <p class="full-title">ARSTAG: An Agentic Real2Sim2Real System for Task-Specific Robot Data Generation</p>
+  <p class="meta">Bowei Li, Yuner Zhang, Changliu Liu · Carnegie Mellon University · arXiv 2026-09-21（v1）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2609.24563">arXiv</a><a href="https://arxiv.org/pdf/2609.24563v1">PDF</a>
+    <a href="https://boweili666.github.io/ARSTAG/">Project page</a>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：一张照片 + 一句指令，由 coordinator 带三个 LLM agent 建出只含任务物体的 Isaac Sim 场景、写 expert、配随机化并产出训练数据，正是这个方向；agent 分工和跨 stage 修复对 Robotic harness 也有参考。截至 2026-11-18 项目页只链了网站源码（github.com/boweili666/ARSTAG），没有系统代码。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>教机器人一个新任务要数据；sim 能量产，但每个任务都要人决定：重建哪些物体、写什么 expert、怎么随机化、失败了改哪一步。</dd></div>
+    <div><dt>Idea</dt><dd>GPT-5.5 的 coordinator 把这些决定分给重建、采集、学习三个 agent；agent 只做决定，分割、3D 重建、support repair、抓取生成与筛选、Isaac Sim 采集、训练都是固定工具；工具的具名报错由 coordinator 送回该负责的 agent。</dd></div>
+    <div><dt>Result</dt><dd>7 个真机任务各 40 次：π0.5 平均 74.6%，DP 66.8%，ACT 43.6%（Table I）；注入 5 类工具故障，带 operating rules 的 agent 50/50 达标，去掉规则 23/50，固定链 10/50（§IV-E）。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>工具都现成，难在每个新任务的决定：重建什么、抓哪里、怎么随机化、出错改哪一步</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Screw→basket（Fig. 1、Fig. 2(e)）</b>：一张工作台照片 <span class="ex">水瓶、黄色 cone、橙色 screw、蓝色 basket、木块、绿色 brick</span> + 指令 <span class="ex">"Place the orange screw in the blue basket."</span> → 想要：不靠人遥操作，在 Isaac Sim 里生成 <span class="ex">1000 条成功 demo</span>，训出能在 AgiBot G1 双臂机器人上跑的 policy（ACT / DP / π0.5）。</p>
+    <p>例子延伸：论文没在这个任务上记录跨 stage 修复，那一步用同一套系统做第二个 pick-and-place 任务 <span class="ex">(f) "Place the yellow nut on the teal plate."</span> 的记录（§IV-E）。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>照片 + 指令</b><br/><span class='ex'>screw → basket</span>"]:::example
+  IN --> A1["<b>A · 全桌面重建</b><br/>桌上物体全部建"]
+  A1 --> AX["慢 3.1–6.1×<br/><span class='ex'>21.7–30.8 min</span><br/><span class='ex'>本文 4.9–7.6 min</span>"]:::gap
+  IN --> B1["<b>B · 按类名取 mask</b><br/>取第一个匹配的"]
+  B1 --> BX["绑错实例<br/><span class='ex'>准确率 61%</span>"]:::gap
+  IN --> C1["<b>C · 不做支撑对齐</b><br/>底面不贴支撑面"]
+  C1 --> CX["basket 歪、screw 倒<br/><span class='ex'>接触率 2%</span><br/><span class='ex'>p90 位移 646.6 mm</span>"]:::gap
+  IN --> D1["<b>D · 固定工具链</b><br/>失败就原样重试"]
+  D1 --> DX["0 条 demo<br/><span class='ex'>38.6 min 中止</span><br/><span class='ex'>故障测试 10/50</span>"]:::gap
+  </pre></div>
+  <p class="note">A–C 的数字是 Table III 对 42 个 task-scoped 场景、12 个全桌面重建的汇总，不是这张照片单独测的。本例照片里 screw、basket 各只有一个，B 的断点出现在多实例照片（如 Fig. 4 的两根 screw）；C 是 Table III 的 w/o repair：只去掉最后的竖直对齐，调平和修正传递都保留，现象就是 Stage 3 里项目页的 screw–basket 对比视频；D 是 task (f) 扁 nut 的记录（Fig. S6）和注入故障测试（§IV-E）。断点都来自论文 §IV-D、§IV-E 的分析，没有推断。</p>
+  <p class="crux"><b>根本问题：</b>这些决定随任务而变，人来做费时，固定流水线做不了；下游的失败（抓不到）根源常在上游（场景）。　<b>这篇的切入点：</b>LLM agent 只做决定（选物体、配 mask、写 expert、配随机化、派修复），重活交给固定工具，工具的具名诊断把失败送回该负责的 agent。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>Real-to-sim-to-real 数据生成（本文所属）</b><br><span class="muted"><a href="2026-11-05-RialTo.html">RialTo</a>、Re3Sim、SimFoundry、<a href="2026-11-04-RoboSnap.html">RoboSnap</a></span></td><td>真实场景 → 可复用的仿真环境，用来合成数据、做迁移</td><td>扫描或单图重建整个场景，之后在里面采数据</td><td>整个场景都建、与任务无关 → task scoping 只建指令涉及的物体（3.0 vs 7.8 个 mesh）</td></tr>
+      <tr><td><b>仿真数据引擎</b><br><span class="muted">ManiSkill3、RoboTwin</span></td><td>大规模任务、demo、随机化和评测协议</td><td>GPU 并行仿真 + 预先定义的任务与 expert</td><td>任务和 expert 要人预先写好 → agent 按指令写 expert 程序、配 task-consistent 随机化</td></tr>
+      <tr><td><b>用人类数据后训练</b><br><span class="muted">OpenVLA-OFT、RaC、HIL-SERL</span></td><td>把预训练 policy 适配到部署任务</td><td>遥操作 demo、人工纠正、真机 rollout</td><td>要人力或部署场景的机器人时间 → 数据全在 sim 里自动生成，后训练（π0.5 LoRA）和从零训都行</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Agentic 场景生成</b><br><span class="muted">SceneWeaver、SceneSmith</span></td><td>用 LLM agent 合成 3D 室内场景</td><td>SceneWeaver 看渲染图反馈自我修正；SceneSmith 用优化修碰撞</td><td>修场景靠渲染反馈或数值优化 → support repair 只用几何变换和 bbox 查询</td></tr>
+      <tr><td><b>LLM / agent 驱动机器人</b><br><span class="muted">SayCan、Code as Policies、RoboClaw、EnPIRE</span></td><td>指令 → 技能或代码；长时程执行、恢复、采数据、改进 policy</td><td>agent 在线执行或改进机器人行为</td><td>agent 在线控制机器人 → agent 只编排离线数据流水线，看它产出的场景、demo 和数据来评判</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §II Related Work（A 后训练、B real-to-sim 与数据引擎、C agentic 编排）和 §III-A 里与 SceneWeaver、SceneSmith 的对比；未另行检索。论文没有和这些工作比数字。RialTo、RoboSnap 在 library 里有页面。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>agent 只做决定，固定工具干活，工具报错由 coordinator 送回该负责的 agent</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-ARSTAG/fig1.jpg" alt="Fig. 1：左栏输入，中间 coordinator 下面三个 agent，右栏真机评测"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）ARSTAG 总览：coordinator 带三个 agent 做 task-scoped 重建、生成 demo、学 policy，用工具反馈协调跨 stage 的修改。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左栏 Input：</b>Input Photograph 就是本例照片；Task Instruction 是 "Place the orange screw in the blue basket."；Robot Interface 写明 policy 的接口：Observations = 3 RGB views + proprioception，Actions = joint targets + gripper commands，机器人是 AgiBot G1 · OmniPicker。</li>
+    <li><b>顶部 Coordinator Agent：</b>"Understand task, plan workflow, allocate resources, monitor progress, and handle failures."。底部图例：蓝箭头 Delegation 指向三个 agent，灰箭头 Feedback 三个都有，红虚线 Recovery 只有两段——从 Collection Agent 指回 coordinator，再从 coordinator 指向 Reconstruction Agent，即"抓不到 → 回去改场景"；Learning Agent 没有 Recovery 箭头。</li>
+    <li><b>绿框 Reconstruction Agent（Stage 1–3）：</b>Task Scoping（task: "put the screw into the basket"，只有 screw、basket、table 上了色，其余标 out of scope）→ Object Reconstruction（2D Image → Instance Masks → 3D Mesh）→ Physical Grounding（Pose refinement → Optimized Scene）→ Simulation Scene。</li>
+    <li><b>蓝框 Collection Agent（Stage 4–5）：</b>Expert Program Generation（<code>def run(robot)</code> 里 <code>find_object("screw")</code> … <code>place_in(basket)</code>）→ Feasibility Screening（一排候选抓取）→ Randomization（Scene、Background、Initial Robot Pose …）→ Simulation Demonstrations（不同背景下的采集画面）。</li>
+    <li><b>红框 Learning Agent（Stage 6）：</b>Demonstration Dataset（Proprioception、Images、Actions）→ Policy Learning（DP、ACT、Pi0.5）→ Real Robot Execution（本例的 basket）。</li>
+    <li><b>右栏 Real-World Evaluation：</b>Spatial generalization（真机上采样的物体位置）、Scene generalization（换场景）、Perturbation Recovery（人挪动物体后的恢复）。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  I["<b>Input</b><br/><span class='ex'>照片 + screw→basket</span>"]:::example --> A["<b>Coordinator + 3 个 agent</b><br/><span class='ex'>GPT-5.5 只做决定</span>"]
+  A -->|调用| T["<b>固定工具</b><br/><span class='ex'>SAM3 · SAM 3D</span><br/><span class='ex'>GraspGenX · Isaac Sim</span><br/><span class='ex'>训练脚本</span>"]
+  T -->|结果 / 具名报错| A
+  T --> O["<b>Output</b><br/><span class='ex'>1000 条成功 demo</span><br/><span class='ex'>真机 DP 62.5% · π0.5 60%</span>"]:::win
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>6 个 stage 分属三个 agent，coordinator 在它们之间派活、派修复</h2>
+  <div class="flow"><pre>
+flowchart TD
+  CO["<b>Coordinator</b><br/><span class='ex'>派活 · 收报告 · 派修复</span>"]
+  CO --> RH["<b>Reconstruction agent</b>"]
+  CO --> CH["<b>Collection agent</b>"]
+  CO --> LH["<b>Learning agent</b>"]
+  RH --> S1["<b>1 · Task grounding</b><br/><span class='ex'>screw · basket · table</span>"]
+  S1 --> S2["<b>2 · Identity binding</b><br/><span class='ex'>3 个 mask，一对一</span>"]
+  S2 --> S3["<b>3 · Physical grounding</b><br/><span class='ex'>screw 立住、basket 放平</span>"]
+  CH --> S4["<b>4 · Expert + 筛抓取</b><br/><span class='ex'>pick → place_in</span>"]
+  S4 --> S5["<b>5 · 随机化采集</b><br/><span class='ex'>1000 条成功 demo</span>"]
+  LH --> S6["<b>6 · Policy learning</b><br/><span class='ex'>DP 62.5% · π0.5 60%</span>"]
+  click CO href "#stage-all"
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节；点 Coordinator 看 <a href="#stage-all">跨 stage 修复</a>。</p>
+  <p class="eyebrow">谁做决定，谁是固定工具（§III、§IV-A）</p>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>Stage</th><th>LLM agent 决定（GPT-5.5）</th><th>固定工具执行</th><th>报回的证据</th></tr>
+      <tr><td>1 Task grounding</td><td>看图和指令建 scene graph：选物体和支撑面、写 caption、选关系</td><td>无</td><td>无</td></tr>
+      <tr><td>2 Identity binding</td><td>写 SAM3 提示；在编号 overlay 上配 object↔mask；没配上时选重试方式</td><td>SAM3 分割；validator 强制一对一</td><td>没配上的 object</td></tr>
+      <tr><td>3 Physical grounding</td><td>调用 assembly；按检查结果决定有界重试；写交接摘要</td><td>SAM 3D；support repair（几何代码）；Isaac Sim 装配 + 重力 settle；机器人摆位</td><td>空 mask、缺 mesh、退化变换、缺仿真 asset 引用</td></tr>
+      <tr><td>4 Expert + 筛抓取</td><td>写 expert 程序；可把抓取限定到功能区</td><td>GraspGenX；Eq. (1) 碰撞 / 几何 / IK 检查；布局重采样</td><td>持续失败报给 coordinator</td></tr>
+      <tr><td>5 随机化采集</td><td>配置随机化（如分区采样）</td><td>每个 episode 采样、注入扰动；expert 读真值执行和重规划；按成功条件过滤</td><td>采集结果或失败</td></tr>
+      <tr><td>6 Policy learning</td><td>配观测 / 动作接口、转换数据、启动训练和评测</td><td>ACT / DP / π0.5 训练；sim 闭环评测（后台 job）</td><td>checkpoint、评测摘要、失败诊断</td></tr>
+      <tr><td>Coordinator</td><td>派活和交接；按报告定下一步；照 prompt 规则派修复、停止或问用户</td><td>harness：工具权限、参数校验、每轮调用上限；后台 job 的完成事件</td><td>各 agent 的报告</td></tr>
+    </table>
+  </div>
+  <p class="note">采集期间没有 LLM 在环：expert 程序读 sim 真值执行，collect 是后台 job（Fig. 5）。机器人摆位写在 assembly 段落里，论文没说是 agent 决定还是固定规则，表里按工具算。Token 统计只算 agent loop，不含工具内部的模型调用（§IV-E），论文没列哪些工具内部调了模型。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Task grounding：按指令建 scene graph</span>
+      <span class="stage-io">照片 I + 指令 ℓ → typed scene graph G（任务物体 + 支撑面）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>只建任务用得到的几何；全桌面重建平均要建 7.8 个 mesh、配中位数 12 个候选 mask（Table III），更慢，也更容易留下没配上的物体。</li>
+        <li><b>How · Agent：</b>同时看照片和指令；指令决定选哪些物体和支撑面，照片给出它们的外观和空间关系。</li>
+        <li><b>How · Agent：</b>同一张图，"pick up the screw" 只选 screw 和支撑它的 table；"place the screw in the basket" 还要加上 basket（§III-A 原例）。</li>
+        <li><b>How · Agent：</b>每个节点存类别和一句短 caption（给分割用）；每条边的关系取自预定义的空间 / 支撑关系词表。</li>
+        <li><b>工具：</b>无，这一步就是 LLM 的输出（Table III 的计时不含 scene graph 生成）。</li>
+      </ul>
+      <p class="eyebrow">符号表（§III-A）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+          <tr><td>I, ℓ</td><td>输入的那张 RGB 照片；自然语言指令</td><td>Fig. 1 左上的工作台照片；"Place the orange screw in the blue basket."</td></tr>
+          <tr><td>G = (V, E)</td><td>任务用的 scene graph：节点是物体，边是物体间关系</td><td>节点 screw、basket、table</td></tr>
+          <tr><td>o<sub>i</sub>, c<sub>i</sub>, d<sub>i</sub></td><td>第 i 个物体、它的类别、给分割用的短 caption</td><td>类别 screw；论文举的 caption 例子是 "yellow plastic screw"（通用例子）</td></tr>
+          <tr><td>(o<sub>i</sub>, r, o<sub>j</sub>), 𝓡</td><td>一条关系边；关系 r 取自预定义词表 𝓡</td><td>论文没列本例的边</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>照片 I + 指令 ℓ</b><br/><span class='ex'>screw → basket</span>"]:::example --> b["<b>Agent 推理</b><br/><span class='ex'>选物体和支撑面</span>"]
+  b --> c["<b>Scene graph G</b><br/><span class='ex'>screw · basket · table</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 1 的 Task Scoping 小图：<span class="ex">screw</span>（红）、<span class="ex">basket</span>（绿）、<span class="ex">table</span>（橙）进入 G；水瓶、cone、木块、brick 标 <span class="ex">out of scope</span>，后面都不再分割和重建。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Visual grounding：identity binding</span>
+      <span class="stage-io">G 的 caption + 照片 → 每个 graph object 恰好一个 mask</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>一个 caption 可能匹配多个实例；同一个 mask 给了两个 object，后面的重建和 demo 就会用错实例。按类名取第一个 mask 只有 61% 正确（Table III）。</li>
+        <li><b>How · 工具 SAM3：</b>用 caption 做开放词汇分割，得到候选 mask m<sub>1</sub>…m<sub>K</sub>。</li>
+        <li><b>How · Agent：</b>看照片、scene graph 和带编号的 mask overlay，按外观和空间关系把 object 和 mask 配对。</li>
+        <li><b>How · 工具 validator：</b>强制部分一对一：每个 object、每个 mask 至多用一次。</li>
+        <li><b>How · Agent：</b>对没配上的 object 三选一：改 caption 重新分割；用通用提示 "objects" 再分割；在现有候选里重配。新分出的 mask 并入候选后重新配对。</li>
+        <li><b>交出：</b>只有配上的 mask 进 3D 重建；agent 报告仍未解决的 object。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>SAM3 · 工具</b><br/><span class='ex'>按 caption 出候选 mask</span>"] --> b["<b>Agent 配对</b><br/><span class='ex'>看编号 overlay</span>"]
+  b --> c["<b>Validator · 工具</b><br/><span class='ex'>每个 mask 只用一次</span>"]
+  c -->|有没配上的| d["<b>Agent 三选一</b><br/><span class='ex'>改 caption / 'objects'</span><br/><span class='ex'>/ 重配已有候选</span>"]
+  d -->|新 mask 并入候选| b
+  c -->|全配上| e["<b>进 3D 重建</b><br/><span class='ex'>screw · basket · table</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-ARSTAG/fig4.jpg" alt="Fig. 4：上半 identity binding 的彩色框，下半 support repair 前后对比"></div>
+        <figcaption><b>Fig. 4</b>（作者原图）(a) identity binding；(b) 同一重建场景在重力下，不做 / 做 support repair。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(a) 绿框 class name：</b>类名就能区分的物体（hex keys、drill）。</li>
+        <li><b>(a) 蓝框 + caption：</b>两根 screw 同类，靠 caption 里的颜色（橙 / 黄）区分。</li>
+        <li><b>(a) 紫框 + relation：</b>两个 nut 同类，靠相对大小加 "left of" 关系区分。</li>
+        <li><b>(b) 属于 Stage 3：</b>左 "w/o support repair"：6 个物体里 3 个落到桌面以下看不见，screw 倒着；右 "with support repair (ours)"：6 个都立在桌上。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>这张照片里 screw、basket 各只有一个（Fig. 1），按类名也能配上；Table III 里 "Unique in the scene" 这组两种方法都是 100%。身份绑定要解决的是 Fig. 4 这类照片：两根 screw 靠颜色，两个 nut 靠关系。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Physical grounding + scene assembly</span>
+      <span class="stage-io">配上的 mask → Isaac Sim 里可交互的场景 S（机器人基座坐标系）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>SAM 3D 的估计误差会让桌子倾斜、物体悬在支撑者上方或陷进去；只去掉最后一步竖直对齐，支撑间隙中位数就有 34.4 mm、接触率 2%（Table III）。</li>
+        <li><b>How · 工具 SAM 3D：</b>每个物体从照片和 mask 重建出 mesh、估计尺度和初始位姿（相机坐标系）。</li>
+        <li><b>How · 工具 geometric pose repair</b>（论文自己的算法，没有 LLM；支撑一致优先于还原照片里的精确布局）：
+          <ol class="read">
+            <li>在 G 里没有支撑者的物体（table）：调平、保留朝向，平移到下沿贴地。</li>
+            <li>修正沿支撑边往下传：支撑者挪了多少，被支撑物体跟着挪多少。</li>
+            <li>水平方向重叠的支撑对做竖直对齐：被支撑物体的底面落到支撑者顶面上方一个小间隙处。</li>
+            <li>传递和对齐都做有界轮数的 sweep，没有更新就提前停；不渲染、不做数值优化。</li>
+          </ol>
+        </li>
+        <li><b>How · Agent 调用 assembly 工具：</b>asset manifest 把 object 身份对应到 mesh 和修正后的变换；加 rigid-body 物理和碰撞几何；重力下 settle，所有物体线速度、角速度低于阈值或到步数上限就停，保存位姿；摆放机器人（靠近桌子、和桌子及障碍留间隙、偏向相机一侧）；整个场景转到机器人基座坐标系。</li>
+        <li><b>How · 工具检查 → Agent：</b>mask 和 asset 检查找出空或近乎空的 mask、缺失的 mesh、退化的变换、缺失的仿真 asset 引用；agent 据此做有界重试，最后交出场景和摘要（建了哪些物体、哪些没配上）。</li>
+      </ul>
+      <p class="eyebrow">符号表（§III-A 的位姿修正）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+          <tr><td>M<sub>i</sub>, T<sub>i</sub><sup>(0)</sup></td><td>SAM 3D 给第 i 个物体的 mesh 和初始位姿（相机坐标系）；初始位姿之后保持不变</td><td>basket 的 mesh 和它歪着的初始位姿</td></tr>
+          <tr><td>T<sub>i</sub>, T<sub>j</sub></td><td>当前（已修正的）位姿；i 是被支撑物体，j 是它的支撑者</td><td>i = basket，j = table</td></tr>
+          <tr><td>T<sub>i</sub> ← T<sub>j</sub>(T<sub>j</sub><sup>(0)</sup>)<sup>−1</sup>T<sub>i</sub><sup>(0)</sup></td><td>把支撑者"从初始到当前"的修正原样施加到被支撑物体上，两者相对位姿不变</td><td>table 调平后，basket 跟着做同样的修正</td></tr>
+          <tr><td>B<sub>i</sub>, B<sub>j</sub></td><td>两者的轴对齐包围盒（bbox）</td><td>basket 和 table 的 bbox</td></tr>
+          <tr><td>z<sup>top</sup>, z<sup>bottom</sup></td><td>包围盒顶面 / 底面的高度</td><td>桌面高度；basket 底面高度</td></tr>
+          <tr><td>δ</td><td>很小的正间隙；也是判断水平重叠的容差</td><td>论文没给数值</td></tr>
+          <tr><td>Δz<sub>i</sub> = z<sup>top</sup>(B<sub>j</sub>) + δ − z<sup>bottom</sup>(B<sub>i</sub>)</td><td>被支撑物体要竖直移动的量</td><td>让 basket 底面落到桌面上方 δ 处</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>SAM 3D · 工具</b><br/><span class='ex'>mesh + 尺度 + 位姿</span>"] --> b["<b>Support repair · 代码</b><br/><span class='ex'>调平 → 传递 → 对齐</span>"]
+  b --> c["<b>Assembly · Isaac Sim</b><br/><span class='ex'>物理 + 重力 settle</span>"]
+  c --> d["<b>检查 · 工具</b><br/><span class='ex'>空 mask · 缺 mesh · 缺引用</span>"]
+  d -->|有问题| e["<b>Agent 有界重试</b><br/><span class='ex'>按诊断重做出错的一步</span>"]
+  d -->|通过| f["<b>交接场景 S</b><br/><span class='ex'>基座坐标系 + 摘要</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-16-ARSTAG/web-support-screw-basket.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://boweili666.github.io/ARSTAG/#support-repair">Support repair before simulation settling</a> → Screw and basket（0.30× 慢放）：左边不做 repair（指去掉最后的竖直对齐，App. F），右边做 repair，同一场景、同一段 settle 时间。看 screw 倒不倒、basket 动不动。论文 Fig. S8(c) 是它的静帧；Fig. 4(b) 是另一个 6 物体场景（见 Stage 2 的图）。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>SAM 3D 给出 screw 和 basket 的 mesh 和位姿。不修时两者一开始就是歪的，settle 后 <span class="ex">screw 倒在桌上、basket 换了位置</span>；修过之后 <span class="ex">screw 立住、basket 放平</span>，settle 前后几乎不动（读视频）。全体统计：接触率 2% → 100%，位移 p90 646.6 → 24.9 mm（Table III）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Expert program + 抓取筛选</span>
+      <span class="stage-io">场景 S + 指令 ℓ → 读 sim 真值的 expert 程序 + 可行的抓取</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>量产 demo 要一个不靠人的 expert；sim 里能直接读真值状态，expert 不用解决视觉感知。</li>
+        <li><b>How · Agent：</b>把指令写成程序：物体状态查询 + 末端执行器的笛卡尔运动 + 夹爪指令（格式沿用 ManiSkillFormer、NeSyPack）。运动目标从当前物体状态算，所以同一段程序能在任意采样布局上复用。</li>
+        <li><b>How · 工具 GraspGenX：</b>预训练模型，以物体点云和夹爪几何为条件给候选抓取，在重建的参考场景里算一次。</li>
+        <li><b>How · Agent：</b>可以把候选限定到功能区，例如 screw shaft（Fig. 5 把这一步叫 key-region annotation）。</li>
+        <li><b>How · 工具 feasibility screening（Eq. 1）：</b>候选按目标物体的采样位姿变换后，只接受同时通过碰撞、几何、IK 三项检查的；程序里能从初始布局算出的路点，也对执行臂做位置 IK 检查。</li>
+        <li><b>How · 工具 layout resampling：</b>单个候选失败不算数；一个都不通过、或必需路点 IK 失败，才拒绝这个布局，在有界次数内重采相关物体位姿。持续失败报给 coordinator，它可以要求重建修正（见 <a href="#stage-all">跨 stage</a>）。</li>
+      </ul>
+      <p class="eyebrow">符号表（Eq. 1）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+          <tr><td>𝓗 = {h<sub>1</sub>, …, h<sub>K</sub>} ⊂ SE(3)</td><td>预先算好的候选抓取位姿，按目标物体这次采样的位姿变换过来</td><td>screw 上的候选抓取（数量论文没给）</td></tr>
+          <tr><td>𝓗<sub>test</sub></td><td>实际拿去检查的那部分候选</td><td>论文没给大小</td></tr>
+          <tr><td>c<sub>scene</sub>(h)</td><td>夹爪和参考场景点云是否碰撞</td><td>夹爪不能撞上 basket 或桌面</td></tr>
+          <tr><td>c<sub>geom</sub>(h)</td><td>工作空间、机身包络、接近方向的间隙是否满足</td><td>screw 要在手臂够得到的范围里</td></tr>
+          <tr><td>c<sub>IK</sub>(h)</td><td>预抓取和抓取位姿的 IK 误差是否在容差内</td><td>执行臂能解出到达 screw 的关节角</td></tr>
+          <tr><td>𝓗<sup>⋆</sup></td><td>三项都通过的抓取；为空就拒绝这个布局</td><td>扁 nut 的初始场景里一个无碰撞候选都没有（§IV-E）</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>Agent 写 expert 程序</b><br/><span class='ex'>pick → place_in basket</span>"] --> b["<b>GraspGenX · 工具</b><br/><span class='ex'>候选抓取，可限功能区</span>"]
+  b --> c["<b>Eq. 1 筛选 · 工具</b><br/><span class='ex'>碰撞 ∧ 几何 ∧ IK</span>"]
+  c -->|有可行抓取| f["<b>进入采集</b><br/><span class='ex'>Stage 5</span>"]:::win
+  c -->|一个都不行| d["<b>重采布局 · 工具</b><br/><span class='ex'>有界次数</span>"]
+  d -->|一直失败| e["<b>报给 coordinator</b><br/><span class='ex'>见跨 stage 修复</span>"]:::gap
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 1 的程序就是本例：<code>screw = robot.find_object("screw")</code>、<code>basket = robot.find_object("basket")</code>、<code>robot.pick(screw)</code>、<code>robot.move_to_above(basket)</code>、<code>robot.place_in(basket)</code>。论文把它拆成 <span class="ex">approach → grasp → lift → transfer → release</span>，目标位置都从当前 screw 和 basket 的状态算（§III-B）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Task-consistent 随机化 + recovery demo</span>
+      <span class="stage-io">expert + 场景 → 每个任务 1000 条成功 demo（10 Hz，头部 + 两个腕部相机）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>一张照片只给一个布局；要泛化就得扩成分布，但随机化不能破坏任务关系（screw 还得放得进 basket）。</li>
+        <li><b>How · Agent 配随机化</b>（论文原话 "The agent configures randomization"）：抓取类任务的目标在整个工作区均匀采样；pick-and-place 可以把工作区分成左、中、右三块，拿取目标在左右，放置目标在两臂共用的中间。</li>
+        <li><b>How · 工具，每个 episode 采样：</b>物体位姿和干扰物有无、桌子尺寸和偏移、HDRI 背景和光照、相机内外参（在标定值附近）、手臂初始构型和躯干高度。</li>
+        <li><b>How · 工具，控制延迟：</b>每个 episode 随机取延迟 τ（2 到 8 步），执行 τ 步之前的指令，但记录的是不延迟的 expert 动作；延迟缓冲填满前保持第一个目标。</li>
+        <li><b>How · 工具，recovery demo：</b>trajectory perturbation 在接近时推开手臂；target perturbation 在合爪前把抓取位姿偏移并倾斜，造成抓空，物体可能被碰开或被挪走。expert 从新的机器人和物体状态重新规划，完成同一任务。</li>
+        <li><b>只记续接：</b>扰动本身不进监督，只记录之后的 expert 续接，且满足任务成功条件才保留。这样不用人示范恢复动作，也有"偏离 → 纠正"的数据。</li>
+        <li><b>无 LLM 在环：</b>采集时 expert 读真值执行，collect 是后台 job（Fig. 5）。</li>
+        <li><b>三族：</b>Table II 把随机化分成 execution（延迟 + 轨迹 / 目标扰动）、geometry（桌子尺寸 / 偏移 + 躯干高度）、background（HDRI）。</li>
+      </ul>
+      <p class="eyebrow">符号表（§III-B）</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>例子里</th></tr>
+          <tr><td>𝒲</td><td>桌面工作区；抓取类任务在里面均匀采样目标</td><td>task (a)–(d) 这类抓取任务用它</td></tr>
+          <tr><td>𝒲<sub>L</sub>, 𝒲<sub>C</sub>, 𝒲<sub>R</sub></td><td>工作区的左、中、右三块：拿取目标在左右，放置目标在中间</td><td>按规则 screw 在左或右块、basket 在中块；论文没逐任务列出</td></tr>
+          <tr><td>τ ~ U{2, …, 8}</td><td>每个 episode 均匀随机的控制延迟（步）</td><td>每条 demo 各取一个</td></tr>
+          <tr><td>q<sub>t</sub><sup>cmd</sup>, q<sub>t</sub><sup>exec</sup> = q<sub>t−τ</sub><sup>cmd</sup></td><td>第 t 步 expert 发出的指令；实际执行的是 τ 步之前那条</td><td>数据里记的是 q<sub>t</sub><sup>cmd</sup>，不是延迟后的</td></tr>
+        </table>
+      </div>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>Agent 配随机化</b><br/><span class='ex'>pick-and-place 分区采样</span>"] --> b["<b>每个 episode 采样 · 工具</b><br/><span class='ex'>位姿 · 桌子 · HDRI · 相机</span><br/><span class='ex'>躯干高度 · 延迟 2–8 步</span>"]
+  b --> c["<b>Expert 执行 · 无 LLM</b><br/><span class='ex'>读 sim 真值状态</span>"]
+  c -->|注入扰动| d["<b>Expert 重新规划</b><br/><span class='ex'>只记录续接部分</span>"]
+  c --> f["<b>满足成功条件才保留</b><br/><span class='ex'>1000 条成功 demo</span>"]:::win
+  d --> f
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-ARSTAG/figS1.jpg" alt="Fig. S1：上排轨迹扰动三帧，下排抓空后重抓三帧"></div>
+        <figcaption><b>Fig. S1</b>（作者原图）sim 里采 recovery 数据：(a) 手臂被推开、(b) 故意抓空并挪走目标后，state-based expert 接着完成原任务。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>(a) Trajectory perturbation：</b>Before → Arm displaced（接近途中手臂被推开）→ Expert recovery（expert 从被推开的状态继续抓 cone）。</li>
+        <li><b>(b) Induced mis-grasp：</b>Failed grasp（偏移倾斜后抓空）→ Target relocated（cone 被挪到别处）→ Expert re-grasp（按新位置重抓）。</li>
+        <li><b>进数据集的部分：</b>每行只有扰动之后的 expert 续接；"Arm displaced""Failed grasp"这段扰动本身不作监督。项目页同类视频里推开 14 cm、挪走 38 cm（论文没写扰动幅度）。</li>
+      </ol>
+      <figure class="paper-fig">
+        <div class="mat"><video src="2026-11-16-ARSTAG/web-collect-screw-basket.mp4" autoplay muted loop playsinline controls></video></div>
+        <figcaption><b>项目页</b> <a href="https://boweili666.github.io/ARSTAG/#collection-demos">Randomized simulation demonstrations</a> → Sampled scene 3（Screw-to-basket placement，1× 播放）：本例的一条生成 demo，HDRI 背景换成了户外台阶，桌子和机器人配置也是采样的。镜头是展示用的环绕视角，不是 policy 的输入相机（读视频）。</figcaption>
+      </figure>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>本例在 Isaac Sim 里采到 <span class="ex">1000 条成功 demo</span>，含扰动后的 recovery 续接；pick-and-place 类任务（含 bowl stacking）每条平均 <span class="ex">17.3–19.6 s</span>，抓取类 11.3–11.9 s（§IV-A）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">Policy learning + sim 评测</span>
+      <span class="stage-io">demo D + 指令 ℓ → checkpoint、接口设置、sim 评测摘要</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>How · Agent：</b>为每种架构配置观测和动作接口，把同一批 demo 转成各自的格式，三种架构共用一份源数据。</li>
+        <li><b>How · 工具，训练（后台 job）：</b>ACT、DP 各 200,000 步、batch 128；π0.5 在 pi05 base 上做 LoRA 微调，30,000 步、batch 32（Table S1）。最终 checkpoint 直接部署，不做 early stopping，也不按验证集挑 checkpoint。</li>
+        <li><b>How · 工具，sim 闭环评测：</b>在重新采样的场景配置上跑，接口和预处理保持一致。</li>
+        <li><b>How · Agent：</b>把 checkpoint、接口设置、评测摘要交回 coordinator；任一 job 失败时附上诊断。</li>
+        <li><b>没说的：</b>Table S1 的超参是 agent 选的还是作者定的，论文没写。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>Agent 配接口</b><br/><span class='ex'>1000 条 → 3 种格式</span>"] --> b["<b>训练 · 后台 job</b><br/><span class='ex'>ACT · DP · π0.5 LoRA</span>"]
+  b --> c["<b>sim 闭环评测</b><br/><span class='ex'>checkpoint + 摘要</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>同一批 1000 条 screw→basket demo 训三种 policy，真机各 40 次：<span class="ex">ACT 42.5%</span>、<span class="ex">DP 62.5%</span>、<span class="ex">π0.5 60%</span>（Table I）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">跨 stage</span>
+      <span class="stage-name">Coordinator、operating rules 与 harness</span>
+      <span class="stage-io">各 agent 的产出和失败报告 → 下一步做什么、派给谁修</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>重建的错误会让下游 demo 不可行，只在本 stage 重试修不好：固定流水线原样重试后没有数据（Fig. S6）。</li>
+        <li><b>How · Agent（coordinator）：</b>给子 agent 派任务和所需输入；子 agent 报告产出和失败；coordinator 据此决定下一步。</li>
+        <li><b>How · 人写的 operating rules</b>（在 system prompt 和 tool description 里，agent 在规则内选工具和参数）：
+          <ol class="read">
+            <li>collection 在小或薄的物体上报 0 个可达抓取 → 调整物体尺度或朝向并重建场景；重试采集前，coordinator 把修正派给 reconstruction agent，由它按报告的尺寸和抓取诊断选变换参数。</li>
+            <li>同样的失败重复出现 → 停止重试。</li>
+            <li>任务要特定物体，指令和工具反馈却留下多个候选 → 请用户选。</li>
+          </ol>
+        </li>
+        <li><b>How · 工具（harness）：</b>按角色限定可用工具、校验参数、限制每轮 tool-use 次数。</li>
+        <li><b>How · 工具（执行框架）：</b>采集、训练、sim 评测是后台 job；agent 启动后就结束本轮，完成或失败由框架通知 coordinator。</li>
+        <li><b>谁定什么：</b>哪类报错派给谁修，是 prompt 规则写好的；改多少（下例的 1.5×、90°、0.02 kg）是 reconstruction agent 自己选的。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  E["<b>Collection 报错</b><br/><span class='ex'>扁 nut：0 个无碰撞抓取</span>"]:::example
+  E --> F1["<b>固定流水线</b><br/><span class='ex'>原样重试采集</span>"]
+  F1 --> F2["<b>38.6 min 中止</b><br/><span class='ex'>无数据、无 policy</span>"]:::gap
+  E --> C1["<b>Coordinator</b><br/><span class='ex'>按规则派给重建 agent</span>"]
+  C1 --> C2["<b>Reconstruction agent</b><br/><span class='ex'>1.5× · 转 90° · 0.02 kg</span>"]:::win
+  C2 --> C3["<b>重建 + 验证场景</b><br/><span class='ex'>897 个无碰撞抓取</span>"]
+  C3 --> C4["<b>恢复采集</b><br/><span class='ex'>39.9 min 完成</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-ARSTAG/figS6-7.jpg" alt="Fig. S6 与 S7：固定流水线和 ARSTAG 两列对比，nut 由平躺改为竖立，三条 demo 的末帧"></div>
+        <figcaption><b>Fig. S6–S7</b>（作者原图，上下拼在一起）同一照片、指令和工具下的 nut→plate：固定流水线中止，ARSTAG 改场景后恢复采集。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>顶部：</b>"Same image, instruction, and tools"；规模是 3 demos / 300 steps / 2 evals，测的是流程能否跑通，不是收敛后的 policy。</li>
+        <li><b>红列 Fixed pipeline：</b>Initial collection（No feasible grasps）→ Unchanged retry（Collection fails again）→ Abort at 38.6 min（No dataset or policy）。</li>
+        <li><b>蓝列 ARSTAG：</b>Inspect and revise（Geometry, mass, support）→ Resume collection（3 demonstrations）→ Finish at 39.9 min（Policy evaluation: 0/2）。</li>
+        <li><b>Scene-revision visualization：</b>Initial: flat → Revised: upright；"Scale 1.5x; rotate 90 degrees; mass 0.02 kg. Support penetration corrected before collection."</li>
+        <li><b>底部：</b>修改后场景里采到的三条 expert demo 的末帧，背景各不相同（随机化）。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 延伸：task (f) nut→plate</p>
+        <p>重建出的 nut 平躺，抓取规划器找不到无碰撞候选。固定流水线原样重试，<span class="ex">0 条 demo</span>。ARSTAG 的 coordinator 按诊断和规则把场景修改派给 reconstruction agent：sim 里的 nut <span class="ex">放大 1.5×、转 90° 立起、质量设 0.02 kg</span>、修正支撑穿透，重建并验证 → <span class="ex">897 个无碰撞抓取候选</span>，第 2 次 rollout 就成功放置（§IV-E、App. E）。代价：sim 里的 nut 比真的大 1.5×；真机评测也只测立着的 nut（§IV-A）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>Task scoping（按指令建 scene graph）</td><td>Stage 1：只留 screw、basket、table，其余 out of scope</td></tr>
+        <tr><td>Identity binding（一对一 + agent 选重试）</td><td>Stage 2：本例按类名就够；Fig. 4 的两根 screw 靠颜色</td></tr>
+        <tr><td>Support repair（几何修正，不渲染不优化）</td><td>Stage 3：screw 立住、basket 放平（项目页视频）</td></tr>
+        <tr><td>Scene assembly + 检查 + 有界重试</td><td>Stage 3：settle、摆机器人、查缺 mesh / 缺引用</td></tr>
+        <tr><td>Expert 程序（读 sim 真值）</td><td>Stage 4：find_object → pick → move_to_above → place_in</td></tr>
+        <tr><td>GraspGenX + 可行性筛选（Eq. 1）+ 布局重采样</td><td>Stage 4：候选抓取过碰撞、几何、IK 三关</td></tr>
+        <tr><td>Task-consistent 随机化</td><td>Stage 5：分区采样、HDRI、相机、躯干、延迟 τ</td></tr>
+        <tr><td>Recovery demo（扰动后 expert 续接）</td><td>Stage 5：推开手臂 / 抓空后续接（Fig. S1）</td></tr>
+        <tr><td>同一批数据训三种 policy</td><td>Stage 6：ACT 42.5%、DP 62.5%、π0.5 60%</td></tr>
+        <tr><td>Coordinator 跨 stage 修复</td><td>跨 stage：nut→plate 延伸，1.5×、90°、0.02 kg</td></tr>
+        <tr><td>Operating rules（派修、停止、提问）</td><td>跨 stage + <a href="#exp-5">E5</a>：注入故障 50/50</td></tr>
+        <tr><td>后台 job + 完成事件</td><td>跨 stage + <a href="#exp-5">E5</a>：Fig. 5 的 collect / train / eval</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>生成的数据训得出真机 policy；随机化换鲁棒性，场景构建三步各有数，operating rules 让故障处理更稳</h2>
+  <p>顺序同论文 §IV：<a href="#exp-1">E1</a> 真机迁移（Q1）→ <a href="#exp-2">E2</a> 随机化消融、<a href="#exp-3">E3</a> 数据量（Q2）→ <a href="#exp-4">E4</a> 场景可用性（Q3）→ <a href="#exp-5">E5</a> agent 协调（Q4）。E1–E3 比成功率，E4 比时间和几何指标，E5 比达标的 trial 数。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>sim 里生成的数据能不能训出在真机上能用的 policy？<span class="exp-src">§IV-B · Fig. 2 · Table I</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-ARSTAG/fig2.jpg" alt="Fig. 2：七个任务，每列从上到下是指令、真实照片、sim 场景、真机执行"></div>
+      <figcaption><b>Fig. 2</b>（作者原图）七个任务。每列从上到下：指令、输入照片、task-scoped sim 场景、真机执行。本例是 (e) Screw→basket：sim 场景里只剩 screw 和 basket。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-ARSTAG/tab1.jpg" alt="Table I：七个任务上 ACT、DP、π0.5 的真机成功率"></div>
+      <figcaption><b>Table I</b>（作者原图）先看 Screw→basket 一行（本例）和最后的 Average；加粗是每行最高。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>能迁移到真机，三种架构都能用。</b>π0.5 平均 74.6%，DP 66.8%，ACT 43.6%；DP 每个任务都比 ACT 高 10–32.5 个百分点；π0.5 在 brick（92.5%）、teapot、screw（90%）、nut、bowl stacking（75%）最高，DP 在 cone 和本例 screw→basket（62.5%）最高。</dd></div>
+      <div><dt>在故事里</dt><dd>Q1：一张照片 + 一句指令生成的数据，既够从零训专用 policy，也够后训练预训练的 VLA。</dd></div>
+      <div><dt>指标</dt><dd>任务成功率：最终状态满足任务条件（抬起、放置或堆叠）；每个 task–policy 组合 40 次真机 trial。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>AgiBot G1：两条 7-DoF 手臂、OmniPicker 夹爪；1 个头部相机 + 每臂 1 个腕部相机；10 Hz。</li>
+        <li>7 个任务，每个 1000 条 sim demo，三种 policy 共用；采集在 RTX 5080 Laptop GPU 上，训练在 L20 上。</li>
+        <li>每次 trial 按采集时的规则重新摆放物体；桌子不精确标定，位置和朝向每次都变。</li>
+        <li>Nut→plate 全部从立着的 nut 开始：expert 在重建场景里找不到扁 nut 的抓取，扁的初始姿态没测。</li>
+        <li>只比了三种 policy 架构；没有和遥操作数据或其他 real-to-sim 数据源比。</li>
+      </ul></dd></div>
+    </dl>
+    <figure class="paper-fig">
+      <div class="mat"><video src="2026-11-16-ARSTAG/web-recovery-screw-basket.mp4" autoplay muted loop playsinline controls></video></div>
+      <figcaption><b>项目页</b> <a href="https://boweili666.github.io/ARSTAG/#real-recovery">Recovery on the real robot</a> → Screw-to-basket placement（4.53× 播放）：操作员中途挪动 screw，policy 不重置，换另一只手臂抓起放进 basket（读视频）。论文 Fig. 3 是 cone 上的同类例子。这些是挑选的定性片段，不在 40 次统计里（App. D）。</figcaption>
+    </figure>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>每一族随机化各管什么？<span class="exp-src">§IV-C · Table II</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-ARSTAG/tab2.jpg" alt="Table II：三族随机化在 none、in-dist.、out-of-dist. 下 Full 与 w/o 的成功率"></div>
+      <figcaption><b>Table II</b>（作者原图）每族三行（none / in-dist. / out-of-dist.），比 Full 和 w/o 两列；先看 out-of-dist. 和 Background 的 in-dist.。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>每族随机化主要换来对应扰动下的鲁棒性。</b>超出采集范围时：execution 75.0% vs 40.0%，geometry 62.5% vs 40.0%；去掉背景随机化后，在采集用的 HDRI 池（ID）和新 HDRI（OOD）上都是 0.0%（有它是 77.5%、70.0%）。代价：不扰动时，去掉 geometry 或 background 反而从 72.5% 升到 87.5%。</dd></div>
+      <div><dt>在故事里</dt><dd>Q2：撑起 Stage 5 的 task-consistent 随机化是鲁棒性的来源。</dd></div>
+      <div><dt>指标</dt><dd>成功率，每格 40 个 held-out 布局，在 sim 里评测。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>任务 grasp the screw；Diffusion Policy；重建、collector、架构和训练预算都固定。</li>
+        <li>Leave-one-out：每次去掉一族重采数据；评测只变化被去掉的那族，其他族照常开启。</li>
+        <li>execution OOD = 强制抓空后挪走物体，测重抓；geometry OOD = 桌子尺度、偏移、yaw 和躯干高度超出采集范围；background = 静态背景 / 采集用的 539 张 HDRI / 另外 456 张以室外为主的 HDRI。</li>
+        <li>只在 sim 里测，没有真机消融。</li>
+        <li>（推断）Full 列三组的 none 不同（82.5 / 72.5 / 72.5），应是各组评测时开启的其他族不同；论文没解释。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>每个任务要多少条 demo？<span class="exp-src">§IV-C · App. C</span></h3>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>生成的 demo 数</th><th>50</th><th>100</th><th>200</th><th>500</th><th>1000</th></tr>
+        <tr><td>成功率</td><td>0%</td><td>7.5%</td><td>27.5%</td><td>52.5%</td><td>62.5%</td></tr>
+      </table>
+    </div>
+    <p class="note">根据 §IV-C 正文的数字整理；App. C 的 Fig. S2 画的是同一组数。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>数据越多成功率越高，但收益递减。</b>50 条 0%，1000 条 62.5%；500 → 1000 只多 10 个百分点，所以每个任务定 1000 条。</dd></div>
+      <div><dt>在故事里</dt><dd>Q2：量产的数据确实有用，也给出每任务 1000 条这个预算的依据。</dd></div>
+      <div><dt>指标</dt><dd>成功率，每个 policy 40 个 held-out sim episode。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>grasp the screw，同一数据集的嵌套子集。</li>
+        <li>Diffusion Policy，训练步数固定 100,000（主实验是 200,000），所以测的是同样优化步数下数据量的作用。</li>
+        <li>论文没报 seed 数或方差。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>task scoping、identity binding、support repair 让场景更能用吗？<span class="exp-src">§IV-D · Table III · Fig. 4</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-ARSTAG/tab3.jpg" alt="Table III：task scoping、identity binding、physical grounding 三块"></div>
+      <figcaption><b>Table III</b>（作者原图）三块分别对应 Stage 1、2、3；每块比左右两列（全桌面 vs task-scoped，class name vs ours，w/o repair vs ours）。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>更快、绑得对、放得稳。</b>Task scoping：mesh 均值 7.8 → 3.0（少 62%），候选 mask 中位数 12 → 3，重建 21.7–30.8 → 4.9–7.6 min（每任务快 3.1–6.1×），没配上的 object 4/97 → 0/125。Identity binding：class-name 61%（类名撞上非任务物体时 8%，42 个场景里 28 个至少绑错一个）→ 100%。Support repair：间隙中位数 34.4 → 0.1 mm，接触率 2% → 100%，位移中位数 23.3 → 8.8 mm、p90 646.6 → 24.9 mm。</dd></div>
+      <div><dt>在故事里</dt><dd>Q3：撑起 Stage 1–3；绑错实例、物体悬空，下游 demo 就生成不了。</dd></div>
+      <div><dt>指标</dt><dd><ul class="tight">
+        <li>Binding 准确率：对照编号 mask overlay 上标的真值；只有一个候选的 object 两种方法都算对。</li>
+        <li>接触：被支撑物体 bbox 底面和支撑者 bbox 顶面的竖直间隙绝对值在 1 mm 内。</li>
+        <li>位移：从 settle 前的场景开始，重力下仿真 300 步，量 83 个被支撑物体。</li>
+      </ul></dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>42 个 task-scoped 场景 vs 同样 12 张照片的 12 个全桌面重建；共 125 个 graph object、83 条支撑关系；指令超出 7 个真机任务，同一张照片会选不同物体。</li>
+        <li>计时：3 张照片上 4 次 task-scoped vs 3 次全桌面，同一晚同一台服务器；不含 scene graph 生成和 sim 装配。</li>
+        <li>Binding 基线取第一个类名匹配的 mask；125 个 object 里 64 个有多个同类候选。</li>
+        <li>w/o repair 只去掉最后的竖直支撑对齐，保留根物体调平、贴地和修正传递。</li>
+        <li>没测这些改进对下游 demo 或 policy 成功率的影响；真值由作者标注。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>工具出故障时，agent 能不能做对决定？<span class="exp-src">§IV-E · Fig. 5 · Fig. 6 · Figs. S6–S7</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-ARSTAG/fig5.jpg" alt="Fig. 5：上图按时间的里程碑进度和各 agent 活动，下图按 token 的进度"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）一次 screw 抓取运行的执行剖面：(a) 按时间，(b) 按 agent-loop token。</figcaption>
+    </figure>
+    <p class="eyebrow">怎么读这张图</p>
+    <ol class="read">
+      <li><b>顶部图例：</b>五条里程碑线：3D scene（蓝）、Expert preparation（橙，含 key-region 标注和 expert 程序生成）、Demonstrations（绿）、Training（红）、Evaluation（紫）。</li>
+      <li><b>(a) 上：</b>横轴 adjusted elapsed time（分钟；论文没说怎么 adjust），纵轴里程碑进度。"Scene ready" 和紧跟的 "Expert ready" 都在前 5 分钟内（读图）；绿线每级台阶是一条 demo；红线 "300 steps"；紫线 "10 episodes done"；灰底是异步 job 在跑。</li>
+      <li><b>(a) 下：</b>每个 agent 一行。浅灰 = 一轮（含等待），深灰 = 超过 5 s 的同步工具调用，竖线 = 一次 LLM 调用开始。Background jobs 行 collect → train → eval 占了大部分时间，期间只有 Learning 和 Coordinator 在 job 交接时短暂出现。</li>
+      <li><b>(b)：</b>横轴是累计 agent-loop token（输入 + 输出，k）。底部色条：Coordinator 27.3k、Reconstruction 16.2k、Collection 17.2k、Learning 7.2k。绿线、紫线几乎竖直：10 条 demo 和 10 个评测 episode 不额外花 token。</li>
+    </ol>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-ARSTAG/fig6.jpg" alt="Fig. 6：五种注入的故障"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）压力测试的五种故障。</figcaption>
+    </figure>
+    <p class="eyebrow">怎么读这张图（每种故障后是论文规定的达标标准，按顺序对应）</p>
+    <ol class="read">
+      <li><b>(a) Unmatched object：</b>两根 screw 上是红框 "no mask"，紫框 "'screw' mask" 落在桌边一个深色物体上。达标：有界重试，然后报告并继续。</li>
+      <li><b>(b) Dropped asset：</b>左 "2 assets"，右 "1 asset in USD"，一根 screw 标 "missing"。达标：做装配验证并重做。</li>
+      <li><b>(c) Zero reachable grasps：</b>平躺（flat）的 nut 上全是红色碰撞候选，立起（upright）后有绿色无碰撞候选。达标：由 reconstruction agent 修改场景。</li>
+      <li><b>(d) Same error twice：</b><code>run_train</code> 报 CUDA out of memory（0.9 GiB free）→ <code>gpu_status</code> 显示别的进程占 22 GiB → 再 <code>run_train</code> 同样报错。达标：停下并报告重复错误。</li>
+      <li><b>(e) Ambiguous target：</b>Screw_1、Screw_2 两个候选。达标：请用户澄清。</li>
+    </ol>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>配置</th><th>达标 trial</th></tr>
+        <tr><td>完整（带 operating rules）</td><td>50/50</td></tr>
+        <tr><td>去掉 prompt 里的 operating rules</td><td>23/50</td></tr>
+        <tr><td>固定 stage 链，失败步骤重试一次</td><td>10/50</td></tr>
+      </table>
+    </div>
+    <p class="note">根据 §IV-E 正文整理；论文没给分故障的结果。</p>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>带 operating rules 的 agent 处理故障最稳。</b>完整配置 50/50，去掉规则 23/50，固定链 10/50。真工具的 nut→plate：固定流水线 38.6 min 中止、没有数据；ARSTAG 改场景后 897 个无碰撞候选，第 2 次 rollout 成功，39.9 min 完成（见<a href="#stage-all">跨 stage</a>）。一次小规模完整运行：29 次 agent-loop LLM 调用、67.8k token、22 次工具调用（Fig. 5）。</dd></div>
+      <div><dt>在故事里</dt><dd>Q4：撑起 coordinator 和 operating rules：跨 stage 修复要 agent 读懂诊断，并由规则决定停、问还是派修。</dd></div>
+      <div><dt>指标</dt><dd>每个 trial 看 tool-call 记录和最终回复是否符合该故障预先规定的标准（见上面 (a)–(e)）；达标不等于跑完流水线，该停就停、该问就问也算。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>GPT-5.5 agent loop；五种故障的工具返回是按实际见过的故障写成的脚本文本，不是真跑工具。</li>
+        <li>每种故障 × 每种配置 10 次，每种配置共 50 次。</li>
+        <li>（推断）规则正是为这几类故障写的，测的是"照规则办事"，对完整配置有利；真工具的对比只有 nut→plate 一例。</li>
+        <li>Fig. 5 的剖面：screw 抓取，10 条 demo（10 次尝试采到）、300 步训练、10 个 sim 评测 episode；token 不含工具内部的模型调用。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>论文承认：</b>小方块堆叠、screw insertion 在探索性试验里仍然难（对准要求高、sim-to-real 差距、夹爪不对称）。</li>
+    <li><b>论文承认：</b>生成的数据学不好长 pick-and-place 序列里相邻操作之间的衔接。</li>
+    <li><b>论文承认：</b>不做 non-prehensile 重定向，nut→plate 真机只测立着的 nut。</li>
+    <li><b>论文承认：</b>support repair 后 concave 支撑上仍可能有残余运动（物体从边缘往里滑）。</li>
+    <li><b>论文承认：</b>只做一次采集；DAgger 式迭代、sim + real 联合训练留给以后。</li>
+    <li><b>没交代：</b>只有刚体；质量、摩擦从哪来没说（nut 修复时 agent 直接设了 0.02 kg）。</li>
+    <li><b>（推断）验收只看可行性：</b>抓得到、放得稳就算过，不和真实场景比；nut 放大 1.5× 后通过，论文没查这个改动对真机的影响。</li>
+    <li><b>（推断）证据面窄：</b>故障测试用脚本化的工具返回，规则又是为这些故障写的；真工具的跨 stage 修复只有一例。</li>
+    <li><b>没交代：</b>Fig. 5 的完整 agent 运行是 10 条 demo 的小规模版；主实验每任务 1000 条是否也由一次端到端 agent 运行产生，论文没说。</li>
+    <li><b>没比：</b>真机上只比了三种 policy 架构，没有和遥操作数据或其他 real-to-sim 系统比；截至 2026-11-18 没有公开系统代码。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>r2s-lite 的 repair loop：</b>照 ARSTAG 分工：LLM 只做决定，几何修正、抓取筛选、settle 都是返回具名诊断的确定性工具（0 reachable grasps、缺 USD 引用、退化变换），prompt 写明哪类报错派给哪个 stage、同错重复就停。但它的验收只看可行性，nut 放大 1.5× 也算过，和 pot-lid 第 9 次过了宽松成功规则、场景却是错的属于同一风险；r2s-lite 应把"改了多少、离真实多远"也列进验收。</li>
+    <li><b>real2sim-anything-indoor：</b>support repair 不渲染、不优化，只用 scene graph 的支撑边和 bbox（根物体调平贴地 → 修正沿支撑边传递 → 底面对齐支撑者顶面加间隙），接触率 2% → 100%（Table III）；可直接用来把单目重建的家具和物体放到 Blender 房间的地面和桌面上。</li>
+    <li><b>WorldClaw：</b>prompt → 白盒场景 → Genesis 之后可以照搬 task-consistent 随机化（分区采样、HDRI、控制延迟、扰动后 expert 续接的 recovery demo）直接产训练数据；采集、训练、评测做成后台 job + 完成事件，Fig. 5 那次完整运行（10 条 demo）只花 67.8k agent token。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-16-ARSTAG.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>

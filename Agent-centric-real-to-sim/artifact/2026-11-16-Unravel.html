@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Unravel</title>
+<meta name="description" content="单张室内图先逐层拆（VLM 规划、编辑器移除并补全、每次编辑先验证），物体露得最全时建模，再按移除的倒序装回、settling 和 agentic audit；资产保真度 VLM 评分 4.7 → 8.2（Table 1），和 baseline 只有定性对比。">
+<meta name="paper:title" content="Unravel: Recovering an Interactive 3D Scene from a Single Image">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.16146">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.16146v1">
+<meta name="paper:date" content="2026-10-12">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / Agent-centric-real-to-sim</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-16</p>
+  <h1>Unravel</h1>
+  <p class="full-title">Unravel: Recovering an Interactive 3D Scene from a Single Image</p>
+  <p class="meta">Hui Shan, Keyang Luo, Binjia Zhou, Ming Li, Kai Li, Xin Wang et al. · Zhejiang U、Shanghai Innovation Institute、Westlake U、LIGHTSPEED、Adobe、Fudan U、CityU HK、HKU · arXiv 2026-10-12 · 19 页</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.16146">arXiv</a><a href="https://arxiv.org/pdf/2610.16146v1">PDF</a><a href="https://github.com/SII-Hui/Unravel">Code</a>
+    <span class="muted">仓库是 PDF 里给的，目前只有 README 和图，代码写着 coming soon；没有 project page</span>
+  </p>
+  <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：一张室内照片 → 每件物体都能单独移动的 3D 场景，由 VLM 循环拆解、agent 最后 audit。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>单张室内图 → 每件物体可单独移动的 3D 场景。One-shot 生成器一次猜完被挡的部分和位置，猜错了看不出、也改不了；交给 GPT-6 Astra 摆，位置也偏。</dd></div>
+    <div><dt>Idea</dt><dd>先拆后装。VLM 每轮挑出露全的物体，图像编辑器把它们移走、补出后面的内容，验证过才提交；物体在露得最全时建模。再按移除的倒序装回：点云给位置，观测跨度只当尺寸下限，最后 settling + audit。</dd></div>
+    <div><dt>Result</dt><dd>和同一套工具"只用原图"相比（5 个场景、160 个物体）：资产保真度 VLM 评分 4.7 → 8.2、人评 4.9 → 8.6，每场景点数 1.53M → 2.81M（Table 1）。和 MIDI、SAM 3D、GPT-6 Astra 只比了图，没有布局或物理指标。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>被挡住的部分只能一次猜完：形状猜错，位置跟着错，而且没处检查</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>Fig. 1 / Fig. 2 / Fig. 8 的厨房</b>：<span class="ex">一张厨房照片</span>，左边一台对开门冰箱，中间岛台配 <span class="ex">3 个吧凳</span>、台面上有碗和盘，头顶 <span class="ex">2 盏吊灯</span>，后墙一排上下柜、灶台和嵌在吊柜里的微波炉；<b>岛台挡住了后排的地柜和灶台</b> → 想要：地面和墙组成的 shell，每件物体一个独立、带贴图、可移动的 mesh 和它的位姿、逐轴尺度，并记下谁放在谁上面。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>厨房照片</b><br/><span class='ex'>岛台挡住后排地柜</span>"]:::example --> A1["<b>MIDI / SAM 3D</b><br/>一次前向出全部物体"]
+  A1 --> AX["被挡部分靠先验猜<br/><span class='ex'>MIDI 散开错位</span><br/><span class='ex'>SAM 3D 地柜成薄片</span>"]:::gap
+  IN --> B1["<b>GPT-6 Astra (Ultra)</b><br/>agent 自己生成和摆放"]
+  B1 --> BX["网格粗；给同一套资产<br/>摆放仍偏<br/><span class='ex'>Fig. 5 红框</span>"]:::gap
+  IN --> C1["<b>Seeing Through Clutter</b><br/>迭代移除，编辑不验证"]
+  C1 --> CX["编辑出幻觉、不稳<br/><span class='ex'>几何碎、物体错位</span>"]:::gap
+  IN --> D1["<b>Direct reconstruction</b><br/>同一套工具，只用原图"]
+  D1 --> DX["被挡物体 mask 残缺<br/><span class='ex'>保真度 4.7 vs 8.2</span>"]:::gap
+  </pre></div>
+  <p class="note">只有最后一条有数字：Table 1 的消融（5 个场景、160 个物体的均值，不是厨房单独的数）。MIDI 和 SAM 3D 的坏法直接看下面 Fig. 2 的厨房；Astra 和 Seeing Through Clutter 论文没在厨房上跑，取 Fig. 5（另外 5 个场景）和附录 Fig. 7（一个客厅）。"坏在哪一步"是按 §1、§4.1–4.2 的分析推断的：论文对 baseline 只有定性图，没有任何数字。</p>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-Unravel/fig2.jpg" alt="Fig. 2：书房和厨房两张输入图，MIDI、SAM3D、Unravel 的重建；红圈标出 SAM3D 变形的部分，绿圈标出 Unravel 完整的地柜"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）单图交互式场景重建：one-shot 生成器在遮挡下摆错物体、扭曲被挡部分（红），Unravel 恢复得完整（绿）。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>Input image 列：</b>上面是书房，下面就是 running example 的厨房。</li>
+    <li><b>MIDI 列：</b>物体都生成了，但各自散开：厨房的吊柜东一块西一块，台面和电器对不上位置。</li>
+    <li><b>SAM3D 列，红色虚线圈：</b>厨房岛台后面那排地柜（原图里被岛台挡住）被做成一块浅浅的薄片，右下是放大；书房里桌上小盒和书架也变了形，灰框是同一结果换个视角。</li>
+    <li><b>Unravel 列，绿色虚线圈：</b>同一个地柜，有完整的深度和柜门，位置也对。这个地柜就是后面 Stage 2 在第 4 轮、露全时才建模的那件。</li>
+  </ol>
+  <p class="crux"><b>根本问题：</b>形状补全和摆放绑在一次预测里，被挡部分猜错了，错误会传进布局，而且分不清、改不了（§1）；只靠语义推理的 agent 又说不清照片里的几何（§2.3）。　<b>这篇的切入点：</b>把补全挪到 2D 图像里一层层做，每层先验证再用；拆的过程记下每个点来自哪一轮、哪个像素，装回去时当几何依据。</p>
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>迭代移除（本文所属）</b><br><span class="muted">Seeing Through Clutter</span></td><td>单图 → 结构化 3D 场景</td><td>一次次移除物体，拿更干净的图去重建</td><td>编辑不验证（作者实测幻觉多、不稳），移除只为得到干净输入 → 每次编辑先验证，并把移除记录（轮次、像素来源）用来倒序装配</td></tr>
+      <tr><td><b>One-shot 物体级生成器</b><br><span class="muted">MIDI、SAM 3D、SceneGen、CAST</span></td><td>杂乱单图 → 各物体 mesh + 位姿</td><td>训练好的 3D 先验，一次前向补全遮挡并摆放</td><td>要昂贵的 3D 数据训练；补全和摆放耦合，错了分不开 → 不训练，遮挡在 2D 里补，每轮看得见、可拦下</td></tr>
+      <tr><td><b>通用多模态 agent</b><br><span class="muted">GPT-6 Astra (Ultra)</span></td><td>看图、编辑图、调 3D 工具搭场景</td><td>推理 + 工具调用，自己生成网格和布局</td><td>网格粗；给它同一套资产和 mask，摆放仍偏 → 位置交给点簇注册和 settling，VLM 只做规划、验证和 audit</td></tr>
+      <tr><td><b>Training-free 模块化 pipeline</b><br><span class="muted">Interact3D、SimFoundry</span></td><td>免训练生成可交互物体或场景</td><td>模块化优化 + self-correction</td><td>拥挤场景里摆不准 → 每件资产锚定在自己的 instance 点簇上，倒序装配保证支撑物先到</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>Agentic 文本生成场景</b><br><span class="muted">Holodeck、SAGE、SceneSmith、SceneAssistant</span></td><td>文本 → 可交互 3D 场景</td><td>LLM 规划布局，按视觉反馈迭代修</td><td>目标是 prompt，没有要对齐的照片 → 有一张照片要忠实复原，拆解得到的点云就是几何参照</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：论文 §2 Related Work 和 §4.1 的 baseline。§2.1 的前馈几何（DUSt3R、VGGT、MoGe 系列）和 §2.2 的单物体生成（TRELLIS.2 等）是本文直接调用的积木，没单列：前者没有物体分解，后者需要干净、没被挡的物体图。论文没和 library 里或这一轮的其他论文对比。未另行检索。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>先拆：一层层移走露全的物体并补全后面；再装：按移除的倒序放回</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-Unravel/fig1.jpg" alt="Fig. 1：厨房输入图，三轮移除的缩略图，重建出的交互式厨房和爆炸视图；下面两行是另外四个场景的输入和结果"></div>
+    <figcaption><b>Fig. 1</b>（作者原图）上排：厨房被一层层拆到空房间，再重建成每件都独立的场景（右侧爆炸视图）；下面是更多输入和结果。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>Input image（左上）：</b>running example 的厨房照片。</li>
+    <li><b>First round → Middle round → Last round：</b>每格上半是这一轮的红框目标，下半是编辑后的图。第一轮拿走冰箱、吊灯、吧凳等，最后一轮拆掉所有柜子，只剩空房间。</li>
+    <li><b>两条箭头 "Asset extraction and placement"：</b>虚线向右是拆的方向，边拆边提取资产；实线向左是装的方向，倒着放回。</li>
+    <li><b>Interactive 3D scene：</b>重建好的厨房，每件都是独立资产。</li>
+    <li><b>Bang!：</b>爆炸视图，把所有资产拉开，说明它们彼此独立、能单独移动。</li>
+    <li><b>下面两行：</b>办公室、客厅、餐厅、带吧台的客厅，左边输入、右边结果。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><video src="2026-11-16-Unravel/web-pipeline.mp4" autoplay muted loop playsinline controls></video></div>
+    <figcaption><b>GitHub README</b> <a href="https://github.com/SII-Hui/Unravel">Deconstruct → Recompose 动画</a>：Fig. 3/4 的教室。前半段（Phase 01）逐轮移除到空房间；后半段（Phase 02）一件件放回，第一件是天花板灯，正是 Fig. 4 里最后一轮（Round 6）才移除的那件。动画里的计数"18"来自 README，论文没给这个场景的物体数。</figcaption>
+  </figure>
+  <div class="flow"><pre>
+flowchart TD
+  I["<b>Input</b><br/><span class='ex'>一张厨房照片</span>"]:::example --> D["<b>拆</b>：逐轮移走露全的物体<br/>移走前建模，记下点的来源<br/><span class='ex'>小件 → 岛台 → 灶台 → 柜子</span>"]
+  D --> R["<b>装</b>：按移除的倒序放回<br/>点云定位，再 settling + audit<br/><span class='ex'>柜子 → 灶台 → 岛台 → 小件</span>"]:::win
+  R --> O["<b>Output</b><br/><span class='ex'>每件可单独移动的 3D 厨房</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>6 个 stage：前 3 个每轮循环一次，第 4 个整理点云，后 2 个装回</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-16-Unravel/fig3.jpg" alt="Fig. 3：上半 a 是拆解循环、逐轮点云融合、资产和点簇对应；下半 b 是从空 shell 倒序放回、单侧注册和最终 audit"></div>
+    <figcaption><b>Fig. 3</b>（作者原图）Overview of Unravel。图里是 Fig. 4 的教室；厨房走同一套流程，只是 4 轮。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>(a) 上排 Input / current image → Agentic loop（Plan → Edit → Verify，带回环）→ Intermediate round → … → Empty room：</b>拆的循环，右上标 Removal order。对应 Stage 1–3。</li>
+    <li><b>(a) 中排 Initially reconstructed point clouds → Per-round point cloud reconstruction, alignment, and fusion → Final fused point clouds：</b>每轮重建、对齐到第一轮、融合。左下原图点云里白色的空洞就是被挡住、看不到的区域。对应 Stage 4。</li>
+    <li><b>(a) 虚线框 Assets and spatial evidence：</b>左边 Independent 3D assets（Extract before each removal），右边按物体着色的点云；中间 Instance correspondence 把资产和点簇一一对上，Instance labels 来自融合点云。对应 Stage 2 和 Stage 4。</li>
+    <li><b>(b) 上排 Environment shell → Object retrieval and placement ① → Intermediate round → Interactive 3D scene ②：</b>从空 shell 开始按 Reverse removal order 放回。对应 Stage 5。</li>
+    <li><b>(b) ① One-sided registration：</b>3D asset 加 Instance partial point clouds，求 s, R, t（尺度、旋转、平移）得到 Results；底下一行 Similarity fitting under one-sided extent constraints。对应 Stage 5。</li>
+    <li><b>(b) ② Final audit：</b>Physical settling 里 Grounding（Floating → Grounded）和 Penetration resolution（Interpenetrating → Separated），右边 Agentic refinement 是 Render → Inspect → Refine 的循环。对应 Stage 6。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Plan</b><br/><span class='ex'>红框：冰箱、吊灯、吧凳</span>"] --> S2["<b>2 · 露全时建模</b><br/><span class='ex'>红框物体 → mesh</span>"]
+  S2 --> S3["<b>3 · Edit + Verify</b><br/><span class='ex'>移走、补全，验过才提交</span>"]
+  S3 -->|"还没空：下一轮"| S1
+  S3 -->|"空房间：第 4 轮后"| S4["<b>4 · 点云融合 + 标注</b><br/><span class='ex'>每个点归到一个物体</span>"]
+  S4 --> S5["<b>5 · 倒序装配 + 单侧注册</b><br/><span class='ex'>柜子 → 灶台 → 岛台 → 小件</span>"]
+  S5 --> S6["<b>6 · Settling + audit</b><br/><span class='ex'>吧凳落地，吊灯不动</span>"]
+  R["<b>拆解记录</b><br/>轮次、mask、点的来源"]:::win
+  S2 -.-> R
+  R -.-> S4
+  R -.-> S5
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  click S6 href "#stage-6"
+  click R href "#stage-all"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。绿框的<a href="#stage-all">拆解记录</a>是论文的 key insight：拆的时候写下，装的时候当几何依据，贯穿 Stage 2–6。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Plan：VLM 挑出露全的物体</span>
+      <span class="stage-io">当前图 → 红框（本轮移除）+ 绿框（保护）</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>只有完整露出的物体才能拿到干净的快照；删错东西会把信息永久抹掉，所以拿不准的一律保护。</li>
+        <li><b>How：</b>GPT-5.5 看当前图，把完全可见的物体标为移除目标（红框），其余标为保护（绿框），框画在一张 plan image 上。</li>
+        <li>规则：墙和地面保留；先拿走里面或上面的东西，再拿装它们的容器（contents before containers）。</li>
+        <li>定位（A.1）：一次调用给所有目标画框，每个编号一个框；两个框 IoU ≥ 0.85 视为同一物体画了两次，多的那个重测。</li>
+        <li>每个全局框再单独局部采样一次核对：IoU ≥ 0.5 就确认；否则判为漂移，对这个目标局部采样 3 次，保留和别的样本 IoU ≥ 0.7 的，逐元素取中位数替换。</li>
+        <li>画好红、绿框的 plan image 再给 VLM 看一次：还没框到的可移动物体一律加为保护。漏检的物体因此被保护，而不是被误删。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>当前图</b><br/><span class='ex'>原始厨房照片</span>"] --> b["<b>GPT-5.5 选目标</b><br/>露全的 → 红框，其余 → 绿框"]
+  b --> c["<b>一次调用画全部框</b><br/>IoU ≥ 0.85 视为重复，重测"]
+  c --> d["<b>逐框局部核对</b><br/>IoU ≥ 0.5 就确认"]
+  d -->|"对不上"| e["<b>局部重测 3 次</b><br/>一致的样本取中位数"]
+  d --> f["<b>plan image 回看一次</b><br/>没框到的可移动物体 → 保护"]:::win
+  e --> f
+  f --> g["<b>本轮目标</b><br/><span class='ex'>冰箱、吊灯、吧凳…</span>"]:::example
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-Unravel/fig4-s1.jpg" alt="Fig. 4 上半：教室六轮，三行分别是 planner 的保留/移除框、移除目标、编辑后的图"></div>
+        <figcaption><b>Fig. 4 上半</b>（作者原图）教室拆了六轮：planner 输出、移除目标、编辑结果。红框 = 目标，绿框 = 保护。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>Planner output (keep / remove)：</b>Round 1 红框是前排 3 把椅子、盆栽和白板槽上的小物件；柜子、白板、讲台、桌子都是绿框。</li>
+        <li><b>Removal targets：</b>只留红框，就是交给编辑器的目标（Stage 3）。</li>
+        <li><b>Edited output：</b>编辑并验证通过后的图，作为下一轮的输入。</li>
+        <li><b>Round 1 → 6：</b>椅子和盆栽 → 前排两张桌子 → 中间的桌椅 → 白板和剩下的桌椅 → 柜子、讲台、最后一张桌子 → 天花板灯（Round 5 时它还是绿框）→ 空房间。从前往后，先内容后容器。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>厨房第 1 轮（Fig. 8，见 Stage 2）：红框是 <span class="ex">冰箱、2 盏吊灯、微波炉、吐司机、搅拌机、岛台上的碗盘、3 个吧凳</span>。岛台、灶台和所有柜子这一轮不动，分别等到第 2、3、4 轮：岛台上还放着碗盘，灶台被岛台挡住一部分（按上面两条规则推断，论文没逐件解释）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">露得最全时建模（best-observed snapshot）</span>
+      <span class="stage-io">本轮的图 + 目标框 → mesh + mask + 移除轮次</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>直接从原图建模时，被挡的物体只有残缺的 mask，生成器只能猜，出来的是破网格、多余部件、编出来的内容（Fig. 6 上排，见 E2）。</li>
+        <li><b>How：</b>每件物体在被移除之前的那一刻保存快照，这时它露得最全（它刚被判为"完全可见"）。</li>
+        <li>SAM 3 只在它的框里分割，得到 instance mask，比整图分割准。</li>
+        <li>gpt-image-2 把快照转成 canonical 图（论文没细说，应指单独、干净的物体图），TRELLIS.2 再生成带贴图的 mesh。</li>
+        <li>asset index 记下 mesh、mask、语义、框和移除轮次，留给 Stage 4 标注和 Stage 5 装配。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>本轮的图 + 目标框</b><br/><span class='ex'>第 3 轮，灶台</span>"] --> b["<b>SAM 3 只在框内分割</b><br/>→ instance mask"]
+  b --> c["<b>gpt-image-2</b><br/>转成 canonical 物体图"]
+  c --> d["<b>TRELLIS.2</b><br/>→ 带贴图的 mesh"]
+  d --> e["<b>asset index</b><br/>mesh、mask、语义<br/>框、移除轮次"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-Unravel/fig8-s1.jpg" alt="Fig. 8 厨房那一组：输入图和三个渲染视角，下面是第 1 到第 4 轮的红框和编辑结果，以及每轮提取出的资产"></div>
+        <figcaption><b>Fig. 8</b>（作者原图，只截厨房那一组）完整的拆解轨迹：每轮的红框和编辑结果，以及每轮提取的资产（重复的资产省略）。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>上排：</b>输入照片，加上重建好的厨房从三个视角的渲染。</li>
+        <li><b>Round 1 / Round 2 / Round 3 / Round 4：</b>每格上半是本轮红框，下半是编辑后的图。第 1 轮后冰箱位置变成空墙、岛台台面清空；第 2 轮删岛台；第 3 轮删灶台；第 4 轮删全部柜子，只剩空房间。</li>
+        <li><b>Round 1 assets：</b>冰箱、吊灯、一摞盘子、吐司机、微波炉、吧凳、搅拌机、两只碗。</li>
+        <li><b>Round 2,3 assets：</b>上面是岛台，下面是灶台。</li>
+        <li><b>Round 4 assets：</b>各个上柜、地柜、水槽柜和包冰箱的高柜框。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p><span class="ex">灶台</span>原本被岛台挡住一部分；第 2 轮删掉岛台后，它在第 3 轮的图里露全，于是从这张图建模。<span class="ex">后排地柜</span>到第 4 轮才建模，这时前面已经没东西挡它；Fig. 2 里 SAM 3D 把它做成薄片，Unravel 的版本是完整的。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Edit + Verify：移走、补全，验过才提交</span>
+      <span class="stage-io">当前图 + plan → 验证过的下一张图 + edit mask</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>被挡的内容在 2D 图像里补出来，中间结果看得见、能检查，错的编辑在进入重建之前就被拦下。</li>
+        <li><b>How：</b>gpt-image-2 按 plan 删掉红框物体，补全腾出来的区域，得到下一张图。</li>
+        <li>VLM verifier（GPT-5.5）在提交前查三件事：漏删的目标、误删的物体、凭空编出的内容。</li>
+        <li>通过才提交。前后两张图之间变化的像素就是这一轮的 edit mask，Stage 4 用它判断哪些点是新露出来的。</li>
+        <li>循环回 Stage 1，直到只剩空房间。验证不通过时怎么重试（重编辑几次、要不要重新规划）论文没写。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>当前图 + plan</b><br/><span class='ex'>第 1 轮的红框</span>"] --> b["<b>gpt-image-2</b><br/>删掉红框物体<br/>补全空出的区域"]
+  b --> c["<b>VLM verifier</b><br/>漏删？误删？编造？"]:::win
+  c -->|"不通过"| x["<b>不提交</b><br/>重试方式论文未写"]:::gap
+  c -->|"通过"| d["<b>提交</b><br/>新图 + edit mask"]
+  d --> e["<b>只剩空房间？</b><br/><span class='ex'>厨房第 4 轮后是</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>第 1 轮编辑后（Fig. 8 Round 1 下半）：<span class="ex">冰箱位置变成一面空墙，吧凳和碗盘消失，岛台还在</span>；这一轮的 edit mask 就是这些像素。之后岛台（第 2 轮）、灶台（第 3 轮）、全部柜子（第 4 轮），一共 <span class="ex">4 轮</span>到空房间。教室用了 6 轮（Fig. 4），消融的 5 个场景每个 4–8 轮（§4.3）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">点云对齐、融合、按层标注</span>
+      <span class="stage-io">各轮的图 → 融合点云、每件资产的点簇、shell</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>每轮从不同的编辑图重建，不加控制尺度和位姿会漂（论文称这是 key challenge）；而且单视角点云里一个像素只能有一个标签，被挡在后面的表面无从归属。</li>
+      </ul>
+      <p class="eyebrow">符号</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>厨房里</th></tr>
+          <tr><td>I<sub>k</sub></td><td>第 k 轮开始时的图</td><td>I<sub>1</sub> 原照片 … I<sub>5</sub> 空厨房</td></tr>
+          <tr><td>E<sub>k</sub></td><td>第 k 轮编辑改动的像素（edit mask）</td><td>E<sub>2</sub> = 岛台所在的像素</td></tr>
+          <tr><td>P<sub>k</sub>、M<sub>k</sub></td><td>MoGe-3 从 I<sub>k</sub> 估出的逐像素 3D 点；其中可信的像素（置信度 &gt; 0.5、不在深度断裂处）</td><td>论文没给厨房的值</td></tr>
+          <tr><td>A<sub>k</sub>（anchors）</td><td>第 1 轮和第 k 轮都可信、之前从没被编辑过的像素</td><td>示意：一直没动过的墙面和地面</td></tr>
+          <tr><td>s, R, t</td><td>把第 k 轮对齐到第 1 轮的尺度、旋转、平移</td><td>—</td></tr>
+          <tr><td>r<sub>i</sub></td><td>物体 i 被移除的轮次</td><td>吧凳 1，岛台 2，灶台 3，地柜 4</td></tr>
+          <tr><td>S<sub>i</sub>、C<sub>i</sub></td><td>物体 i 的 mask（来自它露得最全的那轮）；归给它的点（点簇）</td><td>地柜的 mask 来自 I<sub>4</sub></td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>How · 对齐：</b>相机内参各轮固定。用 anchors（A<sub>k</sub>）解闭式相似变换（Umeyama），把第 k 轮的点对到第 1 轮；残差大的 anchor 多在编辑边界和阴影残留处，剔除后重解一次。</li>
+        <li><b>How · 融合：</b>只加新信息。上一轮编辑过的像素（E<sub>k−1</sub>）贡献它们新露出的表面，没编辑的像素保留原来的点。拆掉的物体的点也留着。</li>
+        <li><b>How · 标注：</b>相机固定，一个像素就是一条光线，每轮在这条光线上看到不同深度。第 k 轮加进来的点叫第 k 层；第 k 层的点归给"mask 盖住这个像素、到第 k 轮还没被移除（r<sub>i</sub> ≥ k）"的物体里最靠前（最早被移除）的那个；一个都没有就归房间（0）。后面的移除不会改已有的标签。</li>
+        <li><b>结果：</b>每件资产一个点簇 C<sub>i</sub>；房间的点拟合出 shell（地面和墙）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>每轮的图</b><br/><span class='ex'>原图 … 空厨房，共 5 张</span>"] --> b["<b>MoGe-3</b><br/>点图 + 置信度，> 0.5 才用"]
+  b --> c["<b>Umeyama 对齐到第 1 轮</b><br/>只用 anchors<br/>剔除大残差后再解一次"]
+  c --> d["<b>融合</b><br/>只加上一轮编辑处新露出的点"]
+  d --> e["<b>按层标注</b><br/>归给最靠前、还在的物体"]
+  e --> f["<b>点簇 + shell</b><br/><span class='ex'>岛台、地柜、墙各一份</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-16-Unravel/fig4-s3.jpg" alt="Fig. 4 下半：教室原图和六轮的对齐重建，以及逐轮累积的融合点云"></div>
+        <figcaption><b>Fig. 4 下半</b>（作者原图）上行是每轮单独重建并对齐的结果，下行是累积融合的点云，从原图的重建开始。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>Per-round aligned reconstruction：</b>每轮的图单独重建、对齐到第一轮。换个视角看，物体背后白色的空洞就是这张图里被挡住的区域；越往后物体越少，Round 5、6 只剩空房间。</li>
+        <li><b>Cumulative fused point clouds：</b>从 Original image 的重建开始累加。拆掉的物体的点一直留着，桌子下面、椅子后面的白洞一轮轮被新露出的表面补上，Round 6 时教室完整。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步（示意：按 §3.2 的规则在厨房上推演，论文没画这条光线）</p>
+        <p>取岛台正面的一个像素，它后面依次是后排地柜和墙：</p>
+        <div class="table-wrap">
+          <table class="grid">
+            <tr><th>层</th><th>点来自哪张图</th><th>还在、mask 又盖住这里的物体</th><th>标签</th></tr>
+            <tr><td>第 1 层</td><td>原照片 I<sub>1</sub></td><td>岛台（r = 2）、地柜（r = 4）</td><td><span class="ex">岛台</span>（更靠前）</td></tr>
+            <tr><td>第 3 层</td><td>I<sub>3</sub>（岛台在第 2 轮被删）</td><td>地柜（r = 4）</td><td><span class="ex">地柜</span></td></tr>
+            <tr><td>第 5 层</td><td>I<sub>5</sub>（柜子在第 4 轮被删）</td><td>无</td><td><span class="ex">房间 → 墙</span></td></tr>
+          </table>
+        </div>
+        <p>一个像素三个点、三个主人，没有歧义：移除顺序就是这条光线上的深度顺序。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">倒序装配 + 单侧注册（observed points = lower bound）</span>
+      <span class="stage-io">shell + 资产 + 点簇 → 每件的位姿和逐轴尺度</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>谁托着谁需要一个装配顺序；而生成的资产是完整的，点簇只有朝相机的那一面，硬把完整资产贴到部分点上会把它缩小。</li>
+        <li><b>How · 顺序：</b>容器要等上面、里面的东西拿走才完全露出，所以"i 放在 j 上"必然有 r<sub>i</sub> &lt; r<sub>j</sub>。从空 shell 开始按移除轮次从大到小装，每件到场时它的支撑物已经在了。</li>
+      </ul>
+      <p class="eyebrow">符号</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>厨房里</th></tr>
+          <tr><td>X<sub>i</sub></td><td>从资产表面采样的点</td><td>TRELLIS.2 生成的完整岛台</td></tr>
+          <tr><td>T = (s, R, t)</td><td>逐轴尺度（直立坐标系里高、深、宽各一个）、旋转、平移</td><td>论文没给厨房的值</td></tr>
+          <tr><td>D<sub>i</sub>(T)</td><td>双向中值 Chamfer：前一半看资产贴不贴点簇，后一半看点簇被资产盖住多少</td><td>—</td></tr>
+          <tr><td>U<sub>i</sub></td><td>看不全的轴：深度轴（背面永远看不到）必在；宽、高被图像边框切掉或大面积被挡时也算</td><td>岛台：深度</td></tr>
+          <tr><td>span<sub>u</sub></td><td>点集沿轴 u 伸出多远</td><td>岛台点簇的前后跨度</td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>How · 注册：</b>候选变换用 D<sub>i</sub> 打分；取中值是为了不被邻近物体的碎点和生成出的多余部件带偏。最好的候选再用 truncated similarity ICP 精修，每步只留可靠的对应点。</li>
+        <li><b>How · 单侧约束：</b>在看不全的轴（U<sub>i</sub>）上，资产的跨度必须 ≥ 点簇的跨度。部分观测只能让资产变大，不能让它缩小。</li>
+        <li><b>变换形式（A.2）：</b>全局尺度 + 有界的逐轴调整，不是自由仿射。看不全的轴只能长；看全的轴跨度可靠，也可以缩；三个轴都说"太小"时用一个统一尺度，保持比例。每次修正只在 D<sub>i</sub> 不变差时保留；图像线索可以微调朝向和位置，但同样不能让 3D 拟合变差。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>空 shell</b><br/><span class='ex'>地面 + 墙</span>"] --> b["<b>按轮次从大到小取资产</b><br/><span class='ex'>4 柜子 → 3 灶台</span><br/><span class='ex'>→ 2 岛台 → 1 小件</span>"]
+  b --> c["<b>候选变换打分</b><br/>双向中值 Chamfer"]
+  c --> d["<b>truncated similarity ICP</b><br/>精修最好的候选"]
+  d --> e["<b>单侧尺寸修正</b><br/>看不全的轴只许变长"]:::win
+  e --> f["<b>拟合不变差才保留</b><br/>放进场景，取下一件"]
+      </pre></div>
+      <p class="muted">作者原图：<a href="#l2">Fig. 3</a> (b) ①，椅子的 3D asset 加它的局部点云，求 s, R, t 得到 Results。</p>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>装配顺序：<span class="ex">第 4 轮的柜子 → 第 3 轮的灶台 → 第 2 轮的岛台 → 第 1 轮的吧凳、冰箱、微波炉、吊灯、碗盘</span>。碗（r = 1）放在岛台（r = 2）上，所以岛台先到。岛台的背面从没被看到，深度轴看不全：它的 mesh 可以加深去盖住点簇，但不会被压扁成只剩正面的一层（Fig. 2 里 SAM 3D 的地柜就是这种薄片）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-6">
+    <summary>
+      <span class="stage-n">Stage 6</span>
+      <span class="stage-name">Physical settling + agentic audit</span>
+      <span class="stage-io">注册后的场景 → 不悬空、不穿插、查过错的场景</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>注册只保证"放在看到的地方附近"，不保证物理上说得通：会悬空，也会插进邻居里。</li>
+        <li><b>How · 分类：</b>由语义关系和局部支撑几何推出 support graph；挂画、吊灯这类挂在墙上或天花板上的是 mounted，固定不动；其余是 movable。</li>
+      </ul>
+      <p class="eyebrow">符号</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>符号</th><th>白话</th><th>厨房里</th></tr>
+          <tr><td>δ<sub>i</sub></td><td>settling 给物体 i 的小平移</td><td>吧凳往下落的那一段</td></tr>
+          <tr><td>supported</td><td>底面落在地面或下方物体顶面上，误差在 ε<sub>s</sub> = 3 cm 内</td><td>碗落在岛台台面上</td></tr>
+          <tr><td>ϕ</td><td>两件资产之间的间隙，重叠时为负</td><td>吧凳不能插进岛台</td></tr>
+          <tr><td>B<sub>i</sub></td><td>移动预算：本来就对准点簇的最多动 ε（水平 0.3 m、竖直 0.15 m）；放偏的只能朝点簇挪，不能更远</td><td>—</td></tr>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><b>How · settling：</b>让所有 movable 物体的位移平方和（Σ‖δ<sub>i</sub>‖²）最小，同时满足三条：每件都有支撑；两两不穿插（ϕ ≥ 0）；位移在预算 B<sub>i</sub> 内。效果是把悬空的放下来、把插在一起的分开。</li>
+        <li><b>How · audit：</b>GPT-6 Astra (Light) 渲染 settle 后的场景，找剩下的摆放错误；每找到一个就做局部修正，再 settle 一次；直到查不出错为止。轮数上限、修正的具体形式论文没写。</li>
+        <li><b>交互性的来源（§3.1）：</b>场景里记下每件物体放在哪件资产或 shell 表面上，以后移动、替换物体后可以重新 settle。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  a["<b>注册后的场景</b><br/><span class='ex'>吧凳可能悬空或插进岛台</span>"] --> b["<b>support graph</b><br/>mounted 不动，movable 可动"]
+  b --> c["<b>最小位移 settling</b><br/>有支撑 · 不穿插 · 在预算内"]
+  c --> d["<b>Audit：GPT-6 Astra (Light)</b><br/>渲染 → 检查"]:::win
+  d -->|"发现错误"| e["<b>局部修正</b>"]
+  e --> c
+  d -->|"没有错误"| f["<b>输出</b><br/><span class='ex'>可交互的厨房</span>"]
+      </pre></div>
+      <p class="muted">作者原图：<a href="#l2">Fig. 3</a> (b) ②，悬空的椅子落地（Floating → Grounded），插进桌子的椅子被分开（Interpenetrating → Separated），右边 Render → Inspect → Refine。</p>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p><span class="ex">2 盏吊灯</span>是 mounted（论文举的例子正是 pendant lights），不动；<span class="ex">吧凳</span>要落到地面 3 cm 以内、不能插进岛台；<span class="ex">碗盘</span>要落在岛台台面上；本来对准点簇的物体，settle 后离点簇中心横向不超过 0.3 m、竖直不超过 0.15 m。厨房上 audit 查出了什么、跑了几轮，论文没报告。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿</span>
+      <span class="stage-name">拆解记录（deconstruction record）</span>
+      <span class="stage-io">Stage 2–3 写下 → Stage 4–6 读取</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>论文的 key insight（§1）：拆的记录本身就是装回去的几何参照，不用再单独估计布局。</li>
+        <li><b>记了什么：</b>每件资产的 mesh、mask、语义、框、移除轮次（asset index）；每轮的 edit mask；每个点来自哪一轮、哪个像素（round-and-pixel provenance）。</li>
+        <li><b>谁在用：</b>移除轮次 + mask → 点的标签（Stage 4）；移除轮次 → 装配顺序（Stage 5）；点簇 → 注册（Stage 5）和移动预算（Stage 6）；支撑关系 → 之后编辑时重新 settle。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart TD
+  w1["<b>Stage 2 写入</b><br/>mesh、mask、语义<br/>框、移除轮次"] --> R["<b>拆解记录</b>"]:::win
+  w2["<b>Stage 3 写入</b><br/>每轮的 edit mask"] --> R
+  R --> u1["<b>Stage 4</b><br/>按层标注 → 点簇"]
+  R --> u2["<b>Stage 5</b><br/>轮次 → 装配顺序"]
+  u1 --> u3["<b>Stage 5–6</b><br/>点簇 → 注册、移动预算"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>"岛台 r = 2、地柜 r = 4" 这两个数同时决定了 Stage 4 里那条光线的标签（岛台在前）和 Stage 5 的装配顺序（地柜先放）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>VLM 只挑露全的物体，其余保护</td><td>Stage 1：第 1 轮红框是冰箱、吊灯、吧凳等，岛台和柜子留着</td></tr>
+        <tr><td>先内容后容器（contents before containers）</td><td>Stage 1、5：碗盘第 1 轮移走，岛台第 2 轮</td></tr>
+        <tr><td>框的交叉核对、漏检的物体改为保护（A.1）</td><td>Stage 1：每个框局部再采一次，漂移就采 3 次取中位数</td></tr>
+        <tr><td>图像编辑器移除并补全被挡区域</td><td>Stage 3：第 1 轮后冰箱位置变成空墙</td></tr>
+        <tr><td>每次编辑先验证再提交</td><td>Stage 3：verifier 查漏删、误删、编造</td></tr>
+        <tr><td>循环到空房间</td><td>Stage 3：厨房 4 轮（教室 6 轮）</td></tr>
+        <tr><td>物体在露得最全时建模</td><td>Stage 2：灶台第 3 轮、后排地柜第 4 轮才建模</td></tr>
+        <tr><td>anchors + Umeyama 控制逐轮漂移</td><td>Stage 4：只用没被编辑过的像素对齐</td></tr>
+        <tr><td>只融合新露出的点</td><td>Stage 4：岛台删掉后才加进它后面的地柜表面</td></tr>
+        <tr><td>按移除顺序给每层点标号</td><td>Stage 4：同一像素三层，岛台、地柜、墙</td></tr>
+        <tr><td>倒序移除 = 支撑顺序</td><td>Stage 5：柜子 → 灶台 → 岛台 → 碗盘</td></tr>
+        <tr><td>观测点只当尺寸下限（one-sided registration）</td><td>Stage 5：岛台的深度只许变大</td></tr>
+        <tr><td>Physical settling（支撑、不穿插、移动预算）</td><td>Stage 6：吧凳落地、不插进岛台，吊灯不动</td></tr>
+        <tr><td>Agentic audit</td><td>Stage 6：渲染后查错、局部修、再 settle</td></tr>
+        <tr><td>拆解记录贯穿全程</td><td>贯穿：岛台 r = 2、地柜 r = 4 同时决定标签和顺序</td></tr>
+        <tr><td>主要结果</td><td>E2：资产保真度 VLM 4.7 → 8.2（Table 1）</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>只有一张消融表有数字：拆过之后资产更像、几何更多；和 baseline 只比了图</h2>
+  <p>顺序同论文：<a href="#exp-1">E1</a> 和 MIDI、SAM 3D、GPT-6 Astra 比布局（只有图）→ <a href="#exp-2">E2</a> 消融，拆 vs 不拆，全文唯一的数字 → <a href="#exp-3">E3</a> 真实照片（只有图）。比的是资产保真度和几何覆盖，没有成功率、耗时或布局误差。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>布局能比 one-shot 生成器和 GPT-6 Astra 更贴近输入吗？<span class="exp-src">§4.2 · Fig. 5</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-Unravel/fig5.jpg" alt="Fig. 5：五个场景，每个场景两个视角，依次是输入图、MIDI、SAM3D、GPT-6 Astra (Ultra)、GPT-6 Astra (Ultra) + TRELLIS2、Unravel；红框标出摆放差异"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）每行一个场景、两个视角。先比最后两列：Astra + TRELLIS2 和 Unravel 用的是同一套资产，红框处的差别只能来自摆放。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>布局更贴近输入，但只有定性图。</b>MIDI 对被挡严重的物体生成出错；SAM 3D 资产大体合理，但纹理漂、位置不准，容易悬空和穿插；Astra 直接生成的网格明显更粗；给 Astra 同一套资产和 mask 后，红框处仍然摆错。附录 Fig. 7 里 Seeing Through Clutter 几何碎、物体错位。</dd></div>
+      <div><dt>在故事里</dt><dd>撑起摘要里"摆得更准"的说法，并用 shared-asset 设置把"摆放"和"资产质量"拆开比。</dd></div>
+      <div><dt>指标</dt><dd>没有定量指标。红框是作者标出的 agentic 结果的摆放差异；没有对 GT 的 IoU 或 Chamfer，也没有悬空、穿插计数。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>5 个场景，每个渲染两个视角；场景从哪来、怎么挑的论文没说。</li>
+        <li>MIDI、SAM 3D 直接从图出物体和布局。GPT-6 Astra (Ultra) 经官方网页界面跑两种设置：直接生成网格和布局；或拿到 Unravel 的 3D 资产、2D mask 和原图，只估每件的尺度和位姿（+ TRELLIS2）。</li>
+        <li>Seeing Through Clutter 用开源配置，planner 升级成 GPT-5.5，只给了 1 个场景（Fig. 7）。</li>
+        <li>baseline 用的是更强的 Astra (Ultra)，Unravel 自己的 audit 用 Astra (Light)。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>拆一遍再建，比直接从原图建好多少？<span class="exp-src">§4.3 · Table 1 · Fig. 6</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-Unravel/tab1.jpg" alt="Table 1：direct reconstruction 和 Unravel 在 2D masks、3D assets、scene geometry 三组指标上的对比"></div>
+      <figcaption><b>Table 1</b>（作者原图）5 个场景的消融。先看 3D assets 两列（VLM、Human 评分），再看 Points；2D masks 两列和最后的 UCR 以 Unravel 自己为参照，所以它那一行是 1.000 和 0.0。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-Unravel/fig6.jpg" alt="Fig. 6：七件物体，上排是从原图 mask 直接生成的资产，下排是从露得最全时的 mask 生成的资产"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）每列一件物体。上排 Direct generation 用原图里的 mask：扶手椅破裂、桌子多出部件、冰箱成了一块平板；下排 Ours 用露得最全时的 mask。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>资产更像，几何更多。</b>保真度 VLM 4.7 → 8.2、人评 4.9 → 8.6；融合 4–8 轮后每场景点数 1.53M → 2.81M。第 1 轮之后才移除的物体，直接重建的 mask 平均只有 Unravel 的 77.2%（第 2 轮 85.0%，第 4 轮 60.4%），11.3% 不到 70%；全部物体里 5.6% 不到 50%，最低 23.8%。点簇覆盖：这些物体平均 76.9%，10.1% 不到 70%、3.8% 不到 50%，最低 11.9%。</dd></div>
+      <div><dt>在故事里</dt><dd>证明"露得最全时建模"和"逐轮融合"给了更好的输入；这是全文唯一一组数字。</dd></div>
+      <div><dt>指标</dt><dd>Area ratio = 直接重建的 mask 面积 ÷ Unravel 的 mask 面积（只算第 1 轮之后移除的物体，约占三分之一）；mask UCR = 比值低于 70% 的物体比例。保真度 1–10 分：1–3 形状错或缺关键部分，4–6 认得出但变形，7–8 形状对、有小瑕疵，9–10 形状结构都对、包括原图里被挡的部分。Points = 每场景平均点数；geometry UCR = Unravel 点簇被直接重建覆盖不到 70% 的物体比例。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>5 个场景、160 个物体；两边都用 SAM 3、TRELLIS.2、MoGe-3，direct reconstruction 只用原图。</li>
+        <li>GPT-5.5 和 15 名评审各自独立盲评：每件物体两个 mesh 从 4 个 90° 视角渲染，左右随机，对照同一张参照图。</li>
+        <li>对 Unravel 有利的地方：面积比和 UCR 以 Unravel 自己的 mask 和点簇为参照；参照图是物体露得最全那一轮的裁图，正是 Unravel 资产的输入；VLM 评委和 pipeline 的 planner 同为 GPT-5.5；新增的点里有编辑器补出来的表面，点多不等于准。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>换成真实照片还行吗？<span class="exp-src">§4.2 · A.4 · Fig. 11</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-16-Unravel/fig11.jpg" alt="Fig. 11：六张真实室内照片，每张右边是重建场景的三个视角渲染"></div>
+      <figcaption><b>Fig. 11</b>（作者原图）每行一张真实照片（左）和重建场景的三个视角（右）：酒店房间、住宅客厅、诊所候诊室等。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>真实照片上也能还原主要家具布局（定性）。</b>论文的原话是"renderings retain the main furniture arrangements"。</dd></div>
+      <div><dt>在故事里</dt><dd>回应"只在干净的图上有效"的疑问；附录另有 16 个场景（Fig. 8–10：厨房、客厅、办公室、瑜伽室、琴房、酒吧、会议室）用同一设置。</dd></div>
+      <div><dt>指标</dt><dd>无，只看三视角渲染。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>6 张 Wikimedia Commons 照片，同一 pipeline、同一设置。</li>
+        <li>论文没说 Fig. 1–10 和 Table 1 的输入图从哪来，只有 Fig. 11 明说是真实照片；其余可能是生成图（推断）。</li>
+        <li>shell 只有地面和墙（§3.1），窗、门、天花板都不建。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li><b>论文自述（§5）：</b>受限于图像编辑模型；很乱的场景里，编辑可能改动剩下物体的外观或位置，这种漂移跨轮累积，破坏点云对齐和摆放；验证能减少但消除不了小错。展望是更强的编辑器加几何反馈，以及在小错累积前触发定点重试的不确定性检查。</li>
+    <li><b>我的观察：</b>摘要说"恢复更多物体、摆得更准、物理上更合理"，但全文没有一个布局或物理指标；和 MIDI、SAM 3D、Astra 只有定性图。</li>
+    <li><b>我的观察：</b>唯一的数字（Table 1）只和自己的 direct reconstruction 比，参照又是 Unravel 自己的 mask、点簇和裁图，评委之一是 pipeline 里同一个 GPT-5.5。</li>
+    <li><b>我的观察：</b>被挡表面来自编辑器补出来的图，是"验证过的猜测"，不是观测。"interactive" 指物体可单独移动、有支撑记录：没有质量、摩擦，没有关节（柜门、冰箱门打不开），没跑物理引擎，settling 是几何约束优化。</li>
+    <li><b>我的观察：</b>没报耗时、模型调用次数和成本；audit 和 Astra baseline 都走网页界面，代码仓库目前只有 README，复现难。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For Agent-centric real-to-sim</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>r2s-lite：</b>pot-lid 那集靠宽松的成功规则在第 9 次过关、场景却是错的。Unravel 的门槛更窄：编辑提交前查三种具体的错；几何修正只在拟合不变差时保留；settling 只许物体朝观测点簇挪、不许远离。可以给修复环加一条"每次修复都不能让物体离 DROID 观测更远"的硬约束，而不是只看任务成功。</li>
+    <li><b>real2sim-anything-indoor：</b>视频 → Blender 房间时，把生成资产对齐到局部点云这一步直接套用"看不全的轴只把观测跨度当下限"；放置按"谁托着谁"排序，再做最小位移 settling（3 cm 接触容差、不穿插、吊灯挂画不动）。被沙发、桌子挡住的后排物体，也可以先在关键帧上"移除再补全"再建模。</li>
+    <li><b>WorldClaw：</b>Unravel 把"每件物体放在哪个表面上"存进场景，挪动或替换物体后能重新 settle。WorldClaw 的白盒场景可以存同样的 support graph，并在送进 Genesis 前跑一遍"渲染 → 检查 → 局部修 → 再 settle"；真正的物理检验仍要靠 Genesis，Unravel 本身没有物理引擎。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>Agent-centric-real-to-sim/2026-11-16-Unravel.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>
