@@ -257,6 +257,8 @@ table.bars td.n { white-space: nowrap; width: 9rem; }
 .pcard .tags { line-height: 1.9; }
 .pcard .tl { font: 500 .68rem var(--f-mono); color: var(--muted); margin: 0 .25rem 0 .1rem; }
 .pcard .real { font-size: .82rem; color: var(--muted); }
+.pcard .kind { margin-top: .25rem; }
+.pcard .kind .muted { font-size: .75rem; margin-left: .35rem; }
 </style>
 </head>
 <body>
@@ -274,7 +276,7 @@ table.bars td.n { white-space: nowrap; width: 9rem; }
   <p class="eyebrow">Agent-centric-real-to-sim · 归档于 2026-11-20</p>
   <h1>Agentic Real2Sim 全景</h1>
   <p class="full-title">2026 年下半年的 agentic real-to-sim：第二轮 18 篇新论文</p>
-  <p class="meta">综述页，不是单篇论文 · 只收第二轮 18 篇（arXiv 2026-04 至 11 月，多数 9 月以后）· 每篇都有自己的精读页</p>
+  <p class="meta">综述页，不是单篇论文 · 只收第二轮 18 篇：10–11 月 11 篇，9 月及以前 7 篇（按 arXiv v1）· 每篇都有自己的精读页</p>
   <p class="links"><a href="2026-11-05-Real2SimLandscape.html">Real2Sim 全景：更早的 22 篇和四十年历史</a><a href="#read">先读哪篇</a></p>
   <p class="filed">归档到 <b>Agent-centric real-to-sim</b>：第二轮 18 篇的入口。分组和 chips 是我的判断，数字都能追到原文。</p>
 </header>
@@ -282,7 +284,7 @@ table.bars td.n { white-space: nowrap; width: 9rem; }
 <section id="tldr" class="tldr">
   <p class="eyebrow">TL;DR</p>
   <dl>
-    <div><dt>What</dt><dd>agent 不只建场景，也<b>建 asset、动手量物理、在 twin 里练、给 agent 打分</b>：5 类 18 篇。</dd></div>
+    <div><dt>What</dt><dd>按 arXiv v1：<b>10–11 月 11 篇，9 月及以前 7 篇</b>。agent 不只建场景，也建 asset、动手量物理、在 twin 里练、给 agent 打分。</dd></div>
     <div><dt>Gap</dt><dd><b>10/16</b> 个系统改 twin 时只看同一份输入或仿真自检；6 篇没写物理参数从哪来。</dd></div>
     <div><dt>Evidence</dt><dd>harness 比模型重要：SceneAgent 的 skills 让 6 个 harness 的 F1@1cm 从 2.36–9.51% 到 40.45–60.75%。看着最像 ≠ 最能用：Video2World 里形状最准的 GPT-6 Astra 成功率 10.7%，Fable 5.1 是 25.5%。</dd></div>
   </dl>
@@ -290,25 +292,17 @@ table.bars td.n { white-space: nowrap; width: 9rem; }
 
 <section id="l1">
   <p class="eyebrow">Level 1 · Map</p>
-  <h2>18 篇分 5 类：agent 在 real-to-sim 的哪一段干活</h2>
+  <h2>18 篇按时间分两组：10–11 月 11 篇，9 月及以前 7 篇</h2>
   <div class="flow"><pre>
-flowchart TD
-  IN["<b>真实输入</b><br/>图 · 视频 · 扫描 · 交互"] --> G1["<b>1 · 建场景</b><br/><span class='ex'>7 篇</span>"]
-  IN --> G2["<b>2 · 建 asset</b><br/><span class='ex'>3 篇</span>"]
-  IN --> G3["<b>3 · 量物理、修 twin</b><br/><span class='ex'>4 篇</span>"]
-  G1 --> TW["<b>Twin</b><br/>可仿真的场景和 asset"]
-  G2 --> TW
-  G3 --> TW
-  TW --> G4["<b>4 · 在 twin 里练</b><br/><span class='ex'>2 篇 → 真机</span>"]
-  TW --> G5["<b>5 · 给 agent 打分</b><br/><span class='ex'>2 个 benchmark</span>"]
-  click G1 href "#stage-1"
-  click G2 href "#stage-2"
-  click G3 href "#stage-3"
-  click G4 href "#stage-4"
-  click G5 href "#stage-5"
+flowchart LR
+  OLD["<b>2 · 9 月及以前</b><br/><span class='ex'>7 篇</span>"] --> NEW["<b>1 · 10–11 月</b><br/><span class='ex'>11 篇</span>"]
+  click NEW href "#stage-1"
+  click OLD href "#stage-2"
 
   </pre></div>
-  <p class="flow-hint">点方块跳到该类的卡片。</p>
+  <p class="flow-hint">点方块跳到该组的卡片。下表：每组里各是哪类工作。</p>
+  <div class="table-wrap"><table class="grid"><tr><th>类型</th><th>10–11 月 · 11 篇</th><th>9 月及以前 · 7 篇</th></tr><tr><td><b>建场景</b></td><td>6 · <a href="2026-11-16-SceneEvolve.html">SceneEvolve</a>、<a href="2026-11-16-SceneAgent.html">SceneAgent</a>、<a href="2026-11-16-NeoWorld-3.html">NeoWorld-3</a>、<a href="2026-11-16-GRASE.html">GRASE</a>、<a href="2026-11-16-Unravel.html">Unravel</a>、<a href="2026-11-16-LiteReality-Agent.html">LiteReality-Agent</a></td><td>1 · <a href="2026-11-16-ARSTAG.html">ARSTAG</a></td></tr><tr><td><b>建 asset</b></td><td>1 · <a href="2026-11-16-USDCraft.html">USDCraft</a></td><td>2 · <a href="2026-11-16-FACT-ArticulatedTwins.html">FACT (Articulated Twins)</a>、<a href="2026-11-16-DiagGen.html">DiagGen</a></td></tr><tr><td><b>量物理、修 twin</b></td><td>2 · <a href="2026-11-16-CUE.html">CUE</a>、<a href="2026-11-16-D-World.html">D-World</a></td><td>2 · <a href="2026-11-16-SimEX.html">SimEX</a>、<a href="2026-11-16-EMPIRIC.html">EMPIRIC</a></td></tr><tr><td><b>在 twin 里练，再上真机</b></td><td>0 · —</td><td>2 · <a href="2026-11-16-F4R.html">F4R</a>、<a href="2026-11-16-CoEnv.html">CoEnv / CoEx</a></td></tr><tr><td><b>给 agent 打分</b></td><td>2 · <a href="2026-11-16-PhysCodeGym.html">PhysCodeGym</a>、<a href="2026-11-16-Video2World.html">Video2World</a></td><td>0 · —</td></tr></table></div>
+  <p class="note">10–11 月以建场景（6/11）和 benchmark（2）为主；在 twin 里练再上真机的 2 篇都在 9 月及以前（我的观察，样本很小）。</p>
 </section>
 
 <section id="l2">
@@ -329,15 +323,36 @@ flowchart TD
 
 <section id="l3">
   <div class="l3-head">
-    <div><p class="eyebrow">Level 3 · Papers</p><h2>每篇一张卡：作者原图、一句话、三个标签</h2></div>
+    <div><p class="eyebrow">Level 3 · Papers</p><h2>每篇一张卡：新的在前，类型标在卡上</h2></div>
   </div>
   <details class="stage" id="stage-1" open>
-    <summary><span class="stage-n">1 · 7 篇</span><span class="stage-name">建场景</span><span class="stage-io">图、视频或扫描 → 能仿真的场景</span></summary>
+    <summary><span class="stage-n">1 · 11 篇</span><span class="stage-name">10–11 月</span><span class="stage-io">arXiv v1 在 2026-10-01 到 11-16</span></summary>
     <div class="stage-body"><div class="pcards">
+      <article class="pcard">
+        <a class="thumb" href="2026-11-16-CUE.html"><img src="2026-11-20-AgenticReal2SimLandscape/CUE.jpg" alt="CUE 的方法图（作者原图）"></a>
+        <div class="pbody">
+          <h3><a href="2026-11-16-CUE.html">CUE</a><span class="d">2026-11-02</span></h3>
+          <p class="kind"><span class="chip">量物理、修 twin</span></p>
+          <p class="one">agent 自己出杆校准接触动力学，误差比 CEM 低 72%</p>
+          <p class="tags"><span class="tl">改</span><span class="chip probe">动手探测</span><span class="tl">物理</span><span class="chip probe">辨识</span><span class="tl">证明</span><span class="chip probe">留出数据误差</span></p>
+          <p class="real">真机：真球台 10 杆留出（项目页）</p>
+        </div>
+      </article>
+      <article class="pcard">
+        <a class="thumb" href="2026-11-16-SceneEvolve.html"><img src="2026-11-20-AgenticReal2SimLandscape/SceneEvolve.jpg" alt="SceneEvolve 的方法图（作者原图）"></a>
+        <div class="pbody">
+          <h3><a href="2026-11-16-SceneEvolve.html">SceneEvolve</a><span class="d">2026-10-27</span></h3>
+          <p class="kind"><span class="chip">建场景</span></p>
+          <p class="one">teacher 演化 harness，27B 小模型把单图写成 Blender 场景代码，成本比 GPT-5.6-Sol 低 59.8%</p>
+          <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip same">渲染对输入</span></p>
+          <p class="real">真机：无</p>
+        </div>
+      </article>
       <article class="pcard">
         <a class="thumb" href="2026-11-16-SceneAgent.html"><img src="2026-11-20-AgenticReal2SimLandscape/SceneAgent.jpg" alt="SceneAgent 的方法图（作者原图）"></a>
         <div class="pbody">
           <h3><a href="2026-11-16-SceneAgent.html">SceneAgent</a><span class="d">2026-10-26</span></h3>
+          <p class="kind"><span class="chip">建场景</span></p>
           <p class="one">coding agent 带 skills 在 Isaac Lab 里看图修场景，bin F1@1cm 最高 60.75%</p>
           <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">VLM 估计</span><span class="chip same">查表</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span><span class="chip probe">真机成功率</span></p>
           <p class="real">真机：1 任务 44/50</p>
@@ -347,24 +362,17 @@ flowchart TD
         <a class="thumb" href="2026-11-16-NeoWorld-3.html"><img src="2026-11-20-AgenticReal2SimLandscape/NeoWorld-3.jpg" alt="NeoWorld-3 的方法图（作者原图）"></a>
         <div class="pbody">
           <h3><a href="2026-11-16-NeoWorld-3.html">NeoWorld-3</a><span class="d">2026-10-20</span></h3>
+          <p class="kind"><span class="chip">建场景</span></p>
           <p class="one">agent 写可调几何程序，梯度拟合加关节和接触检查，场景穿插率 0.67%</p>
           <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">默认值</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span></p>
           <p class="real">真机：双臂 3 次，无成功率</p>
         </div>
       </article>
       <article class="pcard">
-        <a class="thumb" href="2026-11-16-LiteReality-Agent.html"><img src="2026-11-20-AgenticReal2SimLandscape/LiteReality-Agent.jpg" alt="LiteReality-Agent 的方法图（作者原图）"></a>
-        <div class="pbody">
-          <h3><a href="2026-11-16-LiteReality-Agent.html">LiteReality-Agent</a><span class="d">2026-10-01</span></h3>
-          <p class="one">agent 改 Room.py、闸门查碰撞和支撑，家具穿插 0 对（GPT-6 +Scan 24）</p>
-          <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">VLM 估计</span><span class="chip same">查表</span><span class="tl">证明</span><span class="chip same">渲染对输入</span></p>
-          <p class="real">真机：无</p>
-        </div>
-      </article>
-      <article class="pcard">
         <a class="thumb" href="2026-11-16-GRASE.html"><img src="2026-11-20-AgenticReal2SimLandscape/GRASE.jpg" alt="GRASE 的方法图（作者原图）"></a>
         <div class="pbody">
           <h3><a href="2026-11-16-GRASE.html">GRASE</a><span class="d">2026-10-15</span></h3>
+          <p class="kind"><span class="chip">建场景</span></p>
           <p class="one">数值工具拟合墙面和物体，VLM 拿原视频验收、只改错件，Replica scene CD 16.39 → 5.80 cm</p>
           <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span></p>
           <p class="real">真机：无</p>
@@ -374,146 +382,135 @@ flowchart TD
         <a class="thumb" href="2026-11-16-Unravel.html"><img src="2026-11-20-AgenticReal2SimLandscape/Unravel.jpg" alt="Unravel 的方法图（作者原图）"></a>
         <div class="pbody">
           <h3><a href="2026-11-16-Unravel.html">Unravel</a><span class="d">2026-10-12</span></h3>
+          <p class="kind"><span class="chip">建场景</span></p>
           <p class="one">单图先逐层拆、验过再用，再倒序装回，资产保真度 4.7→8.2</p>
           <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip same">VLM 裁判</span></p>
           <p class="real">真机：无</p>
         </div>
       </article>
       <article class="pcard">
-        <a class="thumb" href="2026-11-16-SceneEvolve.html"><img src="2026-11-20-AgenticReal2SimLandscape/SceneEvolve.jpg" alt="SceneEvolve 的方法图（作者原图）"></a>
-        <div class="pbody">
-          <h3><a href="2026-11-16-SceneEvolve.html">SceneEvolve</a><span class="d">2026-10-27</span></h3>
-          <p class="one">teacher 演化 harness，27B 小模型把单图写成 Blender 场景代码，成本比 GPT-5.6-Sol 低 59.8%</p>
-          <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip same">渲染对输入</span></p>
-          <p class="real">真机：无</p>
-        </div>
-      </article>
-      <article class="pcard">
-        <a class="thumb" href="2026-11-16-ARSTAG.html"><img src="2026-11-20-AgenticReal2SimLandscape/ARSTAG.jpg" alt="ARSTAG 的方法图（作者原图）"></a>
-        <div class="pbody">
-          <h3><a href="2026-11-16-ARSTAG.html">ARSTAG</a><span class="d">2026-09-21</span></h3>
-          <p class="one">agent 编排单图 real2sim 数据流水线，真机 π0.5 74.6%</p>
-          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip probe">真机成功率</span></p>
-          <p class="real">真机：7 任务各 40 次，π0.5 74.6%</p>
-        </div>
-      </article>
-    </div></div>
-  </details>
-  <details class="stage" id="stage-2" open>
-    <summary><span class="stage-n">2 · 3 篇</span><span class="stage-name">建 asset</span><span class="stage-io">一个物体 → 带关节、材料、碰撞的 asset</span></summary>
-    <div class="stage-body"><div class="pcards">
-      <article class="pcard">
-        <a class="thumb" href="2026-11-16-USDCraft.html"><img src="2026-11-20-AgenticReal2SimLandscape/USDCraft.jpg" alt="USDCraft 的方法图（作者原图）"></a>
-        <div class="pbody">
-          <h3><a href="2026-11-16-USDCraft.html">USDCraft</a><span class="d">2026-10-08</span></h3>
-          <p class="one">LLM 读切片化扫描写铰接 USD 程序，真机压 lever 85%</p>
-          <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">VLM 估计</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span><span class="chip probe">真机成功率</span></p>
-          <p class="real">真机：3 任务各 20 次，85–90%</p>
-        </div>
-      </article>
-      <article class="pcard">
-        <a class="thumb" href="2026-11-16-FACT-ArticulatedTwins.html"><img src="2026-11-20-AgenticReal2SimLandscape/FACT-ArticulatedTwins.jpg" alt="FACT (Articulated Twins) 的方法图（作者原图）"></a>
-        <div class="pbody">
-          <h3><a href="2026-11-16-FACT-ArticulatedTwins.html">FACT (Articulated Twins)</a><span class="d">2026-09-29</span></h3>
-          <p class="one">agent 逐层修铰接 twin 的几何、碰撞代理和动力学，交互成功率 99.47%</p>
-          <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="chip probe">动手探测</span><span class="tl">物理</span><span class="chip probe">辨识</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span><span class="chip probe">留出数据误差</span></p>
-          <p class="real">真机：无（只录被动响应视频）</p>
-        </div>
-      </article>
-      <article class="pcard">
-        <a class="thumb" href="2026-11-16-DiagGen.html"><img src="2026-11-20-AgenticReal2SimLandscape/DiagGen.jpg" alt="DiagGen 的方法图（作者原图）"></a>
-        <div class="pbody">
-          <h3><a href="2026-11-16-DiagGen.html">DiagGen</a><span class="d">2026-09-19</span></h3>
-          <p class="one">单图→可变形 asset，仿真诊断后返工，PMSC 2.14→3.43</p>
-          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">VLM 估计</span><span class="tl">证明</span><span class="chip same">VLM 裁判</span></p>
-          <p class="real">真机：无</p>
-        </div>
-      </article>
-    </div></div>
-  </details>
-  <details class="stage" id="stage-3" open>
-    <summary><span class="stage-n">3 · 4 篇</span><span class="stage-name">量物理、修 twin</span><span class="stage-io">动手交互或真机测量 → 改参数和模型</span></summary>
-    <div class="stage-body"><div class="pcards">
-      <article class="pcard">
-        <a class="thumb" href="2026-11-16-CUE.html"><img src="2026-11-20-AgenticReal2SimLandscape/CUE.jpg" alt="CUE 的方法图（作者原图）"></a>
-        <div class="pbody">
-          <h3><a href="2026-11-16-CUE.html">CUE</a><span class="d">2026-11-02</span></h3>
-          <p class="one">agent 自己出杆校准接触动力学，误差比 CEM 低 72%</p>
-          <p class="tags"><span class="tl">改</span><span class="chip probe">动手探测</span><span class="tl">物理</span><span class="chip probe">辨识</span><span class="tl">证明</span><span class="chip probe">留出数据误差</span></p>
-          <p class="real">真机：真球台 10 杆留出（项目页）</p>
-        </div>
-      </article>
-      <article class="pcard">
         <a class="thumb" href="2026-11-16-D-World.html"><img src="2026-11-20-AgenticReal2SimLandscape/D-World.jpg" alt="D-World 的方法图（作者原图）"></a>
         <div class="pbody">
           <h3><a href="2026-11-16-D-World.html">D-World</a><span class="d">2026-10-12</span></h3>
+          <p class="kind"><span class="chip">量物理、修 twin</span></p>
           <p class="one">LLM 写可执行 twin，逐 chunk 用真机测量 replay-check 修参数，面包深度残差 22.4→1.5 mm</p>
           <p class="tags"><span class="tl">改</span><span class="chip probe">真机反馈</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">VLM 估计</span><span class="chip probe">辨识</span><span class="tl">证明</span><span class="chip same">回放对原录像</span></p>
           <p class="real">真机：2 任务，只有过程，无成功率</p>
         </div>
       </article>
       <article class="pcard">
-        <a class="thumb" href="2026-11-16-EMPIRIC.html"><img src="2026-11-20-AgenticReal2SimLandscape/EMPIRIC.jpg" alt="EMPIRIC 的方法图（作者原图）"></a>
+        <a class="thumb" href="2026-11-16-PhysCodeGym.html"><img src="2026-11-20-AgenticReal2SimLandscape/PhysCodeGym.jpg" alt="PhysCodeGym 的方法图（作者原图）"></a>
         <div class="pbody">
-          <h3><a href="2026-11-16-EMPIRIC.html">EMPIRIC</a><span class="d">2026-09-28</span></h3>
-          <p class="one">agent 只给引擎补缺的机制代码并推参数 belief，仿真 25/25 全解（baseline 最多 16）</p>
-          <p class="tags"><span class="tl">改</span><span class="chip probe">动手探测</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip probe">辨识</span><span class="tl">证明</span><span class="chip probe">留出数据误差</span></p>
-          <p class="real">真机：1 次 run，滑动 9.9 vs 预测 10.1 cm</p>
+          <h3><a href="2026-11-16-PhysCodeGym.html">PhysCodeGym</a><span class="d">2026-10-12</span></h3>
+          <p class="kind"><span class="chip">给 agent 打分</span></p>
+          <p class="one">视频→Blender 程序 benchmark，场景测量加 CF 干预，最强仅 0.663</p>
+          <p class="tags"><span class="tl">改</span><span class="muted">—</span><span class="tl">物理</span><span class="muted">—</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span><span class="chip same">仿真内测试</span></p>
+          <p class="real">真机：无（156 题）</p>
         </div>
       </article>
       <article class="pcard">
-        <a class="thumb" href="2026-11-16-SimEX.html"><img src="2026-11-20-AgenticReal2SimLandscape/SimEX.jpg" alt="SimEX 的方法图（作者原图）"></a>
+        <a class="thumb" href="2026-11-16-USDCraft.html"><img src="2026-11-20-AgenticReal2SimLandscape/USDCraft.jpg" alt="USDCraft 的方法图（作者原图）"></a>
         <div class="pbody">
-          <h3><a href="2026-11-16-SimEX.html">SimEX</a><span class="d">2026-09-30</span></h3>
-          <p class="one">sim 当实验室，每次真机 trial 先校正 sim、再在 sim 里筛 4 个 repair，真机 26/30</p>
-          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="chip probe">真机反馈</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip probe">真机成功率</span></p>
-          <p class="real">真机：3 任务 26/30</p>
+          <h3><a href="2026-11-16-USDCraft.html">USDCraft</a><span class="d">2026-10-08</span></h3>
+          <p class="kind"><span class="chip">建 asset</span></p>
+          <p class="one">LLM 读切片化扫描写铰接 USD 程序，真机压 lever 85%</p>
+          <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">VLM 估计</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span><span class="chip probe">真机成功率</span></p>
+          <p class="real">真机：3 任务各 20 次，85–90%</p>
         </div>
       </article>
-    </div></div>
-  </details>
-  <details class="stage" id="stage-4" open>
-    <summary><span class="stage-n">4 · 2 篇</span><span class="stage-name">在 twin 里练，再上真机</span><span class="stage-io">twin → 程序或 policy → 真机</span></summary>
-    <div class="stage-body"><div class="pcards">
-      <article class="pcard">
-        <a class="thumb" href="2026-11-16-CoEnv.html"><img src="2026-11-20-AgenticReal2SimLandscape/CoEnv.jpg" alt="CoEnv / CoEx 的方法图（作者原图）"></a>
-        <div class="pbody">
-          <h3><a href="2026-11-16-CoEnv.html">CoEnv / CoEx</a><span class="d">2026-04-07</span></h3>
-          <p class="one">CoEx：agent 在工作台 twin 里练程序再上真机，SR 70%</p>
-          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">查表</span><span class="tl">证明</span><span class="chip probe">真机成功率</span></p>
-          <p class="real">真机：5 任务各 10 次，70% vs 50%</p>
-        </div>
-      </article>
-      <article class="pcard">
-        <a class="thumb" href="2026-11-16-F4R.html"><img src="2026-11-20-AgenticReal2SimLandscape/F4R.jpg" alt="F4R 的方法图（作者原图）"></a>
-        <div class="pbody">
-          <h3><a href="2026-11-16-F4R.html">F4R</a><span class="d">2026-09-28</span></h3>
-          <p class="one">VLM 诊断真机失败→只围着失败重建并训练，OOD 90.0%</p>
-          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="chip probe">真机反馈</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip probe">sim↔真机相关</span><span class="chip probe">真机成功率</span></p>
-          <p class="real">真机：4 任务，OOD 90.0%</p>
-        </div>
-      </article>
-    </div></div>
-  </details>
-  <details class="stage" id="stage-5" open>
-    <summary><span class="stage-n">5 · 2 篇</span><span class="stage-name">给 agent 打分</span><span class="stage-io">视频 → agent 建的世界 → 隐藏标注打分</span></summary>
-    <div class="stage-body"><div class="pcards">
       <article class="pcard">
         <a class="thumb" href="2026-11-16-Video2World.html"><img src="2026-11-20-AgenticReal2SimLandscape/Video2World.jpg" alt="Video2World 的方法图（作者原图）"></a>
         <div class="pbody">
           <h3><a href="2026-11-16-Video2World.html">Video2World</a><span class="d">2026-10-03</span></h3>
+          <p class="kind"><span class="chip">给 agent 打分</span></p>
           <p class="one">222 题考 coding agent 从视频建可交互 sim，最好的成功率 25.5%</p>
           <p class="tags"><span class="tl">改</span><span class="muted">—</span><span class="tl">物理</span><span class="muted">—</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span><span class="chip probe">留出数据误差</span></p>
           <p class="real">真机：无（9 个 agent，222 题）</p>
         </div>
       </article>
       <article class="pcard">
-        <a class="thumb" href="2026-11-16-PhysCodeGym.html"><img src="2026-11-20-AgenticReal2SimLandscape/PhysCodeGym.jpg" alt="PhysCodeGym 的方法图（作者原图）"></a>
+        <a class="thumb" href="2026-11-16-LiteReality-Agent.html"><img src="2026-11-20-AgenticReal2SimLandscape/LiteReality-Agent.jpg" alt="LiteReality-Agent 的方法图（作者原图）"></a>
         <div class="pbody">
-          <h3><a href="2026-11-16-PhysCodeGym.html">PhysCodeGym</a><span class="d">2026-10-12</span></h3>
-          <p class="one">视频→Blender 程序 benchmark，场景测量加 CF 干预，最强仅 0.663</p>
-          <p class="tags"><span class="tl">改</span><span class="muted">—</span><span class="tl">物理</span><span class="muted">—</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span><span class="chip same">仿真内测试</span></p>
-          <p class="real">真机：无（156 题）</p>
+          <h3><a href="2026-11-16-LiteReality-Agent.html">LiteReality-Agent</a><span class="d">2026-10-01</span></h3>
+          <p class="kind"><span class="chip">建场景</span></p>
+          <p class="one">agent 改 Room.py、闸门查碰撞和支撑，家具穿插 0 对（GPT-6 +Scan 24）</p>
+          <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">VLM 估计</span><span class="chip same">查表</span><span class="tl">证明</span><span class="chip same">渲染对输入</span></p>
+          <p class="real">真机：无</p>
+        </div>
+      </article>
+    </div></div>
+  </details>
+  <details class="stage" id="stage-2" open>
+    <summary><span class="stage-n">2 · 7 篇</span><span class="stage-name">9 月及以前</span><span class="stage-io">arXiv v1 在 2026-10-01 之前；CoEnv 的 v1 在 4 月，v2 在 11-02 大改</span></summary>
+    <div class="stage-body"><div class="pcards">
+      <article class="pcard">
+        <a class="thumb" href="2026-11-16-SimEX.html"><img src="2026-11-20-AgenticReal2SimLandscape/SimEX.jpg" alt="SimEX 的方法图（作者原图）"></a>
+        <div class="pbody">
+          <h3><a href="2026-11-16-SimEX.html">SimEX</a><span class="d">2026-09-30</span></h3>
+          <p class="kind"><span class="chip">量物理、修 twin</span></p>
+          <p class="one">sim 当实验室，每次真机 trial 先校正 sim、再在 sim 里筛 4 个 repair，真机 26/30</p>
+          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="chip probe">真机反馈</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip probe">真机成功率</span></p>
+          <p class="real">真机：3 任务 26/30</p>
+        </div>
+      </article>
+      <article class="pcard">
+        <a class="thumb" href="2026-11-16-FACT-ArticulatedTwins.html"><img src="2026-11-20-AgenticReal2SimLandscape/FACT-ArticulatedTwins.jpg" alt="FACT (Articulated Twins) 的方法图（作者原图）"></a>
+        <div class="pbody">
+          <h3><a href="2026-11-16-FACT-ArticulatedTwins.html">FACT (Articulated Twins)</a><span class="d">2026-09-29</span></h3>
+          <p class="kind"><span class="chip">建 asset</span></p>
+          <p class="one">agent 逐层修铰接 twin 的几何、碰撞代理和动力学，交互成功率 99.47%</p>
+          <p class="tags"><span class="tl">改</span><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="chip probe">动手探测</span><span class="tl">物理</span><span class="chip probe">辨识</span><span class="tl">证明</span><span class="chip sim">对 GT 几何</span><span class="chip probe">留出数据误差</span></p>
+          <p class="real">真机：无（只录被动响应视频）</p>
+        </div>
+      </article>
+      <article class="pcard">
+        <a class="thumb" href="2026-11-16-EMPIRIC.html"><img src="2026-11-20-AgenticReal2SimLandscape/EMPIRIC.jpg" alt="EMPIRIC 的方法图（作者原图）"></a>
+        <div class="pbody">
+          <h3><a href="2026-11-16-EMPIRIC.html">EMPIRIC</a><span class="d">2026-09-28</span></h3>
+          <p class="kind"><span class="chip">量物理、修 twin</span></p>
+          <p class="one">agent 只给引擎补缺的机制代码并推参数 belief，仿真 25/25 全解（baseline 最多 16）</p>
+          <p class="tags"><span class="tl">改</span><span class="chip probe">动手探测</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip probe">辨识</span><span class="tl">证明</span><span class="chip probe">留出数据误差</span></p>
+          <p class="real">真机：1 次 run，滑动 9.9 vs 预测 10.1 cm</p>
+        </div>
+      </article>
+      <article class="pcard">
+        <a class="thumb" href="2026-11-16-F4R.html"><img src="2026-11-20-AgenticReal2SimLandscape/F4R.jpg" alt="F4R 的方法图（作者原图）"></a>
+        <div class="pbody">
+          <h3><a href="2026-11-16-F4R.html">F4R</a><span class="d">2026-09-28</span></h3>
+          <p class="kind"><span class="chip">在 twin 里练，再上真机</span></p>
+          <p class="one">VLM 诊断真机失败→只围着失败重建并训练，OOD 90.0%</p>
+          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="chip probe">真机反馈</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip probe">sim↔真机相关</span><span class="chip probe">真机成功率</span></p>
+          <p class="real">真机：4 任务，OOD 90.0%</p>
+        </div>
+      </article>
+      <article class="pcard">
+        <a class="thumb" href="2026-11-16-ARSTAG.html"><img src="2026-11-20-AgenticReal2SimLandscape/ARSTAG.jpg" alt="ARSTAG 的方法图（作者原图）"></a>
+        <div class="pbody">
+          <h3><a href="2026-11-16-ARSTAG.html">ARSTAG</a><span class="d">2026-09-21</span></h3>
+          <p class="kind"><span class="chip">建场景</span></p>
+          <p class="one">agent 编排单图 real2sim 数据流水线，真机 π0.5 74.6%</p>
+          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip none">未写</span><span class="tl">证明</span><span class="chip probe">真机成功率</span></p>
+          <p class="real">真机：7 任务各 40 次，π0.5 74.6%</p>
+        </div>
+      </article>
+      <article class="pcard">
+        <a class="thumb" href="2026-11-16-DiagGen.html"><img src="2026-11-20-AgenticReal2SimLandscape/DiagGen.jpg" alt="DiagGen 的方法图（作者原图）"></a>
+        <div class="pbody">
+          <h3><a href="2026-11-16-DiagGen.html">DiagGen</a><span class="d">2026-09-19</span></h3>
+          <p class="kind"><span class="chip">建 asset</span></p>
+          <p class="one">单图→可变形 asset，仿真诊断后返工，PMSC 2.14→3.43</p>
+          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">VLM 估计</span><span class="tl">证明</span><span class="chip same">VLM 裁判</span></p>
+          <p class="real">真机：无</p>
+        </div>
+      </article>
+      <article class="pcard">
+        <a class="thumb" href="2026-11-16-CoEnv.html"><img src="2026-11-20-AgenticReal2SimLandscape/CoEnv.jpg" alt="CoEnv / CoEx 的方法图（作者原图）"></a>
+        <div class="pbody">
+          <h3><a href="2026-11-16-CoEnv.html">CoEnv / CoEx</a><span class="d">2026-04-07</span></h3>
+          <p class="kind"><span class="chip">在 twin 里练，再上真机</span><span class="muted">v1 4 月，v2 11-02 大改</span></p>
+          <p class="one">CoEx：agent 在工作台 twin 里练程序再上真机，SR 70%</p>
+          <p class="tags"><span class="tl">改</span><span class="chip sim">仿真检查</span><span class="tl">物理</span><span class="chip same">查表</span><span class="tl">证明</span><span class="chip probe">真机成功率</span></p>
+          <p class="real">真机：5 任务各 10 次，70% vs 50%</p>
         </div>
       </article>
     </div></div>
@@ -525,10 +522,10 @@ flowchart TD
   <h2>18 篇横向对比</h2>
   <div class="table-wrap"><table class="ag">
     <tr><th>论文</th><th>输入</th><th>agent 写出什么</th><th>修改的证据</th><th>物理参数从哪来</th><th>怎么证明 twin 对</th><th>真机</th></tr>
-    <tr class="group"><th colspan="7">建场景<span class="gio">图、视频或扫描 → 能仿真的场景</span></th></tr><tr><th scope="row"><a href="2026-11-16-SceneAgent.html">SceneAgent</a><span class="d">2026-10</span></th><td><span class="chip ">扫描</span><span class="chip ">视频</span></td><td>串联重建工具；4D 写不读视频的 build script</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span><span class="chip same">查表</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip probe">真机成功率</span></td><td class="n">1 任务 44/50</td></tr><tr><th scope="row"><a href="2026-11-16-NeoWorld-3.html">NeoWorld-3</a><span class="d">2026-10</span></th><td><span class="chip ">多视角 RGB-D</span></td><td>Python 场景程序（NeoMCP 工具）；NeoSDK 拟合数值</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">默认值</span></td><td><span class="chip sim">对 GT 几何</span></td><td class="n">双臂 3 次，无成功率</td></tr><tr><th scope="row"><a href="2026-11-16-LiteReality-Agent.html">LiteReality-Agent</a><span class="d">2026-10</span></th><td><span class="chip ">扫描</span></td><td>Room.py + object.py（Blender Python）；专用量测工具调用</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span><span class="chip same">查表</span></td><td><span class="chip same">渲染对输入</span></td><td class="n">无</td></tr><tr><th scope="row"><a href="2026-11-16-GRASE.html">GRASE</a><span class="d">2026-10</span></th><td><span class="chip ">视频</span></td><td>Blender MCP 工具调用；数值拟合交给工具</td><td><span class="chip same">渲染↔输入</span></td><td><span class="chip none">未写</span></td><td><span class="chip sim">对 GT 几何</span></td><td class="n">无</td></tr><tr><th scope="row"><a href="2026-11-16-Unravel.html">Unravel</a><span class="d">2026-10</span></th><td><span class="chip ">单图</span></td><td>不写代码：移除列表、框、编辑是否通过</td><td><span class="chip same">渲染↔输入</span></td><td><span class="chip none">未写</span></td><td><span class="chip same">VLM 裁判</span></td><td class="n">无</td></tr><tr><th scope="row"><a href="2026-11-16-SceneEvolve.html">SceneEvolve</a><span class="d">2026-10</span></th><td><span class="chip ">单图</span></td><td>Blender Python 场景程序；teacher 改 harness</td><td><span class="chip same">渲染↔输入</span></td><td><span class="chip none">未写</span></td><td><span class="chip same">渲染对输入</span></td><td class="n">无</td></tr><tr><th scope="row"><a href="2026-11-16-ARSTAG.html">ARSTAG</a><span class="d">2026-09</span></th><td><span class="chip ">单图</span><span class="chip ">指令</span></td><td>scene graph、SAM3 提示、expert 程序、随机化配置</td><td><span class="chip sim">仿真检查</span></td><td><span class="chip none">未写</span></td><td><span class="chip probe">真机成功率</span></td><td class="n">7 任务各 40 次，π0.5 74.6%</td></tr><tr class="group"><th colspan="7">建 asset<span class="gio">一个物体 → 带关节、材料、碰撞的 asset</span></th></tr><tr><th scope="row"><a href="2026-11-16-USDCraft.html">USDCraft</a><span class="d">2026-10</span></th><td><span class="chip ">扫描 mesh</span><span class="chip ">单图</span></td><td>Python 资产程序 model.py → 铰接 USD</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip probe">真机成功率</span></td><td class="n">3 任务各 20 次，85–90%</td></tr><tr><th scope="row"><a href="2026-11-16-FACT-ArticulatedTwins.html">FACT (Articulated Twins)</a><span class="d">2026-09</span></th><td><span class="chip ">单图</span><span class="chip ">被动响应视频</span></td><td>几何程序 P(ϕ)、碰撞代理局部编辑、响应模型</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="chip probe">动手探测</span></td><td><span class="chip probe">辨识</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip probe">留出数据误差</span></td><td class="n">无（只录被动响应视频）</td></tr><tr><th scope="row"><a href="2026-11-16-DiagGen.html">DiagGen</a><span class="d">2026-09</span></th><td><span class="chip ">单图</span></td><td>部件材料参数、probe 动作、返工路由</td><td><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span></td><td><span class="chip same">VLM 裁判</span></td><td class="n">无</td></tr><tr class="group"><th colspan="7">量物理、修 twin<span class="gio">动手交互或真机测量 → 改参数和模型</span></th></tr><tr><th scope="row"><a href="2026-11-16-CUE.html">CUE</a><span class="d">2026-11</span></th><td><span class="chip ">动手交互</span></td><td>代码：MuJoCo 球台、tracker、CMA-ES 拟合；决定下一杆</td><td><span class="chip probe">动手探测</span></td><td><span class="chip probe">辨识</span></td><td><span class="chip probe">留出数据误差</span></td><td class="n">真球台 10 杆留出（项目页）</td></tr><tr><th scope="row"><a href="2026-11-16-D-World.html">D-World</a><span class="d">2026-10</span></th><td><span class="chip ">机器人相机</span><span class="chip ">执行中的测量</span></td><td>可执行 twin 代码；具名字段修订 + 证据</td><td><span class="chip probe">真机反馈</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span><span class="chip probe">辨识</span></td><td><span class="chip same">回放对原录像</span></td><td class="n">2 任务，只有过程，无成功率</td></tr><tr><th scope="row"><a href="2026-11-16-EMPIRIC.html">EMPIRIC</a><span class="d">2026-09</span></th><td><span class="chip ">动手交互</span></td><td>simulator 的 Python 子类：补缺的力、约束、隐状态</td><td><span class="chip probe">动手探测</span><span class="chip sim">仿真检查</span></td><td><span class="chip probe">辨识</span></td><td><span class="chip probe">留出数据误差</span></td><td class="n">1 次 run，滑动 9.9 vs 预测 10.1 cm</td></tr><tr><th scope="row"><a href="2026-11-16-SimEX.html">SimEX</a><span class="d">2026-09</span></th><td><span class="chip ">单图</span><span class="chip ">真机 trial</span></td><td>toolbox.py + skill.md；改 sim、写 4 个候选 repair</td><td><span class="chip sim">仿真检查</span><span class="chip probe">真机反馈</span></td><td><span class="chip none">未写</span></td><td><span class="chip probe">真机成功率</span></td><td class="n">3 任务 26/30</td></tr><tr class="group"><th colspan="7">在 twin 里练，再上真机<span class="gio">twin → 程序或 policy → 真机</span></th></tr><tr><th scope="row"><a href="2026-11-16-CoEnv.html">CoEnv / CoEx</a><span class="d">2026-04</span></th><td><span class="chip ">多视角 RGB-D</span></td><td>完整的多臂程序（Claude Code），跑完自判 VERIFIED</td><td><span class="chip sim">仿真检查</span></td><td><span class="chip same">查表</span></td><td><span class="chip probe">真机成功率</span></td><td class="n">5 任务各 10 次，70% vs 50%</td></tr><tr><th scope="row"><a href="2026-11-16-F4R.html">F4R</a><span class="d">2026-09</span></th><td><span class="chip ">真机失败视频</span><span class="chip ">扫描</span></td><td>JSON 失败记录：最早失败帧、原因、随机化标签</td><td><span class="chip sim">仿真检查</span><span class="chip probe">真机反馈</span></td><td><span class="chip none">未写</span></td><td><span class="chip probe">sim↔真机相关</span><span class="chip probe">真机成功率</span></td><td class="n">4 任务，OOD 90.0%</td></tr><tr class="group"><th colspan="7">给 agent 打分<span class="gio">视频 → agent 建的世界 → 隐藏标注打分</span></th></tr><tr><th scope="row"><a href="2026-11-16-Video2World.html">Video2World</a><span class="d">2026-10</span></th><td><span class="chip ">视频</span></td><td>被测 agent 交冻结的场景 + 控制包，benchmark 自己跑</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip probe">留出数据误差</span></td><td class="n">无（9 个 agent，222 题）</td></tr><tr><th scope="row"><a href="2026-11-16-PhysCodeGym.html">PhysCodeGym</a><span class="d">2026-10</span></th><td><span class="chip ">视频</span></td><td>被测 agent 写 Blender 程序，用仿真反馈改</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip same">仿真内测试</span></td><td class="n">无（156 题）</td></tr>
+    <tr class="group"><th colspan="7">10–11 月 · 11 篇<span class="gio">arXiv v1 在 2026-10-01 到 11-16</span></th></tr><tr><th scope="row"><a href="2026-11-16-CUE.html">CUE</a><span class="d">量物理、修 twin · 2026-11-02</span></th><td><span class="chip ">动手交互</span></td><td>代码：MuJoCo 球台、tracker、CMA-ES 拟合；决定下一杆</td><td><span class="chip probe">动手探测</span></td><td><span class="chip probe">辨识</span></td><td><span class="chip probe">留出数据误差</span></td><td class="n">真球台 10 杆留出（项目页）</td></tr><tr><th scope="row"><a href="2026-11-16-SceneEvolve.html">SceneEvolve</a><span class="d">建场景 · 2026-10-27</span></th><td><span class="chip ">单图</span></td><td>Blender Python 场景程序；teacher 改 harness</td><td><span class="chip same">渲染↔输入</span></td><td><span class="chip none">未写</span></td><td><span class="chip same">渲染对输入</span></td><td class="n">无</td></tr><tr><th scope="row"><a href="2026-11-16-SceneAgent.html">SceneAgent</a><span class="d">建场景 · 2026-10-26</span></th><td><span class="chip ">扫描</span><span class="chip ">视频</span></td><td>串联重建工具；4D 写不读视频的 build script</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span><span class="chip same">查表</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip probe">真机成功率</span></td><td class="n">1 任务 44/50</td></tr><tr><th scope="row"><a href="2026-11-16-NeoWorld-3.html">NeoWorld-3</a><span class="d">建场景 · 2026-10-20</span></th><td><span class="chip ">多视角 RGB-D</span></td><td>Python 场景程序（NeoMCP 工具）；NeoSDK 拟合数值</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">默认值</span></td><td><span class="chip sim">对 GT 几何</span></td><td class="n">双臂 3 次，无成功率</td></tr><tr><th scope="row"><a href="2026-11-16-GRASE.html">GRASE</a><span class="d">建场景 · 2026-10-15</span></th><td><span class="chip ">视频</span></td><td>Blender MCP 工具调用；数值拟合交给工具</td><td><span class="chip same">渲染↔输入</span></td><td><span class="chip none">未写</span></td><td><span class="chip sim">对 GT 几何</span></td><td class="n">无</td></tr><tr><th scope="row"><a href="2026-11-16-Unravel.html">Unravel</a><span class="d">建场景 · 2026-10-12</span></th><td><span class="chip ">单图</span></td><td>不写代码：移除列表、框、编辑是否通过</td><td><span class="chip same">渲染↔输入</span></td><td><span class="chip none">未写</span></td><td><span class="chip same">VLM 裁判</span></td><td class="n">无</td></tr><tr><th scope="row"><a href="2026-11-16-D-World.html">D-World</a><span class="d">量物理、修 twin · 2026-10-12</span></th><td><span class="chip ">机器人相机</span><span class="chip ">执行中的测量</span></td><td>可执行 twin 代码；具名字段修订 + 证据</td><td><span class="chip probe">真机反馈</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span><span class="chip probe">辨识</span></td><td><span class="chip same">回放对原录像</span></td><td class="n">2 任务，只有过程，无成功率</td></tr><tr><th scope="row"><a href="2026-11-16-PhysCodeGym.html">PhysCodeGym</a><span class="d">给 agent 打分 · 2026-10-12</span></th><td><span class="chip ">视频</span></td><td>被测 agent 写 Blender 程序，用仿真反馈改</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip same">仿真内测试</span></td><td class="n">无（156 题）</td></tr><tr><th scope="row"><a href="2026-11-16-USDCraft.html">USDCraft</a><span class="d">建 asset · 2026-10-08</span></th><td><span class="chip ">扫描 mesh</span><span class="chip ">单图</span></td><td>Python 资产程序 model.py → 铰接 USD</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip probe">真机成功率</span></td><td class="n">3 任务各 20 次，85–90%</td></tr><tr><th scope="row"><a href="2026-11-16-Video2World.html">Video2World</a><span class="d">给 agent 打分 · 2026-10-03</span></th><td><span class="chip ">视频</span></td><td>被测 agent 交冻结的场景 + 控制包，benchmark 自己跑</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip probe">留出数据误差</span></td><td class="n">无（9 个 agent，222 题）</td></tr><tr><th scope="row"><a href="2026-11-16-LiteReality-Agent.html">LiteReality-Agent</a><span class="d">建场景 · 2026-10-01</span></th><td><span class="chip ">扫描</span></td><td>Room.py + object.py（Blender Python）；专用量测工具调用</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span><span class="chip same">查表</span></td><td><span class="chip same">渲染对输入</span></td><td class="n">无</td></tr><tr class="group"><th colspan="7">9 月及以前 · 7 篇<span class="gio">arXiv v1 在 2026-10-01 之前；CoEnv 的 v1 在 4 月，v2 在 11-02 大改</span></th></tr><tr><th scope="row"><a href="2026-11-16-SimEX.html">SimEX</a><span class="d">量物理、修 twin · 2026-09-30</span></th><td><span class="chip ">单图</span><span class="chip ">真机 trial</span></td><td>toolbox.py + skill.md；改 sim、写 4 个候选 repair</td><td><span class="chip sim">仿真检查</span><span class="chip probe">真机反馈</span></td><td><span class="chip none">未写</span></td><td><span class="chip probe">真机成功率</span></td><td class="n">3 任务 26/30</td></tr><tr><th scope="row"><a href="2026-11-16-FACT-ArticulatedTwins.html">FACT (Articulated Twins)</a><span class="d">建 asset · 2026-09-29</span></th><td><span class="chip ">单图</span><span class="chip ">被动响应视频</span></td><td>几何程序 P(ϕ)、碰撞代理局部编辑、响应模型</td><td><span class="chip same">渲染↔输入</span><span class="chip sim">仿真检查</span><span class="chip probe">动手探测</span></td><td><span class="chip probe">辨识</span></td><td><span class="chip sim">对 GT 几何</span><span class="chip probe">留出数据误差</span></td><td class="n">无（只录被动响应视频）</td></tr><tr><th scope="row"><a href="2026-11-16-EMPIRIC.html">EMPIRIC</a><span class="d">量物理、修 twin · 2026-09-28</span></th><td><span class="chip ">动手交互</span></td><td>simulator 的 Python 子类：补缺的力、约束、隐状态</td><td><span class="chip probe">动手探测</span><span class="chip sim">仿真检查</span></td><td><span class="chip probe">辨识</span></td><td><span class="chip probe">留出数据误差</span></td><td class="n">1 次 run，滑动 9.9 vs 预测 10.1 cm</td></tr><tr><th scope="row"><a href="2026-11-16-F4R.html">F4R</a><span class="d">在 twin 里练，再上真机 · 2026-09-28</span></th><td><span class="chip ">真机失败视频</span><span class="chip ">扫描</span></td><td>JSON 失败记录：最早失败帧、原因、随机化标签</td><td><span class="chip sim">仿真检查</span><span class="chip probe">真机反馈</span></td><td><span class="chip none">未写</span></td><td><span class="chip probe">sim↔真机相关</span><span class="chip probe">真机成功率</span></td><td class="n">4 任务，OOD 90.0%</td></tr><tr><th scope="row"><a href="2026-11-16-ARSTAG.html">ARSTAG</a><span class="d">建场景 · 2026-09-21</span></th><td><span class="chip ">单图</span><span class="chip ">指令</span></td><td>scene graph、SAM3 提示、expert 程序、随机化配置</td><td><span class="chip sim">仿真检查</span></td><td><span class="chip none">未写</span></td><td><span class="chip probe">真机成功率</span></td><td class="n">7 任务各 40 次，π0.5 74.6%</td></tr><tr><th scope="row"><a href="2026-11-16-DiagGen.html">DiagGen</a><span class="d">建 asset · 2026-09-19</span></th><td><span class="chip ">单图</span></td><td>部件材料参数、probe 动作、返工路由</td><td><span class="chip sim">仿真检查</span></td><td><span class="chip same">VLM 估计</span></td><td><span class="chip same">VLM 裁判</span></td><td class="n">无</td></tr><tr><th scope="row"><a href="2026-11-16-CoEnv.html">CoEnv / CoEx</a><span class="d">在 twin 里练，再上真机 · 2026-04-07</span></th><td><span class="chip ">多视角 RGB-D</span></td><td>完整的多臂程序（Claude Code），跑完自判 VERIFIED</td><td><span class="chip sim">仿真检查</span></td><td><span class="chip same">查表</span></td><td><span class="chip probe">真机成功率</span></td><td class="n">5 任务各 10 次，70% vs 50%</td></tr>
   </table></div>
   <p class="note">归类是我读完页面后的判断，不是论文的说法。两个 benchmark 只列评分方式，不计入下面的 Finding 1。</p>
-  <div class="table-wrap"><table class="cov"><tr><th>月</th><th>论文</th><th class="v"><span>相机/尺度</span></th><th class="v"><span>几何</span></th><th class="v"><span>质量/摩擦</span></th><th class="v"><span>接触</span></th><th class="v"><span>可变形</span></th><th class="v"><span>铰接</span></th><th class="v"><span>渲染</span></th><th class="v"><span>任务/角色</span></th><th class="v"><span>验证</span></th><th class="v"><span>真机</span></th></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-SceneAgent.html">SceneAgent</a></th><td class="c2" title="主要贡献，有数字：ICP 修尺度位姿，F1 量化">●</td><td class="c2" title="主要贡献，有数字：F1@1cm、Chamfer 对 GT">●</td><td class="c1" title="碰到了，没量或只用先验：MLP+VLM 先验，未标定">○</td><td class="c1" title="碰到了，没量或只用先验：接触演示，无数字">○</td><td class="c2" title="主要贡献，有数字：4D 液体凝胶 IoU">●</td><td class="c1" title="碰到了，没量或只用先验：Articulate Anything，无数字">○</td><td class="c1" title="碰到了，没量或只用先验：3DGS 背景，未单评">○</td><td class="c1" title="碰到了，没量或只用先验：task sisters，无数字">○</td><td class="c2" title="主要贡献，有数字：Isaac 渲染检查修复">●</td><td class="c2" title="主要贡献，有数字：π0.5 真机 88.0%">●</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-NeoWorld-3.html">NeoWorld-3</a></th><td class="c1" title="碰到了，没量或只用先验：MoGe-3 + 标定板">○</td><td class="c2" title="主要贡献，有数字：CD 0.0365">●</td><td class="c1" title="碰到了，没量或只用先验：配置值，不估计">○</td><td class="c1" title="碰到了，没量或只用先验：接触修正未单独量化">○</td><td></td><td class="c2" title="主要贡献，有数字：AS-gIoU 0.7792">●</td><td class="c1" title="碰到了，没量或只用先验：渲染只作对照">○</td><td></td><td class="c2" title="主要贡献，有数字：照片准入 + 关节扫掠">●</td><td class="c2" title="主要贡献，有数字：双臂 3 次，无成功率">●</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-LiteReality-Agent.html">LiteReality-Agent</a></th><td class="c1" title="碰到了，没量或只用先验：直接用 ARKit 位姿">○</td><td class="c2" title="主要贡献，有数字：深度 MAE 最低">●</td><td class="c1" title="碰到了，没量或只用先验：类别/材料先验">○</td><td class="c2" title="主要贡献，有数字：支撑闸门+近接触">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：铰接资产未量化">○</td><td class="c2" title="主要贡献，有数字：PSNR/LPIPS 最好">●</td><td></td><td class="c2" title="主要贡献，有数字：标定对比+QC 闸门">●</td><td></td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-GRASE.html">GRASE</a></th><td class="c1" title="碰到了，没量或只用先验：DA3 给相机和尺度">○</td><td class="c2" title="主要贡献，有数字：shell 和物体 CD">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：support 接触检查未量化">○</td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：PSNR 等只作辅证">○</td><td></td><td class="c2" title="主要贡献，有数字：对照原帧验收+消融">●</td><td></td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-Unravel.html">Unravel</a></th><td class="c1" title="碰到了，没量或只用先验：固定内参，未测尺度">○</td><td class="c2" title="主要贡献，有数字：资产保真度与点数">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：支撑不穿插，无数字">○</td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：贴图资产，未单评">○</td><td></td><td class="c1" title="碰到了，没量或只用先验：验编辑，布局无指标">○</td><td></td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-SceneEvolve.html">SceneEvolve</a></th><td class="c1" title="碰到了，没量或只用先验：自估相机，不单独测">○</td><td class="c2" title="主要贡献，有数字：原语拼几何，2D 指标">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：支撑附着只是摆放">○</td><td></td><td></td><td class="c2" title="主要贡献，有数字：材质灯光，图像指标">●</td><td></td><td class="c2" title="主要贡献，有数字：看图检查 + 4 指标">●</td><td></td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-ARSTAG.html">ARSTAG</a></th><td class="c1" title="碰到了，没量或只用先验：SAM 3D 估尺度，未测">○</td><td class="c2" title="主要贡献，有数字：support repair 有数">●</td><td class="c1" title="碰到了，没量或只用先验：未说明，nut 设质量">○</td><td class="c1" title="碰到了，没量或只用先验：只量支撑贴合">○</td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：HDRI 随机化">○</td><td class="c2" title="主要贡献，有数字：按指令选物体">●</td><td class="c1" title="碰到了，没量或只用先验：测可用性，非保真">○</td><td class="c2" title="主要贡献，有数字：7 任务各 40 次">●</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-USDCraft.html">USDCraft</a></th><td class="c1" title="碰到了，没量或只用先验：沿用扫描公制尺度">○</td><td class="c2" title="主要贡献，有数字：切片文本+同网格复查">●</td><td class="c1" title="碰到了，没量或只用先验：按指南写假设">○</td><td class="c1" title="碰到了，没量或只用先验：接触摩擦按指南">○</td><td class="c1" title="碰到了，没量或只用先验：只有静止几何">○</td><td class="c2" title="主要贡献，有数字：关节 AE/LE">●</td><td class="c1" title="碰到了，没量或只用先验：PBR 外观，未专测">○</td><td class="c1" title="碰到了，没量或只用先验：部件功能，不管任务">○</td><td class="c2" title="主要贡献，有数字：同网格复查差异">●</td><td class="c2" title="主要贡献，有数字：3 任务各 20 次">●</td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-FACT-ArticulatedTwins.html">FACT (Articulated Twins)</a></th><td class="c1" title="碰到了，没量或只用先验：尺子量尺寸定尺度">○</td><td class="c2" title="主要贡献，有数字：特征测量，Tab. 1、2">●</td><td class="c2" title="主要贡献，有数字：视频拟合阻尼摩擦">●</td><td class="c2" title="主要贡献，有数字：任务感知代理，Tab. 3">●</td><td></td><td class="c2" title="主要贡献，有数字：建关节，关节动力学">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：任务区感知的碰撞代理，不涉及物体角色">○</td><td class="c2" title="主要贡献，有数字：三层各有量化验证">●</td><td></td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-DiagGen.html">DiagGen</a></th><td class="c1" title="碰到了，没量或只用先验：定尺度，未评测">○</td><td class="c1" title="碰到了，没量或只用先验：工具生成几何">○</td><td class="c1" title="碰到了，没量或只用先验：VLM 先验，未测">○</td><td class="c1" title="碰到了，没量或只用先验：SAP 接触，未测">○</td><td class="c2" title="主要贡献，有数字：主贡献，有分数">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：纹理网格，未评测">○</td><td class="c1" title="碰到了，没量或只用先验：按部件语义定假设">○</td><td class="c2" title="主要贡献，有数字：仿真里 probe">●</td><td class="c1" title="碰到了，没量或只用先验：遥操作回放，无数字">○</td></tr><tr><td class="y">11 月</td><th scope="row"><a href="2026-11-16-CUE.html">CUE</a></th><td class="c1" title="碰到了，没量或只用先验：相机重建，未量化">○</td><td class="c1" title="碰到了，没量或只用先验：MuJoCo 球台，未量化">○</td><td class="c2" title="主要贡献，有数字：CMA-ES 辨识摩擦">●</td><td class="c2" title="主要贡献，有数字：回弹、碰撞、库边">●</td><td></td><td></td><td></td><td></td><td class="c2" title="主要贡献，有数字：held-out 球位误差">●</td><td class="c1" title="碰到了，没量或只用先验：数字只在项目页">○</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-D-World.html">D-World</a></th><td class="c1" title="碰到了，没量或只用先验：平台给内外参和深度">○</td><td class="c2" title="主要贡献，有数字：厚度/支撑修订有数">●</td><td class="c1" title="碰到了，没量或只用先验：字段在，摩擦未辨识">○</td><td class="c1" title="碰到了，没量或只用先验：有受阻项，无数字">○</td><td class="c1" title="碰到了，没量或只用先验：毛巾建为可变形体">○</td><td class="c1" title="碰到了，没量或只用先验：有关节状态，未测">○</td><td class="c1" title="碰到了，没量或只用先验：渲染深度作比对">○</td><td class="c1" title="碰到了，没量或只用先验：谓词 + SENSE 确认">○</td><td class="c2" title="主要贡献，有数字：replay residual 有数">●</td><td class="c2" title="主要贡献，有数字：两任务，无成功率">●</td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-EMPIRIC.html">EMPIRIC</a></th><td class="c1" title="碰到了，没量或只用先验：真机外参标定">○</td><td class="c1" title="碰到了，没量或只用先验：几何给定，不重建">○</td><td class="c2" title="主要贡献，有数字：后验推质量和摩擦">●</td><td class="c1" title="碰到了，没量或只用先验：接触沿用引擎">○</td><td></td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：目标写成 predicate">○</td><td class="c2" title="主要贡献，有数字：回放误差，预测对实测">●</td><td class="c2" title="主要贡献，有数字：1 次 run，有数字">●</td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-SimEX.html">SimEX</a></th><td class="c1" title="碰到了，没量或只用先验：标定沿用平台">○</td><td class="c1" title="碰到了，没量或只用先验：mesh 库选取摆放">○</td><td class="c1" title="碰到了，没量或只用先验：probe 时改，未测">○</td><td class="c1" title="碰到了，没量或只用先验：未单独建模">○</td><td class="c1" title="碰到了，没量或只用先验：FLASH 粗糙 towel">○</td><td></td><td class="c1" title="碰到了，没量或只用先验：sim RGBD 供感知">○</td><td class="c1" title="碰到了，没量或只用先验：自己出任务和成功谓词，未单独量">○</td><td class="c1" title="碰到了，没量或只用先验：replay 定性比对">○</td><td class="c2" title="主要贡献，有数字：3 任务 26/30">●</td></tr><tr><td class="y">04 月</td><th scope="row"><a href="2026-11-16-CoEnv.html">CoEnv / CoEx</a></th><td class="c1" title="碰到了，没量或只用先验：外参迭代标定，无数字">○</td><td class="c1" title="碰到了，没量或只用先验：Meshy 生成，未测">○</td><td class="c1" title="碰到了，没量或只用先验：按类别指定">○</td><td class="c1" title="碰到了，没量或只用先验：SAPIEN 接触，未测">○</td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：多视角渲染供检查">○</td><td class="c2" title="主要贡献，有数字：分子目标分臂，有 SR">●</td><td class="c1" title="碰到了，没量或只用先验：验程序，不量 twin">○</td><td class="c2" title="主要贡献，有数字：5 任务各 10 次">●</td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-F4R.html">F4R</a></th><td class="c1" title="碰到了，没量或只用先验：Sim3 配准未单测">○</td><td class="c1" title="碰到了，没量或只用先验：有重建无几何指标">○</td><td class="c1" title="碰到了，没量或只用先验：asset estimate">○</td><td class="c1" title="碰到了，没量或只用先验：打滑时才随机化">○</td><td></td><td class="c1" title="碰到了，没量或只用先验：VLM+P3-SAM 未单测">○</td><td class="c2" title="主要贡献，有数字：3DGS，SSIM≈0.75">●</td><td class="c2" title="主要贡献，有数字：诊断失败子任务">●</td><td class="c2" title="主要贡献，有数字：复现失败+r=0.76">●</td><td class="c2" title="主要贡献，有数字：4 任务×20 次">●</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-Video2World.html">Video2World</a></th><td class="c1" title="碰到了，没量或只用先验：相机不单评，尺度见 Size">○</td><td class="c2" title="主要贡献，有数字：Scene/Shape CD、Size">●</td><td class="c1" title="碰到了，没量或只用先验：agent 自填，不单评">○</td><td class="c1" title="碰到了，没量或只用先验：只查穿模等合法性">○</td><td class="c1" title="碰到了，没量或只用先验：含绳布软玩具，未单报">○</td><td class="c1" title="碰到了，没量或只用先验：被动关节，未单报">○</td><td></td><td class="c2" title="主要贡献，有数字：agent 自推任务，判成败">●</td><td class="c2" title="主要贡献，有数字：三类误差 + 任务判定">●</td><td></td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-PhysCodeGym.html">PhysCodeGym</a></th><td class="c1" title="碰到了，没量或只用先验：不要求真实尺度">○</td><td class="c1" title="碰到了，没量或只用先验：物体清单和穿模检查">○</td><td class="c1" title="碰到了，没量或只用先验：不要求真实参数">○</td><td class="c2" title="主要贡献，有数字：CF 测接触依赖">●</td><td class="c1" title="碰到了，没量或只用先验：12 个任务，无分项分">○</td><td class="c1" title="碰到了，没量或只用先验：摆和铰链任务，无分项">○</td><td class="c1" title="碰到了，没量或只用先验：SSIM、LPIPS 量外观">○</td><td class="c1" title="碰到了，没量或只用先验：rubric 角色对到物体">○</td><td class="c2" title="主要贡献，有数字：场景测量加 CF 干预">●</td><td></td></tr><tr class="tot"><td></td><th scope="row">● 的篇数</th><td>1</td><td>11</td><td>3</td><td>4</td><td>2</td><td>3</td><td>3</td><td>4</td><td>14</td><td>9</td></tr></table></div>
+  <div class="table-wrap"><table class="cov"><tr><th>月</th><th>论文</th><th class="v"><span>相机/尺度</span></th><th class="v"><span>几何</span></th><th class="v"><span>质量/摩擦</span></th><th class="v"><span>接触</span></th><th class="v"><span>可变形</span></th><th class="v"><span>铰接</span></th><th class="v"><span>渲染</span></th><th class="v"><span>任务/角色</span></th><th class="v"><span>验证</span></th><th class="v"><span>真机</span></th></tr><tr><td class="y">11 月</td><th scope="row"><a href="2026-11-16-CUE.html">CUE</a></th><td class="c1" title="碰到了，没量或只用先验：相机重建，未量化">○</td><td class="c1" title="碰到了，没量或只用先验：MuJoCo 球台，未量化">○</td><td class="c2" title="主要贡献，有数字：CMA-ES 辨识摩擦">●</td><td class="c2" title="主要贡献，有数字：回弹、碰撞、库边">●</td><td></td><td></td><td></td><td></td><td class="c2" title="主要贡献，有数字：held-out 球位误差">●</td><td class="c1" title="碰到了，没量或只用先验：数字只在项目页">○</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-SceneEvolve.html">SceneEvolve</a></th><td class="c1" title="碰到了，没量或只用先验：自估相机，不单独测">○</td><td class="c2" title="主要贡献，有数字：原语拼几何，2D 指标">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：支撑附着只是摆放">○</td><td></td><td></td><td class="c2" title="主要贡献，有数字：材质灯光，图像指标">●</td><td></td><td class="c2" title="主要贡献，有数字：看图检查 + 4 指标">●</td><td></td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-SceneAgent.html">SceneAgent</a></th><td class="c2" title="主要贡献，有数字：ICP 修尺度位姿，F1 量化">●</td><td class="c2" title="主要贡献，有数字：F1@1cm、Chamfer 对 GT">●</td><td class="c1" title="碰到了，没量或只用先验：MLP+VLM 先验，未标定">○</td><td class="c1" title="碰到了，没量或只用先验：接触演示，无数字">○</td><td class="c2" title="主要贡献，有数字：4D 液体凝胶 IoU">●</td><td class="c1" title="碰到了，没量或只用先验：Articulate Anything，无数字">○</td><td class="c1" title="碰到了，没量或只用先验：3DGS 背景，未单评">○</td><td class="c1" title="碰到了，没量或只用先验：task sisters，无数字">○</td><td class="c2" title="主要贡献，有数字：Isaac 渲染检查修复">●</td><td class="c2" title="主要贡献，有数字：π0.5 真机 88.0%">●</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-NeoWorld-3.html">NeoWorld-3</a></th><td class="c1" title="碰到了，没量或只用先验：MoGe-3 + 标定板">○</td><td class="c2" title="主要贡献，有数字：CD 0.0365">●</td><td class="c1" title="碰到了，没量或只用先验：配置值，不估计">○</td><td class="c1" title="碰到了，没量或只用先验：接触修正未单独量化">○</td><td></td><td class="c2" title="主要贡献，有数字：AS-gIoU 0.7792">●</td><td class="c1" title="碰到了，没量或只用先验：渲染只作对照">○</td><td></td><td class="c2" title="主要贡献，有数字：照片准入 + 关节扫掠">●</td><td class="c2" title="主要贡献，有数字：双臂 3 次，无成功率">●</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-GRASE.html">GRASE</a></th><td class="c1" title="碰到了，没量或只用先验：DA3 给相机和尺度">○</td><td class="c2" title="主要贡献，有数字：shell 和物体 CD">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：support 接触检查未量化">○</td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：PSNR 等只作辅证">○</td><td></td><td class="c2" title="主要贡献，有数字：对照原帧验收+消融">●</td><td></td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-Unravel.html">Unravel</a></th><td class="c1" title="碰到了，没量或只用先验：固定内参，未测尺度">○</td><td class="c2" title="主要贡献，有数字：资产保真度与点数">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：支撑不穿插，无数字">○</td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：贴图资产，未单评">○</td><td></td><td class="c1" title="碰到了，没量或只用先验：验编辑，布局无指标">○</td><td></td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-D-World.html">D-World</a></th><td class="c1" title="碰到了，没量或只用先验：平台给内外参和深度">○</td><td class="c2" title="主要贡献，有数字：厚度/支撑修订有数">●</td><td class="c1" title="碰到了，没量或只用先验：字段在，摩擦未辨识">○</td><td class="c1" title="碰到了，没量或只用先验：有受阻项，无数字">○</td><td class="c1" title="碰到了，没量或只用先验：毛巾建为可变形体">○</td><td class="c1" title="碰到了，没量或只用先验：有关节状态，未测">○</td><td class="c1" title="碰到了，没量或只用先验：渲染深度作比对">○</td><td class="c1" title="碰到了，没量或只用先验：谓词 + SENSE 确认">○</td><td class="c2" title="主要贡献，有数字：replay residual 有数">●</td><td class="c2" title="主要贡献，有数字：两任务，无成功率">●</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-PhysCodeGym.html">PhysCodeGym</a></th><td class="c1" title="碰到了，没量或只用先验：不要求真实尺度">○</td><td class="c1" title="碰到了，没量或只用先验：物体清单和穿模检查">○</td><td class="c1" title="碰到了，没量或只用先验：不要求真实参数">○</td><td class="c2" title="主要贡献，有数字：CF 测接触依赖">●</td><td class="c1" title="碰到了，没量或只用先验：12 个任务，无分项分">○</td><td class="c1" title="碰到了，没量或只用先验：摆和铰链任务，无分项">○</td><td class="c1" title="碰到了，没量或只用先验：SSIM、LPIPS 量外观">○</td><td class="c1" title="碰到了，没量或只用先验：rubric 角色对到物体">○</td><td class="c2" title="主要贡献，有数字：场景测量加 CF 干预">●</td><td></td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-USDCraft.html">USDCraft</a></th><td class="c1" title="碰到了，没量或只用先验：沿用扫描公制尺度">○</td><td class="c2" title="主要贡献，有数字：切片文本+同网格复查">●</td><td class="c1" title="碰到了，没量或只用先验：按指南写假设">○</td><td class="c1" title="碰到了，没量或只用先验：接触摩擦按指南">○</td><td class="c1" title="碰到了，没量或只用先验：只有静止几何">○</td><td class="c2" title="主要贡献，有数字：关节 AE/LE">●</td><td class="c1" title="碰到了，没量或只用先验：PBR 外观，未专测">○</td><td class="c1" title="碰到了，没量或只用先验：部件功能，不管任务">○</td><td class="c2" title="主要贡献，有数字：同网格复查差异">●</td><td class="c2" title="主要贡献，有数字：3 任务各 20 次">●</td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-Video2World.html">Video2World</a></th><td class="c1" title="碰到了，没量或只用先验：相机不单评，尺度见 Size">○</td><td class="c2" title="主要贡献，有数字：Scene/Shape CD、Size">●</td><td class="c1" title="碰到了，没量或只用先验：agent 自填，不单评">○</td><td class="c1" title="碰到了，没量或只用先验：只查穿模等合法性">○</td><td class="c1" title="碰到了，没量或只用先验：含绳布软玩具，未单报">○</td><td class="c1" title="碰到了，没量或只用先验：被动关节，未单报">○</td><td></td><td class="c2" title="主要贡献，有数字：agent 自推任务，判成败">●</td><td class="c2" title="主要贡献，有数字：三类误差 + 任务判定">●</td><td></td></tr><tr><td class="y">10 月</td><th scope="row"><a href="2026-11-16-LiteReality-Agent.html">LiteReality-Agent</a></th><td class="c1" title="碰到了，没量或只用先验：直接用 ARKit 位姿">○</td><td class="c2" title="主要贡献，有数字：深度 MAE 最低">●</td><td class="c1" title="碰到了，没量或只用先验：类别/材料先验">○</td><td class="c2" title="主要贡献，有数字：支撑闸门+近接触">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：铰接资产未量化">○</td><td class="c2" title="主要贡献，有数字：PSNR/LPIPS 最好">●</td><td></td><td class="c2" title="主要贡献，有数字：标定对比+QC 闸门">●</td><td></td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-SimEX.html">SimEX</a></th><td class="c1" title="碰到了，没量或只用先验：标定沿用平台">○</td><td class="c1" title="碰到了，没量或只用先验：mesh 库选取摆放">○</td><td class="c1" title="碰到了，没量或只用先验：probe 时改，未测">○</td><td class="c1" title="碰到了，没量或只用先验：未单独建模">○</td><td class="c1" title="碰到了，没量或只用先验：FLASH 粗糙 towel">○</td><td></td><td class="c1" title="碰到了，没量或只用先验：sim RGBD 供感知">○</td><td class="c1" title="碰到了，没量或只用先验：自己出任务和成功谓词，未单独量">○</td><td class="c1" title="碰到了，没量或只用先验：replay 定性比对">○</td><td class="c2" title="主要贡献，有数字：3 任务 26/30">●</td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-FACT-ArticulatedTwins.html">FACT (Articulated Twins)</a></th><td class="c1" title="碰到了，没量或只用先验：尺子量尺寸定尺度">○</td><td class="c2" title="主要贡献，有数字：特征测量，Tab. 1、2">●</td><td class="c2" title="主要贡献，有数字：视频拟合阻尼摩擦">●</td><td class="c2" title="主要贡献，有数字：任务感知代理，Tab. 3">●</td><td></td><td class="c2" title="主要贡献，有数字：建关节，关节动力学">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：任务区感知的碰撞代理，不涉及物体角色">○</td><td class="c2" title="主要贡献，有数字：三层各有量化验证">●</td><td></td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-EMPIRIC.html">EMPIRIC</a></th><td class="c1" title="碰到了，没量或只用先验：真机外参标定">○</td><td class="c1" title="碰到了，没量或只用先验：几何给定，不重建">○</td><td class="c2" title="主要贡献，有数字：后验推质量和摩擦">●</td><td class="c1" title="碰到了，没量或只用先验：接触沿用引擎">○</td><td></td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：目标写成 predicate">○</td><td class="c2" title="主要贡献，有数字：回放误差，预测对实测">●</td><td class="c2" title="主要贡献，有数字：1 次 run，有数字">●</td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-F4R.html">F4R</a></th><td class="c1" title="碰到了，没量或只用先验：Sim3 配准未单测">○</td><td class="c1" title="碰到了，没量或只用先验：有重建无几何指标">○</td><td class="c1" title="碰到了，没量或只用先验：asset estimate">○</td><td class="c1" title="碰到了，没量或只用先验：打滑时才随机化">○</td><td></td><td class="c1" title="碰到了，没量或只用先验：VLM+P3-SAM 未单测">○</td><td class="c2" title="主要贡献，有数字：3DGS，SSIM≈0.75">●</td><td class="c2" title="主要贡献，有数字：诊断失败子任务">●</td><td class="c2" title="主要贡献，有数字：复现失败+r=0.76">●</td><td class="c2" title="主要贡献，有数字：4 任务×20 次">●</td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-ARSTAG.html">ARSTAG</a></th><td class="c1" title="碰到了，没量或只用先验：SAM 3D 估尺度，未测">○</td><td class="c2" title="主要贡献，有数字：support repair 有数">●</td><td class="c1" title="碰到了，没量或只用先验：未说明，nut 设质量">○</td><td class="c1" title="碰到了，没量或只用先验：只量支撑贴合">○</td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：HDRI 随机化">○</td><td class="c2" title="主要贡献，有数字：按指令选物体">●</td><td class="c1" title="碰到了，没量或只用先验：测可用性，非保真">○</td><td class="c2" title="主要贡献，有数字：7 任务各 40 次">●</td></tr><tr><td class="y">09 月</td><th scope="row"><a href="2026-11-16-DiagGen.html">DiagGen</a></th><td class="c1" title="碰到了，没量或只用先验：定尺度，未评测">○</td><td class="c1" title="碰到了，没量或只用先验：工具生成几何">○</td><td class="c1" title="碰到了，没量或只用先验：VLM 先验，未测">○</td><td class="c1" title="碰到了，没量或只用先验：SAP 接触，未测">○</td><td class="c2" title="主要贡献，有数字：主贡献，有分数">●</td><td></td><td class="c1" title="碰到了，没量或只用先验：纹理网格，未评测">○</td><td class="c1" title="碰到了，没量或只用先验：按部件语义定假设">○</td><td class="c2" title="主要贡献，有数字：仿真里 probe">●</td><td class="c1" title="碰到了，没量或只用先验：遥操作回放，无数字">○</td></tr><tr><td class="y">04 月</td><th scope="row"><a href="2026-11-16-CoEnv.html">CoEnv / CoEx</a></th><td class="c1" title="碰到了，没量或只用先验：外参迭代标定，无数字">○</td><td class="c1" title="碰到了，没量或只用先验：Meshy 生成，未测">○</td><td class="c1" title="碰到了，没量或只用先验：按类别指定">○</td><td class="c1" title="碰到了，没量或只用先验：SAPIEN 接触，未测">○</td><td></td><td></td><td class="c1" title="碰到了，没量或只用先验：多视角渲染供检查">○</td><td class="c2" title="主要贡献，有数字：分子目标分臂，有 SR">●</td><td class="c1" title="碰到了，没量或只用先验：验程序，不量 twin">○</td><td class="c2" title="主要贡献，有数字：5 任务各 10 次">●</td></tr><tr class="tot"><td></td><th scope="row">● 的篇数</th><td>1</td><td>11</td><td>3</td><td>4</td><td>2</td><td>3</td><td>3</td><td>4</td><td>14</td><td>9</td></tr></table></div>
   <p class="note">覆盖面：● 主要贡献且有数字　○ 碰到了，但没量或只用先验　空 = 不涉及。鼠标停在符号上看理由。● 最多的是几何 11 篇、验证 14 篇；接触 4 篇、质量/摩擦 3 篇、任务/角色 4 篇。</p>
 </section>
 
