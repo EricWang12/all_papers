@@ -244,7 +244,7 @@ flowchart LR
   IN --> C1["<b>室内专用 pipeline</b><br/>SAGE · SceneSmith"]
   C1 --> CX["<b>阶段按室内写死</b><br/>外景拆不进去<br/><span class='ex'>SAGE T 误差 32.92%</span><br/><span class='ex'>SceneSmith 27.78%</span>"]:::gap
   </pre></div>
-  <p class="note">论文没在 backlot 上跑 baseline，三条线的数字取最接近的 Table 1（P1 = 穿插超过 1 mm 的物体比例，T = 总物体数的相对误差）和 Fig. 5。“坏在哪一步”是推断：第一条依据 §4.2 对 Fig. 6 C/D 的分析（Fable 和 Astra-O 摊位结构雷同、几何简化，Fable 的花瓶穿插）；第二条依据 Fig. 5 和项目页对 Astra-S 的定义（单 agent 按 GTA 同样的三阶段走）；第三条依据 §1（预定义层级和专用串行流程在开放世界里不灵活）、§2.2（SceneSmith 走专用室内阶段、按房间并行），以及它们只在室内场景上评测。</p>
+  <p class="note">论文没在 backlot 上跑 baseline，三条线的数字取最接近的 Table 1（P1 = 穿插超过 1 mm 的物体比例，T = 总物体数的相对误差）和 Fig. 5。“坏在哪一步”是推断：第一条依据 §4.2 对 Fig. 6 C/D 的分析（Fable 和 Astra-O 摊位结构雷同、几何简化，Fable 的花瓶穿插）；第二条依据 Fig. 5 和 §4.2 对 Astra-S 的定义（单 agent 按 GTA 同样的三阶段走）；第三条依据 §1（预定义层级和专用串行流程在开放世界里不灵活）、§2.2（SceneSmith 走专用室内阶段、按房间并行），以及它们只在室内场景上评测。</p>
   <p class="crux"><b>根本问题：</b>整个场景压在一个 agent 或一条写死的流程上，场景越大，context 和时间越不够。　<b>这篇的切入点：</b>把每个尺度的单元都变成同一种任务 holon，每个 agent 只看自己的 group 和接口，独立的 group 进队列并行做。</p>
   <h3 id="related">Related work</h3>
   <div class="table-wrap">
@@ -547,7 +547,7 @@ flowchart TD
       <div><dt>指标</dt><dd>T/U = 总实例数 / 不同语义类型数的相对绝对误差（%）；Specified Objects（%）在表里写成区间，论文没解释两端，排名看左端；P1 = 穿插深度超过 1 mm 的物体比例；MPD = 平均穿插深度（mm）；NAV、Opening Clearance 沿用 SceneEval [35]；视觉分由 Claude Opus 5.5 和 GPT-6.1 Sol 两个评委打 1–5 分（物体 / 场景）。</dd></div>
       <div><dt>怎么评测</dt><dd><ul class="tight">
         <li>室内组：20 个室内场景，GTA 对 SAGE、SceneSmith；两者的 LLM 调用也换成 GPT-6 Astra（medium），图像生成用 GPT Image 1.5。</li>
-        <li>通用组：“更广的场景集”（另有 20 个户外或半户外场景；论文没说这组一共几个），GTA 对 Claude Fable 5.2、Astra-O（原版）和 Astra-S（单 agent 走同样三阶段，定义见项目页），都是 medium reasoning。</li>
+        <li>通用组：“更广的场景集”（另有 20 个户外或半户外场景；论文没说这组一共几个），GTA 对 Claude Fable 5.2、Astra-O（原版）和 Astra-S（单 agent 走和 GTA 同样的三阶段，§4.2），都是 medium reasoning。</li>
         <li>目标物体数 10 到 1,000；生成和评测的渲染统一用 Blender 4.5.0 Cycles + OptiX，同一批 H100，每组参数固定。</li>
         <li>对 GTA 有利的地方：它用 32 个 agent，baseline 各 1 个；视觉分只有 LLM 评委，没有人评；每个场景跑几次、方差多少都没报告。</li>
       </ul></dd></div>
