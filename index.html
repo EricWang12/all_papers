@@ -63,12 +63,12 @@ ol.papers a:hover { border-color: var(--accent); }
 .tldr { font-size: .9rem; color: var(--muted); }
 .empty { color: var(--muted); margin: .75rem 0 0; }
 /* stars: hidden until library.js reaches the artifact's database and sets .stars-on */
-.seg, .star, .fstar { display: none; }
-.stars-on .seg { display: inline-flex; }
+.star, .fstar, .seg [data-filter="starred"] { display: none; }
+.stars-on .seg [data-filter="starred"] { display: inline-flex; }
 .stars-on .star { display: grid; }
 .stars-on .fstar { display: inline-flex; }
 .stars-on ol.papers a { padding-right: 3rem; }
-.seg { margin-top: 1.25rem; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.seg { display: inline-flex; margin-top: 1.25rem; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
 .seg button { border: 0; background: var(--surface); color: var(--muted); font: 500 .8rem var(--f-mono);
   padding: .4rem .9rem; cursor: pointer; display: inline-flex; gap: .35rem; align-items: center; }
 .seg button + button { border-left: 1px solid var(--rule); }
@@ -90,104 +90,624 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.25rem 3rem; font-si
 code { font-family: var(--f-mono); font-size: .9em; }
 @media (max-width: 560px) { ol.papers a { grid-template-columns: minmax(0, 1fr); } .date { grid-row: auto; } }
 </style>
+<script type="application/json" id="agent-context">{
+ "about": "Hidden from readers: the facts an agent needs to answer questions about this paper library. Written by the paper-explain skill's build_index.py.",
+ "library": {
+  "title": "Zhaoning Paper Pile",
+  "repo": "https://github.com/EricWang12/all_papers",
+  "profile": "https://github.com/EricWang12/all_papers/blob/main/preferences.md"
+ },
+ "open": "Add #<page> to this artifact's link to open one paper's page directly.",
+ "each_page": "Every page carries its own agent-context block: the paper's links, its file in the repo, and how to answer and change it.",
+ "pages": [
+  {
+   "page": "2026-11-20-GTA",
+   "project": "Agent-centric-real-to-sim",
+   "title": "GTA: Generative Tower of Agents for Scalable Holonic Scene Generation",
+   "date": "2026-11-18",
+   "source": "https://arxiv.org/abs/2611.23727",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-20-GTA.html"
+  },
+  {
+   "page": "2026-11-20-AgenticReal2SimLandscape",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Agentic real-to-sim 第二轮：18 篇新论文的地图（综述页，不是单篇论文）",
+   "date": "2026-11-20",
+   "source": "https://github.com/YanjieZe/agent-real2sim2real",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-20-AgenticReal2SimLandscape.html"
+  },
+  {
+   "page": "2026-11-16-Video2World",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Video2World: Benchmarking Coding Agents for Interactive World Modeling from Embodied Videos",
+   "date": "2026-10-03",
+   "source": "https://arxiv.org/abs/2610.04432",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-Video2World.html"
+  },
+  {
+   "page": "2026-11-16-Unravel",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Unravel: Recovering an Interactive 3D Scene from a Single Image",
+   "date": "2026-10-12",
+   "source": "https://arxiv.org/abs/2610.16146",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-Unravel.html"
+  },
+  {
+   "page": "2026-11-16-USDCraft",
+   "project": "Agent-centric-real-to-sim",
+   "title": "USDCraft: Geometrically Grounded Programmatic Modeling of Articulated 3D Assets for Simulation",
+   "date": "2026-10-08",
+   "source": "https://arxiv.org/abs/2610.11322",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-USDCraft.html"
+  },
+  {
+   "page": "2026-11-16-SimEX",
+   "project": "Agent-centric-real-to-sim",
+   "title": "SimEX: Simulation-Integrated Robotics AutoResearch",
+   "date": "2026-09-30",
+   "source": "https://arxiv.org/abs/2609.38982",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-SimEX.html"
+  },
+  {
+   "page": "2026-11-16-SceneEvolve",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Learning to Code the World: Harness Evolution for Compositional 3D Reconstruction",
+   "date": "2026-10-27",
+   "source": "https://arxiv.org/abs/2610.37046",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-SceneEvolve.html"
+  },
+  {
+   "page": "2026-11-16-SceneAgent",
+   "project": "Agent-centric-real-to-sim",
+   "title": "SceneAgent: An Agentic Pipeline from 3D and 4D Captures to Simulation Environments",
+   "date": "2026-10-26",
+   "source": "https://arxiv.org/abs/2610.34745",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-SceneAgent.html"
+  },
+  {
+   "page": "2026-11-16-PhysCodeGym",
+   "project": "Agent-centric-real-to-sim",
+   "title": "PhysCodeGym: Benchmarking Coding Agents for Physically Verifiable 4D Reconstruction",
+   "date": "2026-10-12",
+   "source": "https://arxiv.org/abs/2610.17288",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-PhysCodeGym.html"
+  },
+  {
+   "page": "2026-11-16-NeoWorld-3",
+   "project": "Agent-centric-real-to-sim",
+   "title": "NeoWorld-3: From Pixels to Code-Defined Physical Worlds",
+   "date": "2026-10-20",
+   "source": "https://arxiv.org/abs/2610.27690",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-NeoWorld-3.html"
+  },
+  {
+   "page": "2026-11-16-LiteReality-Agent",
+   "project": "Agent-centric-real-to-sim",
+   "title": "LiteReality-Agent: An Agentic System for Interactable 3D Indoor Scene Reconstruction",
+   "date": "2026-10-01",
+   "source": "https://arxiv.org/abs/2610.01863",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-LiteReality-Agent.html"
+  },
+  {
+   "page": "2026-11-16-GRASE",
+   "project": "Agent-centric-real-to-sim",
+   "title": "GRASE: Geometry-native Real-to-sim Agentic Scene Modeling from Video",
+   "date": "2026-10-15",
+   "source": "https://arxiv.org/abs/2610.21498",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-GRASE.html"
+  },
+  {
+   "page": "2026-11-16-FACT-ArticulatedTwins",
+   "project": "Agent-centric-real-to-sim",
+   "title": "FACT: Fidelity-Aware Construction of Articulated Twins",
+   "date": "2026-09-29",
+   "source": "https://arxiv.org/abs/2609.37067",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-FACT-ArticulatedTwins.html"
+  },
+  {
+   "page": "2026-11-16-F4R",
+   "project": "Agent-centric-real-to-sim",
+   "title": "F4R: Failure-Driven Recognition, Reconstruction, Refinement, and Redeployment for Continual Robot Self-Improvement",
+   "date": "2026-09-28",
+   "source": "https://arxiv.org/abs/2609.35575",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-F4R.html"
+  },
+  {
+   "page": "2026-11-16-EMPIRIC",
+   "project": "Agent-centric-real-to-sim",
+   "title": "EMPIRIC: Experiment-Driven Learning of Residual World Models for Robot Planning",
+   "date": "2026-09-28",
+   "source": "https://arxiv.org/abs/2609.35047",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-EMPIRIC.html"
+  },
+  {
+   "page": "2026-11-16-DiagGen",
+   "project": "Agent-centric-real-to-sim",
+   "title": "DiagGen: Agentic Generation of Deformable Assets with Sim-based Diagnostics for Robotic Simulation",
+   "date": "2026-09-19",
+   "source": "https://arxiv.org/abs/2609.23103",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-DiagGen.html"
+  },
+  {
+   "page": "2026-11-16-D-World",
+   "project": "Agent-centric-real-to-sim",
+   "title": "D-World: An Explicit World-Language-Action Model with Recursive Self-Improvement under Dual Control",
+   "date": "2026-10-12",
+   "source": "https://arxiv.org/abs/2610.17114",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-D-World.html"
+  },
+  {
+   "page": "2026-11-16-CoEnv",
+   "project": "Agent-centric-real-to-sim",
+   "title": "CoEnv: Code-Driven Exploration in Real-to-Sim Digital Twins for Multi-Arm Manipulation",
+   "date": "2026-04-07",
+   "source": "https://arxiv.org/abs/2604.05484",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-CoEnv.html"
+  },
+  {
+   "page": "2026-11-16-CUE",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Closing the Dynamics Gap through Self-Directed Robotic Interaction",
+   "date": "2026-11-02",
+   "source": "https://arxiv.org/abs/2611.02691",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-CUE.html"
+  },
+  {
+   "page": "2026-11-16-ARSTAG",
+   "project": "Agent-centric-real-to-sim",
+   "title": "ARSTAG: An Agentic Real2Sim2Real System for Task-Specific Robot Data Generation",
+   "date": "2026-09-21",
+   "source": "https://arxiv.org/abs/2609.24563",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-16-ARSTAG.html"
+  },
+  {
+   "page": "2026-11-07-CoDimRecon",
+   "project": "Agent-centric-real-to-sim",
+   "title": "CoDimRecon: Agentic Reconstruction of Sim-Ready 3D Scenes with Deformable Curves, Surfaces, and Volumes",
+   "date": "2026-09-28",
+   "source": "https://arxiv.org/abs/2609.36024",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-07-CoDimRecon.html"
+  },
+  {
+   "page": "2026-11-05-gradSim",
+   "project": "Agent-centric-real-to-sim",
+   "title": "gradSim: Differentiable simulation for system identification and visuomotor control",
+   "date": "2021-04-06",
+   "source": "https://arxiv.org/abs/2104.02646",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-gradSim.html"
+  },
+  {
+   "page": "2026-11-05-Video2Sim2Real",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Video2Sim2Real: Full-Stack Autonomous Dexterous Skill Acquisition from a Single Human Video",
+   "date": "2026-06-07",
+   "source": "https://arxiv.org/abs/2606.08828",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-Video2Sim2Real.html"
+  },
+  {
+   "page": "2026-11-05-Vid2Sid",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Vid2Sid: Videos Can Help Close the Sim2Real Gap",
+   "date": "2026-02-22",
+   "source": "https://arxiv.org/abs/2602.19359",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-Vid2Sid.html"
+  },
+  {
+   "page": "2026-11-05-VeoEval",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Evaluating Gemini Robotics Policies in a Veo World Simulator",
+   "date": "2025-12-11",
+   "source": "https://arxiv.org/abs/2512.10675",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-VeoEval.html"
+  },
+  {
+   "page": "2026-11-05-VPTwin",
+   "project": "Agent-centric-real-to-sim",
+   "title": "VPTwin: Real-Sim-Real Video Prediction for Robotic Manipulation Planning",
+   "date": "2026-09-27",
+   "source": "https://arxiv.org/abs/2609.33104",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-VPTwin.html"
+  },
+  {
+   "page": "2026-11-05-ScalableReal2Sim",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Scalable Real2Sim: Physics-Aware Asset Generation Via Robotic Pick-and-Place Setups",
+   "date": "2025-03-01",
+   "source": "https://arxiv.org/abs/2503.00370",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-ScalableReal2Sim.html"
+  },
+  {
+   "page": "2026-11-05-RialTo",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Reconciling Reality through Simulation: A Real-to-Sim-to-Real Approach for Robust Manipulation",
+   "date": "2024-03-06",
+   "source": "https://arxiv.org/abs/2403.03949",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-RialTo.html"
+  },
+  {
+   "page": "2026-11-05-ReconEffects",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Measuring Asset and Scene Reconstruction Effects in Real-to-Sim Robot Evaluation",
+   "date": "2026-09-30",
+   "source": "https://arxiv.org/abs/2610.00731",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-ReconEffects.html"
+  },
+  {
+   "page": "2026-11-05-Real2SimLandscape",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Real-to-sim：问题地图和四十年趋势（综述页，不是单篇论文）",
+   "date": "",
+   "source": "https://arxiv.org/abs/2510.20808",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-Real2SimLandscape.html"
+  },
+  {
+   "page": "2026-11-05-PolaRiS",
+   "project": "Agent-centric-real-to-sim",
+   "title": "PolaRiS: Scalable Real-to-Sim Evaluations for Generalist Robot Policies",
+   "date": "2025-12-18",
+   "source": "https://arxiv.org/abs/2512.16881",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-PolaRiS.html"
+  },
+  {
+   "page": "2026-11-05-PhysTwin",
+   "project": "Agent-centric-real-to-sim",
+   "title": "PhysTwin: Physics-Informed Reconstruction and Simulation of Deformable Objects from Videos",
+   "date": "2025-03-23",
+   "source": "https://arxiv.org/abs/2503.17973",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-PhysTwin.html"
+  },
+  {
+   "page": "2026-11-05-ConCent",
+   "project": "Agent-centric-real-to-sim",
+   "title": "ConCent: Contact-Centric Real-to-Sim-to-Real Learning from One Demonstration",
+   "date": "2026-06-29",
+   "source": "https://arxiv.org/abs/2606.30268",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-ConCent.html"
+  },
+  {
+   "page": "2026-11-05-AgenticRSR",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Agentic RSR: Real-to-Sim-to-Real through Scene Reconstruction and Execution-Grounded Robot Policies",
+   "date": "2026-10-07",
+   "source": "https://arxiv.org/abs/2610.10479",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-AgenticRSR.html"
+  },
+  {
+   "page": "2026-11-05-ACDC",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Automated Creation of Digital Cousins for Robust Policy Learning",
+   "date": "2024-10-09",
+   "source": "https://arxiv.org/abs/2410.07408",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-05-ACDC.html"
+  },
+  {
+   "page": "2026-11-04-RoboSnap",
+   "project": "Agent-centric-real-to-sim",
+   "title": "RoboSnap: One-Shot Real-to-Sim Scene Generation for Generalizable Robot Learning and Evaluation",
+   "date": "2026-07-07",
+   "source": "https://arxiv.org/abs/2607.06699",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-04-RoboSnap.html"
+  },
+  {
+   "page": "2026-11-04-AgenticReal2Sim",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Agentic Real2Sim: Physics-based World Modeling with Vision-Language Agents",
+   "date": "2026-07-21",
+   "source": "https://arxiv.org/abs/2607.19190",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-04-AgenticReal2Sim.html"
+  },
+  {
+   "page": "2026-11-03-WorldMirror",
+   "project": "Agent-centric-real-to-sim",
+   "title": "WorldMirror: Agentic Real-to-Sim Generation of Interactive Worlds from In-the-Wild Robot Demonstrations",
+   "date": "2026-10-22",
+   "source": "https://arxiv.org/abs/2610.31834",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-03-WorldMirror.html"
+  },
+  {
+   "page": "2026-11-03-SceneRig",
+   "project": "Agent-centric-real-to-sim",
+   "title": "SceneRig: An Agentic System for Simulation-Ready 3D Scene Reconstruction from Single Images",
+   "date": "2026-10-20",
+   "source": "https://arxiv.org/abs/2610.28585",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-03-SceneRig.html"
+  },
+  {
+   "page": "2026-11-03-RoboSimStudio",
+   "project": "Agent-centric-real-to-sim",
+   "title": "RoboSimStudio: An Interactive Toolkit for Rapid Real2Sim of Robot Manipulation Tasks",
+   "date": "2026-10-13",
+   "source": "https://arxiv.org/abs/2610.18835",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-03-RoboSimStudio.html"
+  },
+  {
+   "page": "2026-11-03-Real2Gym",
+   "project": "Agent-centric-real-to-sim",
+   "title": "Real2Gym: Building Gyms from Videos, Bringing Skills to Robots",
+   "date": "2026-09-29",
+   "source": "https://arxiv.org/abs/2609.37089",
+   "file": "Agent-centric-real-to-sim/artifact/2026-11-03-Real2Gym.html"
+  },
+  {
+   "page": "2026-10-15-DexAgent",
+   "project": "Agent-centric-real-to-sim",
+   "title": "DexAgent: An Agentic Human2Sim2Robot Framework for Dexterous Manipulation with Self-Evolving Tool Library",
+   "date": "2026-09-28",
+   "source": "https://arxiv.org/abs/2609.35318",
+   "file": "Agent-centric-real-to-sim/artifact/2026-10-15-DexAgent.html"
+  },
+  {
+   "page": "2026-11-02-RoboAtom",
+   "project": "Atom-Action",
+   "title": "RoboAtom: Large-scale Atomic-Action Supervision for Robot Learning",
+   "date": "2026-10-29",
+   "source": "https://arxiv.org/abs/2610.40207",
+   "file": "Atom-Action/artifact/2026-11-02-RoboAtom.html"
+  },
+  {
+   "page": "2026-11-02-AtomicVLA",
+   "project": "Atom-Action",
+   "title": "AtomicVLA: Unlocking the Potential of Atomic Skill Learning in Robots",
+   "date": "2026-03-08",
+   "source": "https://arxiv.org/abs/2603.07648",
+   "file": "Atom-Action/artifact/2026-11-02-AtomicVLA.html"
+  },
+  {
+   "page": "2026-11-22-ComputerUseAgents",
+   "project": "LLM-Harness",
+   "title": "Computer-use agents：怎么工作、为什么又慢又贵、靠什么变快（专题页，不是单篇论文）",
+   "date": "2026-09-02",
+   "source": "https://arxiv.org/abs/2609.02309",
+   "file": "LLM-Harness/artifact/2026-11-22-ComputerUseAgents.html"
+  },
+  {
+   "page": "2026-11-07-AgentMemory",
+   "project": "LLM-Harness",
+   "title": "The components of agent memory",
+   "date": "2026-11-06",
+   "source": "https://www.anthropic.com/research/components-of-agent-memory",
+   "file": "LLM-Harness/artifact/2026-11-07-AgentMemory.html"
+  },
+  {
+   "page": "2026-11-05-SO101-MAS",
+   "project": "Robotic-harness",
+   "title": "SO101 multi-agent harness (harness/so101_mas): parent session delegating pick-and-place to fresh child sessions",
+   "date": "",
+   "source": "https://github.com/EricWang12/SO101/tree/main/harness/so101_mas",
+   "file": "Robotic-harness/artifact/2026-11-05-SO101-MAS.html"
+  },
+  {
+   "page": "2026-11-03-ZAP",
+   "project": "Robotic-harness",
+   "title": "Pretraining Knows What, Simulation Teaches How: Compositional Generalization for Agentic Robotics",
+   "date": "",
+   "source": "https://zero-real.github.io/",
+   "file": "Robotic-harness/artifact/2026-11-03-ZAP.html"
+  },
+  {
+   "page": "2026-10-21-MAST",
+   "project": "Robotic-harness",
+   "title": "Why Do Multi-Agent LLM Systems Fail?",
+   "date": "2025-03-17",
+   "source": "https://arxiv.org/abs/2503.13657",
+   "file": "Robotic-harness/artifact/2026-10-21-MAST.html"
+  },
+  {
+   "page": "2026-10-16-RPent",
+   "project": "Robotic-harness",
+   "title": "Harness VLA: Steering Frozen VLAs into Reliable Manipulation Primitives via Memory-Guided Agents",
+   "date": "2026-07-09",
+   "source": "https://arxiv.org/abs/2607.08448",
+   "file": "Robotic-harness/artifact/2026-10-16-RPent.html"
+  },
+  {
+   "page": "2026-11-15-GR00T2",
+   "project": "Sim-robot-learning",
+   "title": "GR00T 2: Scaling Robot Foundation Models for Generalization, Dexterity, and Adaptation",
+   "date": "2026-11-09",
+   "source": "https://research.nvidia.com/labs/gear/gr00t-2/",
+   "file": "Sim-robot-learning/artifact/2026-11-15-GR00T2.html"
+  },
+  {
+   "page": "2026-11-15-GR00T-N17",
+   "project": "Sim-robot-learning",
+   "title": "Isaac GR00T N1.7 (GA, main @ 3b49067)",
+   "date": "2026-04-18",
+   "source": "https://github.com/NVIDIA/Isaac-GR00T",
+   "file": "Sim-robot-learning/artifact/2026-11-15-GR00T-N17.html"
+  },
+  {
+   "page": "2026-11-07-SimulationBasics",
+   "project": "Sim-robot-learning",
+   "title": "仿真从零讲起：拿 RoboSimStudio 当例子（讲解页）",
+   "date": "",
+   "source": "https://arxiv.org/abs/2610.18835",
+   "file": "Sim-robot-learning/artifact/2026-11-07-SimulationBasics.html"
+  },
+  {
+   "page": "2026-11-05-SimOpt",
+   "project": "Sim-robot-learning",
+   "title": "Closing the Sim-to-Real Loop: Adapting Simulation Randomization with Real World Experience",
+   "date": "2018-10-12",
+   "source": "https://arxiv.org/abs/1810.05687",
+   "file": "Sim-robot-learning/artifact/2026-11-05-SimOpt.html"
+  },
+  {
+   "page": "2026-11-05-RealityGap",
+   "project": "Sim-robot-learning",
+   "title": "The Reality Gap in Robotics: Challenges, Solutions, and Best Practices",
+   "date": "2025-10-23",
+   "source": "https://arxiv.org/abs/2510.20808",
+   "file": "Sim-robot-learning/artifact/2026-11-05-RealityGap.html"
+  },
+  {
+   "page": "2026-11-03-CamVLA",
+   "project": "Sim-robot-learning",
+   "title": "From Fixed to Free Cameras: Calibration-Free View-Robust Vision-Language-Action Model",
+   "date": "",
+   "source": "https://arxiv.org/abs/2607.05396",
+   "file": "Sim-robot-learning/artifact/2026-11-03-CamVLA.html"
+  },
+  {
+   "page": "2026-11-02-FACT",
+   "project": "Sim-robot-learning",
+   "title": "FACT: A Multimodal Force–Action–Track Foundation Model for Human-to-Robot Dexterity",
+   "date": "",
+   "source": "https://fact-1-0.github.io/",
+   "file": "Sim-robot-learning/artifact/2026-11-02-FACT.html"
+  },
+  {
+   "page": "2026-10-30-SuperMimic",
+   "project": "Sim-robot-learning",
+   "title": "SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model",
+   "date": "2026-10-20",
+   "source": "https://arxiv.org/abs/2610.28480",
+   "file": "Sim-robot-learning/artifact/2026-10-30-SuperMimic.html"
+  },
+  {
+   "page": "2026-10-23-IsaacLab3",
+   "project": "Sim-robot-learning",
+   "title": "Isaac Lab 3.0 (v3.0.0 GA release)",
+   "date": "2026-10-20",
+   "source": "https://github.com/isaac-sim/IsaacLab/releases/tag/v3.0.0",
+   "file": "Sim-robot-learning/artifact/2026-10-23-IsaacLab3.html"
+  },
+  {
+   "page": "2026-10-23-COWBOY",
+   "project": "Sim-robot-learning",
+   "title": "COWBOY: A Scalable Sim-to-Real Framework for Learning Contextual Whole-Body Manipulation",
+   "date": "2026-10-20",
+   "source": "https://arxiv.org/abs/2610.28948",
+   "file": "Sim-robot-learning/artifact/2026-10-23-COWBOY.html"
+  },
+  {
+   "page": "2026-10-23-AdaDex",
+   "project": "Sim-robot-learning",
+   "title": "Learning Adaptable Dexterous Skills via Hybrid Dexterous Mimicking",
+   "date": "2026-10-20",
+   "source": "https://arxiv.org/abs/2610.28628",
+   "file": "Sim-robot-learning/artifact/2026-10-23-AdaDex.html"
+  },
+  {
+   "page": "2026-11-02-MLP-vs-Transformer",
+   "project": "misc",
+   "title": "为什么机器人 RL 低层控制器大多用 MLP 而不是 Transformer，以及 policy 何时需要历史、历史多长才够",
+   "date": "",
+   "source": "",
+   "file": "misc/artifact/2026-11-02-MLP-vs-Transformer.html"
+  },
+  {
+   "page": "2026-11-02-GOTT",
+   "project": "misc",
+   "title": "GOTT: Object-centric Dexterous Manipulation with a Reusable Cross-Embodiment Primitive",
+   "date": "2026-10-02",
+   "source": "https://arxiv.org/abs/2610.03861",
+   "file": "misc/artifact/2026-11-02-GOTT.html"
+  }
+ ],
+ "changing": "Pages are made by the paper-explain skill (https://github.com/EricWang12/zw-claude-skills/tree/main/plugins/paper-explain), which keeps this artifact and the repo in step on every run."
+}</script>
 <header class="frame">
-  <p class="eyebrow">all_papers/ · 6 个 project · 62 篇 paper</p>
+  <p class="eyebrow">papers/ · 6 个 project · 63 篇 paper</p>
   <h1>Zhaoning Paper Pile</h1>
   <p class="sub">每篇 paper 先对着一个 <span class="ex">running example</span> 讲清 problem，
   再 big picture → stages → details，并逐块解读作者原图。下面的文件夹和磁盘上的
-  <code>all_papers/</code> 一一对应，点名字展开。每张卡左边是论文首次公开的日期（arXiv v1 或 release），小字是归档日期。</p>
+  <code>papers/</code> 一一对应，点名字展开。每张卡左边是论文首次公开的日期（arXiv v1 或 release），小字是归档日期。</p>
   <div class="seg" id="star-filter" role="group" aria-label="显示哪些 paper">
-    <button type="button" data-filter="all" aria-pressed="true">全部 62</button>
+    <button type="button" data-filter="all" aria-pressed="true">全部 63</button>
+    <button type="button" data-filter="recent" aria-pressed="false">最近一周 <span id="recent-count">0</span></button>
     <button type="button" data-filter="starred" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>星标 <span id="star-count">0</span></button>
   </div>
   <p class="hint" id="star-hint" hidden>交给 Claude：说 <b>“用我的星标 paper 写 related work”</b>，它会自己读这份清单。</p>
+  <p class="hint" id="recent-empty" hidden>最近一周没有新归档的 paper。</p>
   <p class="hint" id="star-empty" hidden>还没有星标。点 paper 右上角的星，或文件夹旁的“整个文件夹”。</p>
 </header>
 <main class="frame" id="library">
 <details id="Agent-centric-real-to-sim" data-proj="Agent-centric-real-to-sim"><summary class="proj"><h2>Agent-centric-real-to-sim</h2><span class="count">Agent-centric-real-to-sim/ · 42 篇</span><button type="button" class="fstar" data-star="Agent-centric-real-to-sim" aria-pressed="false" aria-label="给整个 Agent-centric-real-to-sim 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
 <ol class="papers">
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-20-GTA.html"><span class="date"><b>2026-11-18</b><small>归档 2026-11-20</small></span><span class="name">GTA</span><span class="title">GTA: Generative Tower of Agents for Scalable Holonic Scene Generation · arXiv 2026</span><span class="tldr">GTA 把各尺度的场景单元都当作 holon，32 个 agent 自上而下拆、并行建、自下而上拼，再放进动态人物；穿插物体比例约减半，比单 agent 三阶段快 3.36×。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-20-GTA" aria-pressed="false" aria-label="星标 GTA"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-20-AgenticReal2SimLandscape.html"><span class="date"><b>2026-11-20</b><small>归档 2026-11-20</small></span><span class="name">Agentic Real2Sim 全景</span><span class="title">Agentic real-to-sim 第二轮：18 篇新论文的地图（综述页，不是单篇论文） · Literature map, 2026-11-20</span><span class="tldr">第二轮 18 篇 agentic real-to-sim（2026-09 以后为主）：agent 建场景、建 asset、动手量物理、在 twin 里练、给 agent 打分。10/16 个系统改 twin 时只看同一份输入或仿真自检。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-20-AgenticReal2SimLandscape" aria-pressed="false" aria-label="星标 Agentic Real2Sim 全景"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-Video2World.html"><span class="date"><b>2026-10-03</b><small>归档 2026-11-16</small></span><span class="name">Video2World</span><span class="title">Video2World: Benchmarking Coding Agents for Interactive World Modeling from Embodied Videos · arXiv 2026</span><span class="tldr">Benchmark：coding agent 只看一段 embodied 视频，写出能让机器人完成任务的 sim world；9 个系统最好成功 25.5%（人工辅助参照 58.8%），物体几何最准的 GPT-6 Astra 只成 10.7%</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-Video2World" aria-pressed="false" aria-label="星标 Video2World"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-Unravel.html"><span class="date"><b>2026-10-12</b><small>归档 2026-11-16</small></span><span class="name">Unravel</span><span class="title">Unravel: Recovering an Interactive 3D Scene from a Single Image · arXiv 2026</span><span class="tldr">单张室内图先逐层拆（VLM 规划、编辑器移除并补全、每次编辑先验证），物体露得最全时建模，再按移除的倒序装回、settling 和 agentic audit；资产保真度 VLM 评分 4.7 → 8.2（Table 1），和 baseline 只有定性对比。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-Unravel" aria-pressed="false" aria-label="星标 Unravel"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-USDCraft.html"><span class="date"><b>2026-10-08</b><small>归档 2026-11-16</small></span><span class="name">USDCraft</span><span class="title">USDCraft: Geometrically Grounded Programmatic Modeling of Articulated 3D Assets for Simulation · arXiv 2026</span><span class="tldr">现成 LLM 把扫描 mesh 读成公制切片文本，写可编译的铰接 USD 程序并在同一网格上复查；USDCraft-bench F1 84.830，真机 sim→real 最多掉 10 点。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-USDCraft" aria-pressed="false" aria-label="星标 USDCraft"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-SimEX.html"><span class="date"><b>2026-09-30</b><small>归档 2026-11-16</small></span><span class="name">SimEX</span><span class="title">SimEX: Simulation-Integrated Robotics AutoResearch · arXiv 2026</span><span class="tldr">coding agent 先在 sim 里自出题练出 toolbox，再用 5 次真机 trial 适配：每次 trial 先 replay 校正 sim，再在 sim 里筛 4 个候选 repair；真机 26/30，最强 baseline 3/30。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-SimEX" aria-pressed="false" aria-label="星标 SimEX"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-SceneEvolve.html"><span class="date"><b>2026-10-27</b><small>归档 2026-11-16</small></span><span class="name">SceneEvolve</span><span class="title">Learning to Code the World: Harness Evolution for Compositional 3D Reconstruction · arXiv 2026</span><span class="tldr">一张室内照片 → Blender 场景代码：GPT-6-Astra 当 teacher 在 100 个 dev 场景上演化 harness，Qwen3.8-27B 的 DINOv2-S 0.198→0.392；比 GPT-5.6-Sol SSIM 高 32.3%、成本低 59.8%，但慢 116.4%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-SceneEvolve" aria-pressed="false" aria-label="星标 SceneEvolve"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-SceneAgent.html"><span class="date"><b>2026-10-26</b><small>归档 2026-11-16</small></span><span class="name">SceneAgent</span><span class="title">SceneAgent: An Agentic Pipeline from 3D and 4D Captures to Simulation Environments · CoRL 2026 Late Breaking Results</span><span class="tldr">给 coding agent 一套 skills，在 Isaac Lab 里渲染、看图、修，把 3D/4D 采集转成可交互仿真：bin 场景 F1@1cm 最高 60.75%（SimFoundry 6.9%），4D 上 Gemini 4 Argon 0.86% → 99.09%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-SceneAgent" aria-pressed="false" aria-label="星标 SceneAgent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-PhysCodeGym.html"><span class="date"><b>2026-10-12</b><small>归档 2026-11-16</small></span><span class="name">PhysCodeGym</span><span class="title">PhysCodeGym: Benchmarking Coding Agents for Physically Verifiable 4D Reconstruction · arXiv 2026</span><span class="tldr">156 个真实视频任务：coding agent 写 Blender 物理程序重建视频，评测进场景测量并做 counterfactual 干预；最强的 GPT-6-Astra 总分 0.663，motion 最高 0.324</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-PhysCodeGym" aria-pressed="false" aria-label="星标 PhysCodeGym"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-NeoWorld-3.html"><span class="date"><b>2026-10-20</b><small>归档 2026-11-16</small></span><span class="name">NeoWorld-3</span><span class="title">NeoWorld-3: From Pixels to Code-Defined Physical Worlds · arXiv 2026</span><span class="tldr">coding agent 把多视角照片重建成可调的几何程序：NeoSDK 拟合参数并检查封闭性、关节和接触，NeoMCP 把这些能力做成 agent 工具；RoboCasa365 场景穿插率 0.67%，双臂真机演示 Real-Sim-Real</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-NeoWorld-3" aria-pressed="false" aria-label="星标 NeoWorld-3"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-LiteReality-Agent.html"><span class="date"><b>2026-10-01</b><small>归档 2026-11-16</small></span><span class="name">LiteReality-Agent</span><span class="title">LiteReality-Agent: An Agentic System for Interactable 3D Indoor Scene Reconstruction · arXiv 2026</span><span class="tldr">把房间 RGB-D 扫描写成 Room.py，coding agent 在带标定渲染对比、米制量墙和碰撞/支撑闸门的 harness 里反复改它，再导出 MuJoCo；10 个房间全面胜过直接用 Astra / Fable</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-LiteReality-Agent" aria-pressed="false" aria-label="星标 LiteReality-Agent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-GRASE.html"><span class="date"><b>2026-10-15</b><small>归档 2026-11-16</small></span><span class="name">GRASE</span><span class="title">GRASE: Geometry-native Real-to-sim Agentic Scene Modeling from Video · arXiv 2026</span><span class="tldr">agent 把室内视频建成可编辑的 Blender 场景：数值工具拟合墙面和物体，VLM 全程拿原视频验收、只改出错的部件；Replica scene CD 16.39 → 5.80 cm，没有仿真或真机实验。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-GRASE" aria-pressed="false" aria-label="星标 GRASE"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-FACT-ArticulatedTwins.html"><span class="date"><b>2026-09-29</b><small>归档 2026-11-16</small></span><span class="name">FACT (Articulated Twins)</span><span class="title">FACT: Fidelity-Aware Construction of Articulated Twins · arXiv 2026</span><span class="tldr">agent 在共享的可编辑铰接模型上循环 evidence→diagnosis→revision，依次修几何、碰撞代理、动力学：夹爪交互成功率 99.47% vs 42.28%，held-out 轨迹 TMSE 0.0252 vs 0.1711。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-FACT-ArticulatedTwins" aria-pressed="false" aria-label="星标 FACT (Articulated Twins)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-F4R.html"><span class="date"><b>2026-09-28</b><small>归档 2026-11-16</small></span><span class="name">F4R</span><span class="title">F4R: Failure-Driven Recognition, Reconstruction, Refinement, and Redeployment for Continual Robot Self-Improvement · arXiv 2026</span><span class="tldr">agent 诊断真机失败，固定流水线把失败场景重建进 Isaac Sim，再 co-training + RL 后再部署；4 任务 ID 93.75% / OOD 90.0%，同 1 小时预算 OOD 比 Targeted BC 高 18.75 pp。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-F4R" aria-pressed="false" aria-label="星标 F4R"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-EMPIRIC.html"><span class="date"><b>2026-09-28</b><small>归档 2026-11-16</small></span><span class="name">EMPIRIC</span><span class="title">EMPIRIC: Experiment-Driven Learning of Residual World Models for Robot Planning · arXiv 2026 (under review)</span><span class="tldr">agent 给物理引擎写缺失机制的代码（新的力、约束、隐藏状态），用 Bayesian belief 推参数、挑实验、排练后再执行；仿真 5 个 domain 25/25 全解，真机从两阵风推出风力和两块 domino 的质量。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-EMPIRIC" aria-pressed="false" aria-label="星标 EMPIRIC"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-DiagGen.html"><span class="date"><b>2026-09-19</b><small>归档 2026-11-16</small></span><span class="name">DiagGen</span><span class="title">DiagGen: Agentic Generation of Deformable Assets with Sim-based Diagnostics for Robotic Simulation · arXiv 2026</span><span class="tldr">一张照片 → 可仿真的可变形 asset：VLM agent 在 Genesis 里抓、放、看响应，把故障送回出错的 stage 重做；14 个返工 asset 的 PMSC 2.14 → 3.43。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-DiagGen" aria-pressed="false" aria-label="星标 DiagGen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-D-World.html"><span class="date"><b>2026-10-12</b><small>归档 2026-11-16</small></span><span class="name">D-World</span><span class="title">D-World: An Explicit World-Language-Action Model with Recursive Self-Improvement under Dual Control · arXiv 2026</span><span class="tldr">LLM 把场景写成可执行 twin，每个 chunk 后按真机测量改具名参数，replay 不变差才接受，结构错才重建；真机只有定性 case，没有成功率</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-D-World" aria-pressed="false" aria-label="星标 D-World"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-CoEnv.html"><span class="date"><b>2026-04-07</b><small>归档 2026-11-16</small></span><span class="name">CoEnv</span><span class="title">CoEnv: Code-Driven Exploration in Real-to-Sim Digital Twins for Multi-Arm Manipulation · arXiv 2026（本页讲 v2，2026-11-02 修订）</span><span class="tldr">CoEnv 把多臂工作台从 RGBD 重建成可查真值的 twin，CoEx 让 Claude Code 在里面写-跑-改整段多臂程序，验证后经扫掠体积碰撞检查上真机：5 个真机任务 70% vs 去掉 code agent 的 50%，真机 rollout 微调 π0.5 达 10/10、7/10。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-CoEnv" aria-pressed="false" aria-label="星标 CoEnv"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-CUE.html"><span class="date"><b>2026-11-02</b><small>归档 2026-11-16</small></span><span class="name">CUE</span><span class="title">Closing the Dynamics Gap through Self-Directed Robotic Interaction · CoRL 2026 Late Breaking Results</span><span class="tldr">让 coding agent 自己设计击球实验来校准台球仿真的摩擦和回弹：25 个隐藏物理条件下 held-out 球位误差 0.91 cm，比最强 baseline CEM 低 72%；真球台只有项目页上的示例数字。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-CUE" aria-pressed="false" aria-label="星标 CUE"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-16-ARSTAG.html"><span class="date"><b>2026-09-21</b><small>归档 2026-11-16</small></span><span class="name">ARSTAG</span><span class="title">ARSTAG: An Agentic Real2Sim2Real System for Task-Specific Robot Data Generation · arXiv 2026</span><span class="tldr">一张照片 + 一句指令 → GPT-5.5 coordinator 带三个 agent 建 task-scoped Isaac Sim 场景、写 expert、配随机化，每任务产出 1000 条 demo；7 个真机任务 π0.5 平均 74.6%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-ARSTAG" aria-pressed="false" aria-label="星标 ARSTAG"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-07-CoDimRecon.html"><span class="date"><b>2026-09-28</b><small>归档 2026-11-07</small></span><span class="name">CoDimRecon</span><span class="title">CoDimRecon: Agentic Reconstruction of Sim-Ready 3D Scenes with Deformable Curves, Surfaces, and Volumes · arXiv 2026 (preprint)</span><span class="tldr">GPT-6 agent 从多视角 RGB 重建可仿真的室内场景：刚体重建成 primitives 加关节，电话线、塑料袋、椅垫按维度重建成 rod / shell / solid，再用仿真机器人测试按顺序修模型。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-07-CoDimRecon" aria-pressed="false" aria-label="星标 CoDimRecon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-gradSim.html"><span class="date"><b>2021-04-06</b><small>归档 2026-11-05</small></span><span class="name">gradSim</span><span class="title">gradSim: Differentiable simulation for system identification and visuomotor control · ICLR 2021</span><span class="tldr">gradSim：可微物理接可微渲染，让像素误差一路求导回质量、摩擦、弹性；全部证据是合成视频，没有一段真实视频。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-gradSim" aria-pressed="false" aria-label="星标 gradSim"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-Video2Sim2Real.html"><span class="date"><b>2026-06-07</b><small>归档 2026-11-05</small></span><span class="name">Video2Sim2Real</span><span class="title">Video2Sim2Real: Full-Stack Autonomous Dexterous Skill Acquisition from a Single Human Video · arXiv 2026</span><span class="tldr">一段人手视频 → twin 里按物体运动修关键帧 → IL 管几何、residual RL 管手指，真机 7 个任务 67/70；全链无 LLM agent，只有一次 Gemini 调用。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-Video2Sim2Real" aria-pressed="false" aria-label="星标 Video2Sim2Real"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-Vid2Sid.html"><span class="date"><b>2026-02-22</b><small>归档 2026-11-05</small></span><span class="name">Vid2Sid</span><span class="title">Vid2Sid: Videos Can Help Close the Sim2Real Gap · ICLR 2026 Workshop (MM Intelligence), ICRA 2026 Workshops</span><span class="tldr">Vid2Sid：VLM 读成对的 sim/real 视频诊断差异、改物理参数；在肌腱手指和软触手上 10 轮内与 black-box 优化器打平，并给出每轮理由。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-Vid2Sid" aria-pressed="false" aria-label="星标 Vid2Sid"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-VeoEval.html"><span class="date"><b>2025-12-11</b><small>归档 2026-11-05</small></span><span class="name">VeoEval</span><span class="title">Evaluating Gemini Robotics Policies in a Veo World Simulator · arXiv 2025 (Google DeepMind technical report)</span><span class="tldr">把 Veo 微调成四视角动作条件视频 simulator 来评测 Gemini Robotics 策略：1600+ 次真机验证，排序可信，绝对成功率偏低，新物体和小物体接触最弱。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-VeoEval" aria-pressed="false" aria-label="星标 VeoEval"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-VPTwin.html"><span class="date"><b>2026-09-27</b><small>归档 2026-11-05</small></span><span class="name">VPTwin</span><span class="title">VPTwin: Real-Sim-Real Video Prediction for Robotic Manipulation Planning · arXiv 2026</span><span class="tldr">GPT-6 写近似 Isaac Sim twin，10 条随机 rollout 当 video predictor 的上下文；planner 要 sim 和预测视频都通过才上真机。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-VPTwin" aria-pressed="false" aria-label="星标 VPTwin"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-ScalableReal2Sim.html"><span class="date"><b>2025-03-01</b><small>归档 2026-11-05</small></span><span class="name">ScalableReal2Sim</span><span class="title">Scalable Real2Sim: Physics-Aware Asset Generation Via Robotic Pick-and-Place Setups · IROS 2025</span><span class="tldr">机器人抓起物体，边扫描边用关节力矩做减法，自动产出带 mass/CoM/inertia 的仿真 asset；mass 和 CoM 准到百分之几，inertia 不可靠。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-ScalableReal2Sim" aria-pressed="false" aria-label="星标 ScalableReal2Sim"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-RialTo.html"><span class="date"><b>2024-03-06</b><small>归档 2026-11-05</small></span><span class="name">RialTo</span><span class="title">Reconciling Reality through Simulation: A Real-to-Sim-to-Real Approach for Robust Manipulation · RSS 2024</span><span class="tldr">手机扫描 + GUI 约 15 分钟 active 造出 digital twin，把 15 条 demo 经 RL 加固成抗干扰 policy：6 任务 91/77/75% vs BC 25/11/5%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-RialTo" aria-pressed="false" aria-label="星标 RialTo"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-ReconEffects.html"><span class="date"><b>2026-09-30</b><small>归档 2026-11-05</small></span><span class="name">ReconEffects</span><span class="title">Measuring Asset and Scene Reconstruction Effects in Real-to-Sim Robot Evaluation · arXiv 2026</span><span class="tldr">同一 YAM 工位建两遍：authored 对 default（TRELLIS + PhysX 默认），对同一批 200 次真机 trial，分差 6.97 vs 17.54 pp；六项一起变，只能归给整包。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-ReconEffects" aria-pressed="false" aria-label="星标 ReconEffects"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-Real2SimLandscape.html"><span class="date">2026-11-05</span><span class="name">Real2Sim Landscape</span><span class="title">Real-to-sim：问题地图和四十年趋势（综述页，不是单篇论文） · Literature map, 2026-11-05</span><span class="tldr">Real-to-sim 全景：从 1986 年量惯性参数到 2026 年 agent 建 twin、自己量物理；11-18 加入 agentic 第二轮 18 篇。看得见的基本解决了，卡在看不见的物理、接触，和怎么证明 twin 是对的。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-Real2SimLandscape" aria-pressed="false" aria-label="星标 Real2Sim Landscape"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-PolaRiS.html"><span class="date"><b>2025-12-18</b><small>归档 2026-11-05</small></span><span class="name">PolaRiS</span><span class="title">PolaRiS: Scalable Real-to-Sim Evaluations for Generalist Robot Policies · RSS 2026</span><span class="tldr">用 2–5 分钟视频建 Isaac Sim 评测场景，再把 policy co-finetune 1k 步；5 policy × 6 环境上逐环境 r 均值 0.90，不调只有 0.30。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-PolaRiS" aria-pressed="false" aria-label="星标 PolaRiS"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-PhysTwin.html"><span class="date"><b>2025-03-23</b><small>归档 2026-11-05</small></span><span class="name">PhysTwin</span><span class="title">PhysTwin: Physics-Informed Reconstruction and Simulation of Deformable Objects from Videos · ICCV 2025</span><span class="tldr">PhysTwin：用 3 路 RGB-D 视频里的一次手部交互，把可变形物体拟合成 spring-mass + Gaussian 的实时 twin；先 zero-order 搜拓扑和全局参数，再 first-order 调每根弹簧。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-PhysTwin" aria-pressed="false" aria-label="星标 PhysTwin"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-ConCent.html"><span class="date"><b>2026-06-29</b><small>归档 2026-11-05</small></span><span class="name">ConCent</span><span class="title">ConCent: Contact-Centric Real-to-Sim-to-Real Learning from One Demonstration · arXiv 2026</span><span class="tldr">ConCent：用一条真实 demo 优化物体的 sphere 接触几何，再把回放读出的接触事件序列当 RL 目标；真机 shape sorter 插入 80.0%（16/20）。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-ConCent" aria-pressed="false" aria-label="星标 ConCent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-AgenticRSR.html"><span class="date"><b>2026-10-07</b><small>归档 2026-11-05</small></span><span class="name">AgenticRSR</span><span class="title">Agentic RSR: Real-to-Sim-to-Real through Scene Reconstruction and Execution-Grounded Robot Policies · arXiv 2026</span><span class="tldr">AgenticRSR：URDF 定尺度、agent 按标量反馈改场景、MuJoCo 探针查交互，Codex 写程序策略，经同一接口上真机；真机 8/18，conversion 80.0%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-AgenticRSR" aria-pressed="false" aria-label="星标 AgenticRSR"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-05-ACDC.html"><span class="date"><b>2024-10-09</b><small>归档 2026-11-05</small></span><span class="name">ACDC</span><span class="title">Automated Creation of Digital Cousins for Robust Policy Learning · CoRL 2024</span><span class="tldr">不复刻真实场景：一张 RGB 检索多个 digital cousin 训 policy，真机开门 90% vs twin 25%（一个任务，20 次）</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-ACDC" aria-pressed="false" aria-label="星标 ACDC"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-04-RoboSnap.html"><span class="date"><b>2026-07-07</b><small>归档 2026-11-04</small></span><span class="name">RoboSnap</span><span class="title">RoboSnap: One-Shot Real-to-Sim Scene Generation for Generalizable Robot Learning and Evaluation · CoRL 2026</span><span class="tldr">一张 RGB 图 → 分层 sim-ready 场景：物体按 scene graph 做 SDF–physics 交替精修，背景是 Gaussian 视觉层；能回放 DROID 轨迹、生成训练数据（π0.5 32.7→41.7%），sim 评测与真机 r = 0.887。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-04-RoboSnap" aria-pressed="false" aria-label="星标 RoboSnap"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-04-AgenticReal2Sim.html"><span class="date"><b>2026-07-21</b><small>归档 2026-11-04</small></span><span class="name">Agentic Real2Sim</span><span class="title">Agentic Real2Sim: Physics-based World Modeling with Vision-Language Agents · arXiv 2026 (v5, 2026-10-11)</span><span class="tldr">VLM agents 按固定的 episode contract 调 SAM 3、SAM 3D、FoundationPose 等工具，把一条 DROID 录像转成 MuJoCo 里能回放的 twin；DROID-500 回放成功 48.4%，开源 Gemma 4 31B 的花费只有 GPT-5.4 的约 3%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-04-AgenticReal2Sim" aria-pressed="false" aria-label="星标 Agentic Real2Sim"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-WorldMirror.html"><span class="date"><b>2026-10-22</b><small>归档 2026-11-03</small></span><span class="name">WorldMirror</span><span class="title">WorldMirror: Agentic Real-to-Sim Generation of Interactive Worlds from In-the-Wild Robot Demonstrations · arXiv 2026</span><span class="tldr">Coding agent 把一段 DROID 机器人视频写成可执行的 world program：调专用生成工具重建、以标定相机为锚对齐、Isaac Sim 回放验证、失败就回退重做；原轨迹不改一帧回放成功率 100%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-03-WorldMirror" aria-pressed="false" aria-label="星标 WorldMirror"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-SceneRig.html"><span class="date"><b>2026-10-20</b><small>归档 2026-11-03</small></span><span class="name">SceneRig</span><span class="title">SceneRig: An Agentic System for Simulation-Ready 3D Scene Reconstruction from Single Images · CoRL 2026 Agentic Robotics Workshop</span><span class="tldr">agent 在 Blender + PhysX 里边改边仿真，把一张照片变成物体对位、5 s 重力下不动的 USD 场景；机器人回放 20/25 vs SimFoundry 9/25。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-03-SceneRig" aria-pressed="false" aria-label="星标 SceneRig"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-RoboSimStudio.html"><span class="date"><b>2026-10-13</b><small>归档 2026-11-03</small></span><span class="name">RoboSimStudio</span><span class="title">RoboSimStudio: An Interactive Toolkit for Rapid Real2Sim of Robot Manipulation Tasks · CoRL 2026</span><span class="tldr">手机视频 + 一句 prompt → coding agent 约 1 小时在 Newton 上建出 MuJoCo-Warp + SuperDex 的 sponge-wiping 仿真；solver / contact model / 参数显式可编辑，人和 agent 共用一个迭代循环；GaP 14 轮 0%→100% 后上真机，真机失败再由 agent 改仿真</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-03-RoboSimStudio" aria-pressed="false" aria-label="星标 RoboSimStudio"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-11-03-Real2Gym.html"><span class="date"><b>2026-09-29</b><small>归档 2026-11-03</small></span><span class="name">Real2Gym</span><span class="title">Real2Gym: Building Gyms from Videos, Bringing Skills to Robots · arXiv 2026</span><span class="tldr">Real2Gym：agent 把人或机器人视频建成对齐的 Blender + MuJoCo gym，原生物理验收并增强；agent 在 gym 里按 stage 写代码、攒 skill，再迁回真机。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-03-Real2Gym" aria-pressed="false" aria-label="星标 Real2Gym"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Agent-centric-real-to-sim/artifact/2026-10-15-DexAgent.html"><span class="date"><b>2026-09-28</b><small>归档 2026-10-15</small></span><span class="name">DexAgent</span><span class="title">DexAgent: An Agentic Human2Sim2Robot Framework for Dexterous Manipulation with Self-Evolving Tool Library · arXiv 2026</span><span class="tldr">agent 把一段人手视频转成验证过的机器人训练数据，按物体 property 选或写 skill 与 verifier；11 个真机任务平均 63.6%，最强 baseline 18.2%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-10-15-DexAgent" aria-pressed="false" aria-label="星标 DexAgent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-20"><a href="Agent-centric-real-to-sim/artifact/2026-11-20-GTA.html"><span class="date"><b>2026-11-18</b><small>归档 2026-11-20</small></span><span class="name">GTA</span><span class="title">GTA: Generative Tower of Agents for Scalable Holonic Scene Generation · arXiv 2026</span><span class="tldr">GTA 把各尺度的场景单元都当作 holon，32 个 agent 自上而下拆、并行建、自下而上拼，再放进动态人物；穿插物体比例约减半，比单 agent 三阶段快 3.36×。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-20-GTA" aria-pressed="false" aria-label="星标 GTA"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-20"><a href="Agent-centric-real-to-sim/artifact/2026-11-20-AgenticReal2SimLandscape.html"><span class="date"><b>2026-11-20</b><small>归档 2026-11-20</small></span><span class="name">Agentic Real2Sim 全景</span><span class="title">Agentic real-to-sim 第二轮：18 篇新论文的地图（综述页，不是单篇论文） · Literature map, 2026-11-20</span><span class="tldr">第二轮 18 篇 agentic real-to-sim（2026-09 以后为主）：agent 建场景、建 asset、动手量物理、在 twin 里练、给 agent 打分。10/16 个系统改 twin 时只看同一份输入或仿真自检。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-20-AgenticReal2SimLandscape" aria-pressed="false" aria-label="星标 Agentic Real2Sim 全景"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-Video2World.html"><span class="date"><b>2026-10-03</b><small>归档 2026-11-16</small></span><span class="name">Video2World</span><span class="title">Video2World: Benchmarking Coding Agents for Interactive World Modeling from Embodied Videos · arXiv 2026</span><span class="tldr">Benchmark：coding agent 只看一段 embodied 视频，写出能让机器人完成任务的 sim world；9 个系统最好成功 25.5%（人工辅助参照 58.8%），物体几何最准的 GPT-6 Astra 只成 10.7%</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-Video2World" aria-pressed="false" aria-label="星标 Video2World"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-Unravel.html"><span class="date"><b>2026-10-12</b><small>归档 2026-11-16</small></span><span class="name">Unravel</span><span class="title">Unravel: Recovering an Interactive 3D Scene from a Single Image · arXiv 2026</span><span class="tldr">单张室内图先逐层拆（VLM 规划、编辑器移除并补全、每次编辑先验证），物体露得最全时建模，再按移除的倒序装回、settling 和 agentic audit；资产保真度 VLM 评分 4.7 → 8.2（Table 1），和 baseline 只有定性对比。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-Unravel" aria-pressed="false" aria-label="星标 Unravel"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-USDCraft.html"><span class="date"><b>2026-10-08</b><small>归档 2026-11-16</small></span><span class="name">USDCraft</span><span class="title">USDCraft: Geometrically Grounded Programmatic Modeling of Articulated 3D Assets for Simulation · arXiv 2026</span><span class="tldr">现成 LLM 把扫描 mesh 读成公制切片文本，写可编译的铰接 USD 程序并在同一网格上复查；USDCraft-bench F1 84.830，真机 sim→real 最多掉 10 点。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-USDCraft" aria-pressed="false" aria-label="星标 USDCraft"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-SimEX.html"><span class="date"><b>2026-09-30</b><small>归档 2026-11-16</small></span><span class="name">SimEX</span><span class="title">SimEX: Simulation-Integrated Robotics AutoResearch · arXiv 2026</span><span class="tldr">coding agent 先在 sim 里自出题练出 toolbox，再用 5 次真机 trial 适配：每次 trial 先 replay 校正 sim，再在 sim 里筛 4 个候选 repair；真机 26/30，最强 baseline 3/30。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-SimEX" aria-pressed="false" aria-label="星标 SimEX"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-SceneEvolve.html"><span class="date"><b>2026-10-27</b><small>归档 2026-11-16</small></span><span class="name">SceneEvolve</span><span class="title">Learning to Code the World: Harness Evolution for Compositional 3D Reconstruction · arXiv 2026</span><span class="tldr">一张室内照片 → Blender 场景代码：GPT-6-Astra 当 teacher 在 100 个 dev 场景上演化 harness，Qwen3.8-27B 的 DINOv2-S 0.198→0.392；比 GPT-5.6-Sol SSIM 高 32.3%、成本低 59.8%，但慢 116.4%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-SceneEvolve" aria-pressed="false" aria-label="星标 SceneEvolve"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-SceneAgent.html"><span class="date"><b>2026-10-26</b><small>归档 2026-11-16</small></span><span class="name">SceneAgent</span><span class="title">SceneAgent: An Agentic Pipeline from 3D and 4D Captures to Simulation Environments · CoRL 2026 Late Breaking Results</span><span class="tldr">给 coding agent 一套 skills，在 Isaac Lab 里渲染、看图、修，把 3D/4D 采集转成可交互仿真：bin 场景 F1@1cm 最高 60.75%（SimFoundry 6.9%），4D 上 Gemini 4 Argon 0.86% → 99.09%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-SceneAgent" aria-pressed="false" aria-label="星标 SceneAgent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-PhysCodeGym.html"><span class="date"><b>2026-10-12</b><small>归档 2026-11-16</small></span><span class="name">PhysCodeGym</span><span class="title">PhysCodeGym: Benchmarking Coding Agents for Physically Verifiable 4D Reconstruction · arXiv 2026</span><span class="tldr">156 个真实视频任务：coding agent 写 Blender 物理程序重建视频，评测进场景测量并做 counterfactual 干预；最强的 GPT-6-Astra 总分 0.663，motion 最高 0.324</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-PhysCodeGym" aria-pressed="false" aria-label="星标 PhysCodeGym"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-NeoWorld-3.html"><span class="date"><b>2026-10-20</b><small>归档 2026-11-16</small></span><span class="name">NeoWorld-3</span><span class="title">NeoWorld-3: From Pixels to Code-Defined Physical Worlds · arXiv 2026</span><span class="tldr">coding agent 把多视角照片重建成可调的几何程序：NeoSDK 拟合参数并检查封闭性、关节和接触，NeoMCP 把这些能力做成 agent 工具；RoboCasa365 场景穿插率 0.67%，双臂真机演示 Real-Sim-Real</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-NeoWorld-3" aria-pressed="false" aria-label="星标 NeoWorld-3"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-LiteReality-Agent.html"><span class="date"><b>2026-10-01</b><small>归档 2026-11-16</small></span><span class="name">LiteReality-Agent</span><span class="title">LiteReality-Agent: An Agentic System for Interactable 3D Indoor Scene Reconstruction · arXiv 2026</span><span class="tldr">把房间 RGB-D 扫描写成 Room.py，coding agent 在带标定渲染对比、米制量墙和碰撞/支撑闸门的 harness 里反复改它，再导出 MuJoCo；10 个房间全面胜过直接用 Astra / Fable</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-LiteReality-Agent" aria-pressed="false" aria-label="星标 LiteReality-Agent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-GRASE.html"><span class="date"><b>2026-10-15</b><small>归档 2026-11-16</small></span><span class="name">GRASE</span><span class="title">GRASE: Geometry-native Real-to-sim Agentic Scene Modeling from Video · arXiv 2026</span><span class="tldr">agent 把室内视频建成可编辑的 Blender 场景：数值工具拟合墙面和物体，VLM 全程拿原视频验收、只改出错的部件；Replica scene CD 16.39 → 5.80 cm，没有仿真或真机实验。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-GRASE" aria-pressed="false" aria-label="星标 GRASE"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-FACT-ArticulatedTwins.html"><span class="date"><b>2026-09-29</b><small>归档 2026-11-16</small></span><span class="name">FACT (Articulated Twins)</span><span class="title">FACT: Fidelity-Aware Construction of Articulated Twins · arXiv 2026</span><span class="tldr">agent 在共享的可编辑铰接模型上循环 evidence→diagnosis→revision，依次修几何、碰撞代理、动力学：夹爪交互成功率 99.47% vs 42.28%，held-out 轨迹 TMSE 0.0252 vs 0.1711。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-FACT-ArticulatedTwins" aria-pressed="false" aria-label="星标 FACT (Articulated Twins)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-F4R.html"><span class="date"><b>2026-09-28</b><small>归档 2026-11-16</small></span><span class="name">F4R</span><span class="title">F4R: Failure-Driven Recognition, Reconstruction, Refinement, and Redeployment for Continual Robot Self-Improvement · arXiv 2026</span><span class="tldr">agent 诊断真机失败，固定流水线把失败场景重建进 Isaac Sim，再 co-training + RL 后再部署；4 任务 ID 93.75% / OOD 90.0%，同 1 小时预算 OOD 比 Targeted BC 高 18.75 pp。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-F4R" aria-pressed="false" aria-label="星标 F4R"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-EMPIRIC.html"><span class="date"><b>2026-09-28</b><small>归档 2026-11-16</small></span><span class="name">EMPIRIC</span><span class="title">EMPIRIC: Experiment-Driven Learning of Residual World Models for Robot Planning · arXiv 2026 (under review)</span><span class="tldr">agent 给物理引擎写缺失机制的代码（新的力、约束、隐藏状态），用 Bayesian belief 推参数、挑实验、排练后再执行；仿真 5 个 domain 25/25 全解，真机从两阵风推出风力和两块 domino 的质量。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-EMPIRIC" aria-pressed="false" aria-label="星标 EMPIRIC"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-DiagGen.html"><span class="date"><b>2026-09-19</b><small>归档 2026-11-16</small></span><span class="name">DiagGen</span><span class="title">DiagGen: Agentic Generation of Deformable Assets with Sim-based Diagnostics for Robotic Simulation · arXiv 2026</span><span class="tldr">一张照片 → 可仿真的可变形 asset：VLM agent 在 Genesis 里抓、放、看响应，把故障送回出错的 stage 重做；14 个返工 asset 的 PMSC 2.14 → 3.43。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-DiagGen" aria-pressed="false" aria-label="星标 DiagGen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-D-World.html"><span class="date"><b>2026-10-12</b><small>归档 2026-11-16</small></span><span class="name">D-World</span><span class="title">D-World: An Explicit World-Language-Action Model with Recursive Self-Improvement under Dual Control · arXiv 2026</span><span class="tldr">LLM 把场景写成可执行 twin，每个 chunk 后按真机测量改具名参数，replay 不变差才接受，结构错才重建；真机只有定性 case，没有成功率</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-D-World" aria-pressed="false" aria-label="星标 D-World"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-CoEnv.html"><span class="date"><b>2026-04-07</b><small>归档 2026-11-16</small></span><span class="name">CoEnv</span><span class="title">CoEnv: Code-Driven Exploration in Real-to-Sim Digital Twins for Multi-Arm Manipulation · arXiv 2026（本页讲 v2，2026-11-02 修订）</span><span class="tldr">CoEnv 把多臂工作台从 RGBD 重建成可查真值的 twin，CoEx 让 Claude Code 在里面写-跑-改整段多臂程序，验证后经扫掠体积碰撞检查上真机：5 个真机任务 70% vs 去掉 code agent 的 50%，真机 rollout 微调 π0.5 达 10/10、7/10。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-CoEnv" aria-pressed="false" aria-label="星标 CoEnv"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-CUE.html"><span class="date"><b>2026-11-02</b><small>归档 2026-11-16</small></span><span class="name">CUE</span><span class="title">Closing the Dynamics Gap through Self-Directed Robotic Interaction · CoRL 2026 Late Breaking Results</span><span class="tldr">让 coding agent 自己设计击球实验来校准台球仿真的摩擦和回弹：25 个隐藏物理条件下 held-out 球位误差 0.91 cm，比最强 baseline CEM 低 72%；真球台只有项目页上的示例数字。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-CUE" aria-pressed="false" aria-label="星标 CUE"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-16"><a href="Agent-centric-real-to-sim/artifact/2026-11-16-ARSTAG.html"><span class="date"><b>2026-09-21</b><small>归档 2026-11-16</small></span><span class="name">ARSTAG</span><span class="title">ARSTAG: An Agentic Real2Sim2Real System for Task-Specific Robot Data Generation · arXiv 2026</span><span class="tldr">一张照片 + 一句指令 → GPT-5.5 coordinator 带三个 agent 建 task-scoped Isaac Sim 场景、写 expert、配随机化，每任务产出 1000 条 demo；7 个真机任务 π0.5 平均 74.6%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-16-ARSTAG" aria-pressed="false" aria-label="星标 ARSTAG"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-07"><a href="Agent-centric-real-to-sim/artifact/2026-11-07-CoDimRecon.html"><span class="date"><b>2026-09-28</b><small>归档 2026-11-07</small></span><span class="name">CoDimRecon</span><span class="title">CoDimRecon: Agentic Reconstruction of Sim-Ready 3D Scenes with Deformable Curves, Surfaces, and Volumes · arXiv 2026 (preprint)</span><span class="tldr">GPT-6 agent 从多视角 RGB 重建可仿真的室内场景：刚体重建成 primitives 加关节，电话线、塑料袋、椅垫按维度重建成 rod / shell / solid，再用仿真机器人测试按顺序修模型。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-07-CoDimRecon" aria-pressed="false" aria-label="星标 CoDimRecon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-gradSim.html"><span class="date"><b>2021-04-06</b><small>归档 2026-11-05</small></span><span class="name">gradSim</span><span class="title">gradSim: Differentiable simulation for system identification and visuomotor control · ICLR 2021</span><span class="tldr">gradSim：可微物理接可微渲染，让像素误差一路求导回质量、摩擦、弹性；全部证据是合成视频，没有一段真实视频。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-gradSim" aria-pressed="false" aria-label="星标 gradSim"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-Video2Sim2Real.html"><span class="date"><b>2026-06-07</b><small>归档 2026-11-05</small></span><span class="name">Video2Sim2Real</span><span class="title">Video2Sim2Real: Full-Stack Autonomous Dexterous Skill Acquisition from a Single Human Video · arXiv 2026</span><span class="tldr">一段人手视频 → twin 里按物体运动修关键帧 → IL 管几何、residual RL 管手指，真机 7 个任务 67/70；全链无 LLM agent，只有一次 Gemini 调用。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-Video2Sim2Real" aria-pressed="false" aria-label="星标 Video2Sim2Real"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-Vid2Sid.html"><span class="date"><b>2026-02-22</b><small>归档 2026-11-05</small></span><span class="name">Vid2Sid</span><span class="title">Vid2Sid: Videos Can Help Close the Sim2Real Gap · ICLR 2026 Workshop (MM Intelligence), ICRA 2026 Workshops</span><span class="tldr">Vid2Sid：VLM 读成对的 sim/real 视频诊断差异、改物理参数；在肌腱手指和软触手上 10 轮内与 black-box 优化器打平，并给出每轮理由。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-Vid2Sid" aria-pressed="false" aria-label="星标 Vid2Sid"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-VeoEval.html"><span class="date"><b>2025-12-11</b><small>归档 2026-11-05</small></span><span class="name">VeoEval</span><span class="title">Evaluating Gemini Robotics Policies in a Veo World Simulator · arXiv 2025 (Google DeepMind technical report)</span><span class="tldr">把 Veo 微调成四视角动作条件视频 simulator 来评测 Gemini Robotics 策略：1600+ 次真机验证，排序可信，绝对成功率偏低，新物体和小物体接触最弱。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-VeoEval" aria-pressed="false" aria-label="星标 VeoEval"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-VPTwin.html"><span class="date"><b>2026-09-27</b><small>归档 2026-11-05</small></span><span class="name">VPTwin</span><span class="title">VPTwin: Real-Sim-Real Video Prediction for Robotic Manipulation Planning · arXiv 2026</span><span class="tldr">GPT-6 写近似 Isaac Sim twin，10 条随机 rollout 当 video predictor 的上下文；planner 要 sim 和预测视频都通过才上真机。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-VPTwin" aria-pressed="false" aria-label="星标 VPTwin"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-ScalableReal2Sim.html"><span class="date"><b>2025-03-01</b><small>归档 2026-11-05</small></span><span class="name">ScalableReal2Sim</span><span class="title">Scalable Real2Sim: Physics-Aware Asset Generation Via Robotic Pick-and-Place Setups · IROS 2025</span><span class="tldr">机器人抓起物体，边扫描边用关节力矩做减法，自动产出带 mass/CoM/inertia 的仿真 asset；mass 和 CoM 准到百分之几，inertia 不可靠。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-ScalableReal2Sim" aria-pressed="false" aria-label="星标 ScalableReal2Sim"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-RialTo.html"><span class="date"><b>2024-03-06</b><small>归档 2026-11-05</small></span><span class="name">RialTo</span><span class="title">Reconciling Reality through Simulation: A Real-to-Sim-to-Real Approach for Robust Manipulation · RSS 2024</span><span class="tldr">手机扫描 + GUI 约 15 分钟 active 造出 digital twin，把 15 条 demo 经 RL 加固成抗干扰 policy：6 任务 91/77/75% vs BC 25/11/5%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-RialTo" aria-pressed="false" aria-label="星标 RialTo"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-ReconEffects.html"><span class="date"><b>2026-09-30</b><small>归档 2026-11-05</small></span><span class="name">ReconEffects</span><span class="title">Measuring Asset and Scene Reconstruction Effects in Real-to-Sim Robot Evaluation · arXiv 2026</span><span class="tldr">同一 YAM 工位建两遍：authored 对 default（TRELLIS + PhysX 默认），对同一批 200 次真机 trial，分差 6.97 vs 17.54 pp；六项一起变，只能归给整包。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-ReconEffects" aria-pressed="false" aria-label="星标 ReconEffects"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-Real2SimLandscape.html"><span class="date">2026-11-05</span><span class="name">Real2Sim Landscape</span><span class="title">Real-to-sim：问题地图和四十年趋势（综述页，不是单篇论文） · Literature map, 2026-11-05</span><span class="tldr">Real-to-sim 全景：从 1986 年量惯性参数到 2026 年 agent 建 twin、自己量物理；11-18 加入 agentic 第二轮 18 篇。看得见的基本解决了，卡在看不见的物理、接触，和怎么证明 twin 是对的。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-Real2SimLandscape" aria-pressed="false" aria-label="星标 Real2Sim Landscape"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-PolaRiS.html"><span class="date"><b>2025-12-18</b><small>归档 2026-11-05</small></span><span class="name">PolaRiS</span><span class="title">PolaRiS: Scalable Real-to-Sim Evaluations for Generalist Robot Policies · RSS 2026</span><span class="tldr">用 2–5 分钟视频建 Isaac Sim 评测场景，再把 policy co-finetune 1k 步；5 policy × 6 环境上逐环境 r 均值 0.90，不调只有 0.30。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-PolaRiS" aria-pressed="false" aria-label="星标 PolaRiS"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-PhysTwin.html"><span class="date"><b>2025-03-23</b><small>归档 2026-11-05</small></span><span class="name">PhysTwin</span><span class="title">PhysTwin: Physics-Informed Reconstruction and Simulation of Deformable Objects from Videos · ICCV 2025</span><span class="tldr">PhysTwin：用 3 路 RGB-D 视频里的一次手部交互，把可变形物体拟合成 spring-mass + Gaussian 的实时 twin；先 zero-order 搜拓扑和全局参数，再 first-order 调每根弹簧。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-PhysTwin" aria-pressed="false" aria-label="星标 PhysTwin"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-ConCent.html"><span class="date"><b>2026-06-29</b><small>归档 2026-11-05</small></span><span class="name">ConCent</span><span class="title">ConCent: Contact-Centric Real-to-Sim-to-Real Learning from One Demonstration · arXiv 2026</span><span class="tldr">ConCent：用一条真实 demo 优化物体的 sphere 接触几何，再把回放读出的接触事件序列当 RL 目标；真机 shape sorter 插入 80.0%（16/20）。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-ConCent" aria-pressed="false" aria-label="星标 ConCent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-AgenticRSR.html"><span class="date"><b>2026-10-07</b><small>归档 2026-11-05</small></span><span class="name">AgenticRSR</span><span class="title">Agentic RSR: Real-to-Sim-to-Real through Scene Reconstruction and Execution-Grounded Robot Policies · arXiv 2026</span><span class="tldr">AgenticRSR：URDF 定尺度、agent 按标量反馈改场景、MuJoCo 探针查交互，Codex 写程序策略，经同一接口上真机；真机 8/18，conversion 80.0%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-AgenticRSR" aria-pressed="false" aria-label="星标 AgenticRSR"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Agent-centric-real-to-sim/artifact/2026-11-05-ACDC.html"><span class="date"><b>2024-10-09</b><small>归档 2026-11-05</small></span><span class="name">ACDC</span><span class="title">Automated Creation of Digital Cousins for Robust Policy Learning · CoRL 2024</span><span class="tldr">不复刻真实场景：一张 RGB 检索多个 digital cousin 训 policy，真机开门 90% vs twin 25%（一个任务，20 次）</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-05-ACDC" aria-pressed="false" aria-label="星标 ACDC"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-04"><a href="Agent-centric-real-to-sim/artifact/2026-11-04-RoboSnap.html"><span class="date"><b>2026-07-07</b><small>归档 2026-11-04</small></span><span class="name">RoboSnap</span><span class="title">RoboSnap: One-Shot Real-to-Sim Scene Generation for Generalizable Robot Learning and Evaluation · CoRL 2026</span><span class="tldr">一张 RGB 图 → 分层 sim-ready 场景：物体按 scene graph 做 SDF–physics 交替精修，背景是 Gaussian 视觉层；能回放 DROID 轨迹、生成训练数据（π0.5 32.7→41.7%），sim 评测与真机 r = 0.887。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-04-RoboSnap" aria-pressed="false" aria-label="星标 RoboSnap"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-04"><a href="Agent-centric-real-to-sim/artifact/2026-11-04-AgenticReal2Sim.html"><span class="date"><b>2026-07-21</b><small>归档 2026-11-04</small></span><span class="name">Agentic Real2Sim</span><span class="title">Agentic Real2Sim: Physics-based World Modeling with Vision-Language Agents · arXiv 2026 (v5, 2026-10-11)</span><span class="tldr">VLM agents 按固定的 episode contract 调 SAM 3、SAM 3D、FoundationPose 等工具，把一条 DROID 录像转成 MuJoCo 里能回放的 twin；DROID-500 回放成功 48.4%，开源 Gemma 4 31B 的花费只有 GPT-5.4 的约 3%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-04-AgenticReal2Sim" aria-pressed="false" aria-label="星标 Agentic Real2Sim"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-03"><a href="Agent-centric-real-to-sim/artifact/2026-11-03-WorldMirror.html"><span class="date"><b>2026-10-22</b><small>归档 2026-11-03</small></span><span class="name">WorldMirror</span><span class="title">WorldMirror: Agentic Real-to-Sim Generation of Interactive Worlds from In-the-Wild Robot Demonstrations · arXiv 2026</span><span class="tldr">Coding agent 把一段 DROID 机器人视频写成可执行的 world program：调专用生成工具重建、以标定相机为锚对齐、Isaac Sim 回放验证、失败就回退重做；原轨迹不改一帧回放成功率 100%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-03-WorldMirror" aria-pressed="false" aria-label="星标 WorldMirror"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-03"><a href="Agent-centric-real-to-sim/artifact/2026-11-03-SceneRig.html"><span class="date"><b>2026-10-20</b><small>归档 2026-11-03</small></span><span class="name">SceneRig</span><span class="title">SceneRig: An Agentic System for Simulation-Ready 3D Scene Reconstruction from Single Images · CoRL 2026 Agentic Robotics Workshop</span><span class="tldr">agent 在 Blender + PhysX 里边改边仿真，把一张照片变成物体对位、5 s 重力下不动的 USD 场景；机器人回放 20/25 vs SimFoundry 9/25。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-03-SceneRig" aria-pressed="false" aria-label="星标 SceneRig"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-03"><a href="Agent-centric-real-to-sim/artifact/2026-11-03-RoboSimStudio.html"><span class="date"><b>2026-10-13</b><small>归档 2026-11-03</small></span><span class="name">RoboSimStudio</span><span class="title">RoboSimStudio: An Interactive Toolkit for Rapid Real2Sim of Robot Manipulation Tasks · CoRL 2026</span><span class="tldr">手机视频 + 一句 prompt → coding agent 约 1 小时在 Newton 上建出 MuJoCo-Warp + SuperDex 的 sponge-wiping 仿真；solver / contact model / 参数显式可编辑，人和 agent 共用一个迭代循环；GaP 14 轮 0%→100% 后上真机，真机失败再由 agent 改仿真</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-03-RoboSimStudio" aria-pressed="false" aria-label="星标 RoboSimStudio"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-03"><a href="Agent-centric-real-to-sim/artifact/2026-11-03-Real2Gym.html"><span class="date"><b>2026-09-29</b><small>归档 2026-11-03</small></span><span class="name">Real2Gym</span><span class="title">Real2Gym: Building Gyms from Videos, Bringing Skills to Robots · arXiv 2026</span><span class="tldr">Real2Gym：agent 把人或机器人视频建成对齐的 Blender + MuJoCo gym，原生物理验收并增强；agent 在 gym 里按 stage 写代码、攒 skill，再迁回真机。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-11-03-Real2Gym" aria-pressed="false" aria-label="星标 Real2Gym"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-10-15"><a href="Agent-centric-real-to-sim/artifact/2026-10-15-DexAgent.html"><span class="date"><b>2026-09-28</b><small>归档 2026-10-15</small></span><span class="name">DexAgent</span><span class="title">DexAgent: An Agentic Human2Sim2Robot Framework for Dexterous Manipulation with Self-Evolving Tool Library · arXiv 2026</span><span class="tldr">agent 把一段人手视频转成验证过的机器人训练数据，按物体 property 选或写 skill 与 verifier；11 个真机任务平均 63.6%，最强 baseline 18.2%。</span></a><button type="button" class="star" data-star="Agent-centric-real-to-sim:2026-10-15-DexAgent" aria-pressed="false" aria-label="星标 DexAgent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
 </details>
 <details id="Atom-Action" data-proj="Atom-Action"><summary class="proj"><h2>Atom-Action</h2><span class="count">Atom-Action/ · 2 篇</span><button type="button" class="fstar" data-star="Atom-Action" aria-pressed="false" aria-label="给整个 Atom-Action 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
 <ol class="papers">
-<li><a href="Atom-Action/artifact/2026-11-02-RoboAtom.html"><span class="date"><b>2026-10-29</b><small>归档 2026-11-02</small></span><span class="name">RoboAtom</span><span class="title">RoboAtom: Large-scale Atomic-Action Supervision for Robot Learning · arXiv 2026</span><span class="tldr">每个 task 人标几条 reference，PhysExtend 用夹爪/底盘物理信号把 atomic-action 边界传到同 task 全部重复，得到 1.45M 条统一标注；训出的 annotator 和 skill-conditioned π0.5 都胜过 task 级 baseline。</span></a><button type="button" class="star" data-star="Atom-Action:2026-11-02-RoboAtom" aria-pressed="false" aria-label="星标 RoboAtom"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Atom-Action/artifact/2026-11-02-AtomicVLA.html"><span class="date"><b>2026-03-08</b><small>归档 2026-11-02</small></span><span class="name">AtomicVLA</span><span class="title">AtomicVLA: Unlocking the Potential of Atomic Skill Learning in Robots · CVPR 2026</span><span class="tldr">让 VLA 自己 think 出当前的 atomic skill（turn / pick / place），再用它 route 到专属 expert（SG-MoE）；加新技能只加一个 expert。LIBERO-LONG 85.2 → 95.2，学新技能后旧任务只掉 1.3（π0.5 掉 15.0）。</span></a><button type="button" class="star" data-star="Atom-Action:2026-11-02-AtomicVLA" aria-pressed="false" aria-label="星标 AtomicVLA"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-02"><a href="Atom-Action/artifact/2026-11-02-RoboAtom.html"><span class="date"><b>2026-10-29</b><small>归档 2026-11-02</small></span><span class="name">RoboAtom</span><span class="title">RoboAtom: Large-scale Atomic-Action Supervision for Robot Learning · arXiv 2026</span><span class="tldr">每个 task 人标几条 reference，PhysExtend 用夹爪/底盘物理信号把 atomic-action 边界传到同 task 全部重复，得到 1.45M 条统一标注；训出的 annotator 和 skill-conditioned π0.5 都胜过 task 级 baseline。</span></a><button type="button" class="star" data-star="Atom-Action:2026-11-02-RoboAtom" aria-pressed="false" aria-label="星标 RoboAtom"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-02"><a href="Atom-Action/artifact/2026-11-02-AtomicVLA.html"><span class="date"><b>2026-03-08</b><small>归档 2026-11-02</small></span><span class="name">AtomicVLA</span><span class="title">AtomicVLA: Unlocking the Potential of Atomic Skill Learning in Robots · CVPR 2026</span><span class="tldr">让 VLA 自己 think 出当前的 atomic skill（turn / pick / place），再用它 route 到专属 expert（SG-MoE）；加新技能只加一个 expert。LIBERO-LONG 85.2 → 95.2，学新技能后旧任务只掉 1.3（π0.5 掉 15.0）。</span></a><button type="button" class="star" data-star="Atom-Action:2026-11-02-AtomicVLA" aria-pressed="false" aria-label="星标 AtomicVLA"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
 </details>
-<details id="LLM-Harness" data-proj="LLM-Harness"><summary class="proj"><h2>LLM-Harness</h2><span class="count">LLM-Harness/ · 1 篇</span><button type="button" class="fstar" data-star="LLM-Harness" aria-pressed="false" aria-label="给整个 LLM-Harness 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
+<details id="LLM-Harness" data-proj="LLM-Harness"><summary class="proj"><h2>LLM-Harness</h2><span class="count">LLM-Harness/ · 2 篇</span><button type="button" class="fstar" data-star="LLM-Harness" aria-pressed="false" aria-label="给整个 LLM-Harness 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
 <ol class="papers">
-<li><a href="LLM-Harness/artifact/2026-11-07-AgentMemory.html"><span class="date"><b>2026-11-06</b><small>归档 2026-11-07</small></span><span class="name">AgentMemory</span><span class="title">The components of agent memory · Anthropic Engineering blog 2026</span><span class="tldr">Anthropic 讲 agent memory 的四层（transcripts、notes、wiki、injected context）和离线 dreaming：对照日志改错、建 wiki、提炼顶层</span></a><button type="button" class="star" data-star="LLM-Harness:2026-11-07-AgentMemory" aria-pressed="false" aria-label="星标 AgentMemory"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-22"><a href="LLM-Harness/artifact/2026-11-22-ComputerUseAgents.html"><span class="date"><b>2026-09-02</b><small>归档 2026-11-22</small></span><span class="name">Computer-Use Agents</span><span class="title">Computer-use agents：怎么工作、为什么又慢又贵、靠什么变快（专题页，不是单篇论文） · 专题 · 文献检索 2026-11-22</span><span class="tldr">Computer-use agent 专题：都是同一个截图 → 想 → 点的 loop；慢在大模型调用和越滚越长的历史，步数是人的 2.7–4.3×；四个省法是少看、少记、每步多做、少想。</span></a><button type="button" class="star" data-star="LLM-Harness:2026-11-22-ComputerUseAgents" aria-pressed="false" aria-label="星标 Computer-Use Agents"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-07"><a href="LLM-Harness/artifact/2026-11-07-AgentMemory.html"><span class="date"><b>2026-11-06</b><small>归档 2026-11-07</small></span><span class="name">AgentMemory</span><span class="title">The components of agent memory · Anthropic Engineering blog 2026</span><span class="tldr">Anthropic 讲 agent memory 的四层（transcripts、notes、wiki、injected context）和离线 dreaming：对照日志改错、建 wiki、提炼顶层</span></a><button type="button" class="star" data-star="LLM-Harness:2026-11-07-AgentMemory" aria-pressed="false" aria-label="星标 AgentMemory"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
 </details>
-<details id="Robotic-harness" data-proj="Robotic-harness"><summary class="proj"><h2>Robotic-harness</h2><span class="count">Robotic-harness/ · 3 篇</span><button type="button" class="fstar" data-star="Robotic-harness" aria-pressed="false" aria-label="给整个 Robotic-harness 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
+<details id="Robotic-harness" data-proj="Robotic-harness"><summary class="proj"><h2>Robotic-harness</h2><span class="count">Robotic-harness/ · 4 篇</span><button type="button" class="fstar" data-star="Robotic-harness" aria-pressed="false" aria-label="给整个 Robotic-harness 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
 <ol class="papers">
-<li><a href="Robotic-harness/artifact/2026-11-05-SO101-MAS.html"><span class="date">2026-11-05</span><span class="name">SO101-MAS</span><span class="title">SO101 multi-agent harness (harness/so101_mas): parent session delegating pick-and-place to fresh child sessions · Code walkthrough, SO101 commit 42138fa, 2026</span><span class="tldr">代码讲解：SO101 harness 的 multi-agent 版本。parent 只能 grasp_engage，harness 开零记忆 child 做一次 pick-and-place，再把 measured 与 claim 分开封装回 parent。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-11-05-SO101-MAS" aria-pressed="false" aria-label="星标 SO101-MAS"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Robotic-harness/artifact/2026-10-21-MAST.html"><span class="date"><b>2025-03-17</b><small>归档 2026-10-21</small></span><span class="name">MAST</span><span class="title">Why Do Multi-Agent LLM Systems Fail? · NeurIPS 2025 (Datasets and Benchmarks)</span><span class="tldr">MAS 为什么失败：从 150 条 trace 归纳出 3 类 14 个 failure mode（MAST，κ=0.88），用 o1 标注 1642 条 trace；失败多来自系统设计而非模型，改 ChatDev topology 即 +15.6%。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-10-21-MAST" aria-pressed="false" aria-label="星标 MAST"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Robotic-harness/artifact/2026-10-16-RPent.html"><span class="date"><b>2026-07-09</b><small>归档 2026-10-16</small></span><span class="name">RPent</span><span class="title">Harness VLA: Steering Frozen VLAs into Reliable Manipulation Primitives via Memory-Guided Agents · arXiv 2026</span><span class="tldr">Harness VLA（RPent 的第一篇论文）：把冻结的 VLA 包成可重试的 VLA_ACT primitive，由 Claude Code / Codex planner 组合固定的 analytic primitives；LIBERO-Pro 50.0% → 82.4%。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-10-16-RPent" aria-pressed="false" aria-label="星标 RPent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Robotic-harness/artifact/2026-11-05-SO101-MAS.html"><span class="date">2026-11-05</span><span class="name">SO101-MAS</span><span class="title">SO101 multi-agent harness (harness/so101_mas): parent session delegating pick-and-place to fresh child sessions · Code walkthrough, SO101 commit 42138fa, 2026</span><span class="tldr">代码讲解：SO101 harness 的 multi-agent 版本。parent 只能 grasp_engage，harness 开零记忆 child 做一次 pick-and-place，再把 measured 与 claim 分开封装回 parent。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-11-05-SO101-MAS" aria-pressed="false" aria-label="星标 SO101-MAS"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-03"><a href="Robotic-harness/artifact/2026-11-03-ZAP.html"><span class="date">2026-11-03</span><span class="name">ZAP</span><span class="title">Pretraining Knows What, Simulation Teaches How: Compositional Generalization for Agentic Robotics · CoRL 2026 (LBR)</span><span class="tldr">小 VLM 懂任务不会动：只在仿真简单任务上用自己的成功轨迹 + GRPO 教 motion，27B 真机 96.7%，追平 GPT-6 Astra 且快 3×、便宜 17×</span></a><button type="button" class="star" data-star="Robotic-harness:2026-11-03-ZAP" aria-pressed="false" aria-label="星标 ZAP"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-10-21"><a href="Robotic-harness/artifact/2026-10-21-MAST.html"><span class="date"><b>2025-03-17</b><small>归档 2026-10-21</small></span><span class="name">MAST</span><span class="title">Why Do Multi-Agent LLM Systems Fail? · NeurIPS 2025 (Datasets and Benchmarks)</span><span class="tldr">MAS 为什么失败：从 150 条 trace 归纳出 3 类 14 个 failure mode（MAST，κ=0.88），用 o1 标注 1642 条 trace；失败多来自系统设计而非模型，改 ChatDev topology 即 +15.6%。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-10-21-MAST" aria-pressed="false" aria-label="星标 MAST"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-10-16"><a href="Robotic-harness/artifact/2026-10-16-RPent.html"><span class="date"><b>2026-07-09</b><small>归档 2026-10-16</small></span><span class="name">RPent</span><span class="title">Harness VLA: Steering Frozen VLAs into Reliable Manipulation Primitives via Memory-Guided Agents · arXiv 2026</span><span class="tldr">Harness VLA（RPent 的第一篇论文）：把冻结的 VLA 包成可重试的 VLA_ACT primitive，由 Claude Code / Codex planner 组合固定的 analytic primitives；LIBERO-Pro 50.0% → 82.4%。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-10-16-RPent" aria-pressed="false" aria-label="星标 RPent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
 </details>
 <details id="Sim-robot-learning" data-proj="Sim-robot-learning"><summary class="proj"><h2>Sim-robot-learning</h2><span class="count">Sim-robot-learning/ · 11 篇</span><button type="button" class="fstar" data-star="Sim-robot-learning" aria-pressed="false" aria-label="给整个 Sim-robot-learning 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
 <ol class="papers">
-<li><a href="Sim-robot-learning/artifact/2026-11-15-GR00T2.html"><span class="date"><b>2026-11-09</b><small>归档 2026-11-15</small></span><span class="name">GR00T2</span><span class="title">GR00T 2: Scaling Robot Foundation Models for Generalization, Dexterity, and Adaptation · NVIDIA whitepaper, Nov 2026</span><span class="tldr">World-action model：一个 2B DiT 同时预测未来视频和动作，所以人类视频和手持 UMI 示范也能教机器人；零遥操作下 YAM 装玩具车 60%，加 agent 后 97/100。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-15-GR00T2" aria-pressed="false" aria-label="星标 GR00T2"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-11-15-GR00T-N17.html"><span class="date"><b>2026-04-18</b><small>归档 2026-11-15</small></span><span class="name">GR00T-N17</span><span class="title">Isaac GR00T N1.7 (GA, main @ 3b49067) · GitHub release 2026-04-18 (EA), GA 2026-07-07; paper arXiv 2025</span><span class="tldr">开源 VLA：VLM（System 2）读图和指令，DiT（System 1）用 flow matching 出动作 chunk，换机器人只换一组小 MLP。N1.7 换成 Cosmos-Reason2-2B，加 20K 小时人类视频；LIBERO 94–98%。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-15-GR00T-N17" aria-pressed="false" aria-label="星标 GR00T-N17"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-11-07-SimulationBasics.html"><span class="date">2026-11-07</span><span class="name">仿真从零讲起</span><span class="title">仿真从零讲起：拿 RoboSimStudio 当例子（讲解页） · 讲解页, 2026-11-07</span><span class="tldr">给高中生的物理仿真入门：循环、三个身体、刚体、接触、软体和每个参数的意思，拿 RoboSimStudio 的海绵当例子，带一个能拖的软体演示。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-07-SimulationBasics" aria-pressed="false" aria-label="星标 仿真从零讲起"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-11-05-SimOpt.html"><span class="date"><b>2018-10-12</b><small>归档 2026-11-05</small></span><span class="name">SimOpt</span><span class="title">Closing the Sim-to-Real Loop: Adapting Simulation Randomization with Real World Experience · ICRA 2019</span><span class="tldr">SimOpt：不再手调随机化范围，用几条真机 rollout 更新模拟器参数分布，让 policy 在 sim 和真机行为一致；Franka 开抽屉 20 次全开。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-05-SimOpt" aria-pressed="false" aria-label="星标 SimOpt"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-11-05-RealityGap.html"><span class="date"><b>2025-10-23</b><small>归档 2026-11-05</small></span><span class="name">RealityGap</span><span class="title">The Reality Gap in Robotics: Challenges, Solutions, and Best Practices · Annual Review of Control, Robotics, and Autonomous Systems 2026</span><span class="tldr">Reality gap 综述：4 类 gap、18 个来源、20 个方法的 gap 地图、6 个度量、5 个开放问题。没有实验，价值在这张地图。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-05-RealityGap" aria-pressed="false" aria-label="星标 RealityGap"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-11-05-Peel.html"><span class="date">2026-11-05</span><span class="name">Peel</span><span class="title">How to Peel with a Knife: Aligning Fine-Grained Manipulation with Human Preference · CoRL 2026</span><span class="tldr">用刀削皮：SpaceMouse 示教 + force-aware Diffusion Policy 学会保持接触，再用人标的 hybrid reward 训 reward model、冻住 base 学 residual；苹果 60%→100%，零样本削梨 90%。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-05-Peel" aria-pressed="false" aria-label="星标 Peel"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-11-02-FACT.html"><span class="date">2026-11-02</span><span class="name">FACT</span><span class="title">FACT: A Multimodal Force–Action–Track Foundation Model for Human-to-Robot Dexterity · Preprint (project page), Oct 2026</span><span class="tldr">用触觉手套采 2,000 h 带指尖力的人手示范（EgoForce）。FACT 先用视频 DiT 预测未来视频、点轨迹和粗动作，再按触觉把动作和未来指尖力一起去噪。10 个真机灵巧任务的二元成功率平均 41.4%，T-Rex 8.6%。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-02-FACT" aria-pressed="false" aria-label="星标 FACT"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-10-30-SuperMimic.html"><span class="date"><b>2026-10-20</b><small>归档 2026-10-30</small></span><span class="name">SuperMimic</span><span class="title">SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model · CoRL 2026 (Oral)</span><span class="tldr">从仿真日志学一个所有动作共享的可微 world model，经它 BPTT 训 humanoid 全身 motion tracker：1 张 H100 训 3 h 超过 128 卡训 7 天的 SONIC，GPU-h 少 &gt;1000×，真机 G1 侧滚、空翻。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-10-30-SuperMimic" aria-pressed="false" aria-label="星标 SuperMimic"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-10-23-IsaacLab3.html"><span class="date"><b>2026-10-20</b><small>归档 2026-10-23</small></span><span class="name">IsaacLab3</span><span class="title">Isaac Lab 3.0 (v3.0.0 GA release) · GitHub release 2026-10-20; paper arXiv 2025</span><span class="tldr">Isaac Lab 3.0：一个 task API 跑 PhysX / Newton / OV 多个后端，Isaac Sim 变成可选；同一 checkpoint 可在 PhysX↔Newton 间迁移。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-10-23-IsaacLab3" aria-pressed="false" aria-label="星标 IsaacLab3"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-10-23-COWBOY.html"><span class="date"><b>2026-10-20</b><small>归档 2026-10-23</small></span><span class="name">COWBOY</span><span class="title">COWBOY: A Scalable Sim-to-Real Framework for Learning Contextual Whole-Body Manipulation · CoRL 2026</span><span class="tldr">向量化 fabric WBC 管走近、注视和避障，local RL expert 管局部抓取，组合成 teacher 在数千个仿真场景里蒸馏成一个 32-DoF 点云 policy；真机 24 个场景 zero-shot 91%。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-10-23-COWBOY" aria-pressed="false" aria-label="星标 COWBOY"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="Sim-robot-learning/artifact/2026-10-23-AdaDex.html"><span class="date"><b>2026-10-20</b><small>归档 2026-10-23</small></span><span class="name">AdaDex</span><span class="title">Learning Adaptable Dexterous Skills via Hybrid Dexterous Mimicking · arXiv 2026</span><span class="tldr">一个 goal-conditioned policy 同时在 TrackEnv（dense 跟踪人手）和 GenEnv（加噪 goal + sparse 奖励）里训练，从几秒人手动作学到像人又能去新目标的灵巧技能。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-10-23-AdaDex" aria-pressed="false" aria-label="星标 AdaDex"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-15"><a href="Sim-robot-learning/artifact/2026-11-15-GR00T2.html"><span class="date"><b>2026-11-09</b><small>归档 2026-11-15</small></span><span class="name">GR00T2</span><span class="title">GR00T 2: Scaling Robot Foundation Models for Generalization, Dexterity, and Adaptation · NVIDIA whitepaper, Nov 2026</span><span class="tldr">World-action model：一个 2B DiT 同时预测未来视频和动作，所以人类视频和手持 UMI 示范也能教机器人；零遥操作下 YAM 装玩具车 60%，加 agent 后 97/100。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-15-GR00T2" aria-pressed="false" aria-label="星标 GR00T2"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-15"><a href="Sim-robot-learning/artifact/2026-11-15-GR00T-N17.html"><span class="date"><b>2026-04-18</b><small>归档 2026-11-15</small></span><span class="name">GR00T-N17</span><span class="title">Isaac GR00T N1.7 (GA, main @ 3b49067) · GitHub release 2026-04-18 (EA), GA 2026-07-07; paper arXiv 2025</span><span class="tldr">开源 VLA：VLM（System 2）读图和指令，DiT（System 1）用 flow matching 出动作 chunk，换机器人只换一组小 MLP。N1.7 换成 Cosmos-Reason2-2B，加 20K 小时人类视频；LIBERO 94–98%。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-15-GR00T-N17" aria-pressed="false" aria-label="星标 GR00T-N17"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-07"><a href="Sim-robot-learning/artifact/2026-11-07-SimulationBasics.html"><span class="date">2026-11-07</span><span class="name">仿真从零讲起</span><span class="title">仿真从零讲起：拿 RoboSimStudio 当例子（讲解页） · 讲解页, 2026-11-07</span><span class="tldr">给高中生的物理仿真入门：循环、三个身体、刚体、接触、软体和每个参数的意思，拿 RoboSimStudio 的海绵当例子，带一个能拖的软体演示。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-07-SimulationBasics" aria-pressed="false" aria-label="星标 仿真从零讲起"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Sim-robot-learning/artifact/2026-11-05-SimOpt.html"><span class="date"><b>2018-10-12</b><small>归档 2026-11-05</small></span><span class="name">SimOpt</span><span class="title">Closing the Sim-to-Real Loop: Adapting Simulation Randomization with Real World Experience · ICRA 2019</span><span class="tldr">SimOpt：不再手调随机化范围，用几条真机 rollout 更新模拟器参数分布，让 policy 在 sim 和真机行为一致；Franka 开抽屉 20 次全开。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-05-SimOpt" aria-pressed="false" aria-label="星标 SimOpt"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-05"><a href="Sim-robot-learning/artifact/2026-11-05-RealityGap.html"><span class="date"><b>2025-10-23</b><small>归档 2026-11-05</small></span><span class="name">RealityGap</span><span class="title">The Reality Gap in Robotics: Challenges, Solutions, and Best Practices · Annual Review of Control, Robotics, and Autonomous Systems 2026</span><span class="tldr">Reality gap 综述：4 类 gap、18 个来源、20 个方法的 gap 地图、6 个度量、5 个开放问题。没有实验，价值在这张地图。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-05-RealityGap" aria-pressed="false" aria-label="星标 RealityGap"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-03"><a href="Sim-robot-learning/artifact/2026-11-03-CamVLA.html"><span class="date">2026-11-03</span><span class="name">CamVLA</span><span class="title">From Fixed to Free Cameras: Calibration-Free View-Robust Vision-Language-Action Model · arXiv 2026</span><span class="tldr">CamVLA：VLA 在相机系出动作、从单张 RGB 自估 hand-eye 旋转再转回 base，免标定；相机换位后 π0 在 RLBench 未见视角 33.2→51.4。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-03-CamVLA" aria-pressed="false" aria-label="星标 CamVLA"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-02"><a href="Sim-robot-learning/artifact/2026-11-02-FACT.html"><span class="date">2026-11-02</span><span class="name">FACT</span><span class="title">FACT: A Multimodal Force–Action–Track Foundation Model for Human-to-Robot Dexterity · Preprint (project page), Oct 2026</span><span class="tldr">用触觉手套采 2,000 h 带指尖力的人手示范（EgoForce）。FACT 先用视频 DiT 预测未来视频、点轨迹和粗动作，再按触觉把动作和未来指尖力一起去噪。10 个真机灵巧任务的二元成功率平均 41.4%，T-Rex 8.6%。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-02-FACT" aria-pressed="false" aria-label="星标 FACT"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-10-30"><a href="Sim-robot-learning/artifact/2026-10-30-SuperMimic.html"><span class="date"><b>2026-10-20</b><small>归档 2026-10-30</small></span><span class="name">SuperMimic</span><span class="title">SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model · CoRL 2026 (Oral)</span><span class="tldr">从仿真日志学一个所有动作共享的可微 world model，经它 BPTT 训 humanoid 全身 motion tracker：1 张 H100 训 3 h 超过 128 卡训 7 天的 SONIC，GPU-h 少 &gt;1000×，真机 G1 侧滚、空翻。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-10-30-SuperMimic" aria-pressed="false" aria-label="星标 SuperMimic"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-10-23"><a href="Sim-robot-learning/artifact/2026-10-23-IsaacLab3.html"><span class="date"><b>2026-10-20</b><small>归档 2026-10-23</small></span><span class="name">IsaacLab3</span><span class="title">Isaac Lab 3.0 (v3.0.0 GA release) · GitHub release 2026-10-20; paper arXiv 2025</span><span class="tldr">Isaac Lab 3.0：一个 task API 跑 PhysX / Newton / OV 多个后端，Isaac Sim 变成可选；同一 checkpoint 可在 PhysX↔Newton 间迁移。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-10-23-IsaacLab3" aria-pressed="false" aria-label="星标 IsaacLab3"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-10-23"><a href="Sim-robot-learning/artifact/2026-10-23-COWBOY.html"><span class="date"><b>2026-10-20</b><small>归档 2026-10-23</small></span><span class="name">COWBOY</span><span class="title">COWBOY: A Scalable Sim-to-Real Framework for Learning Contextual Whole-Body Manipulation · CoRL 2026</span><span class="tldr">向量化 fabric WBC 管走近、注视和避障，local RL expert 管局部抓取，组合成 teacher 在数千个仿真场景里蒸馏成一个 32-DoF 点云 policy；真机 24 个场景 zero-shot 91%。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-10-23-COWBOY" aria-pressed="false" aria-label="星标 COWBOY"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-10-23"><a href="Sim-robot-learning/artifact/2026-10-23-AdaDex.html"><span class="date"><b>2026-10-20</b><small>归档 2026-10-23</small></span><span class="name">AdaDex</span><span class="title">Learning Adaptable Dexterous Skills via Hybrid Dexterous Mimicking · arXiv 2026</span><span class="tldr">一个 goal-conditioned policy 同时在 TrackEnv（dense 跟踪人手）和 GenEnv（加噪 goal + sparse 奖励）里训练，从几秒人手动作学到像人又能去新目标的灵巧技能。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-10-23-AdaDex" aria-pressed="false" aria-label="星标 AdaDex"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
 </details>
-<details id="misc" data-proj="misc"><summary class="proj"><h2>misc</h2><span class="count">misc/ · 3 篇</span><button type="button" class="fstar" data-star="misc" aria-pressed="false" aria-label="给整个 misc 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
+<details id="misc" data-proj="misc"><summary class="proj"><h2>misc</h2><span class="count">misc/ · 2 篇</span><button type="button" class="fstar" data-star="misc" aria-pressed="false" aria-label="给整个 misc 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
 <ol class="papers">
-<li><a href="misc/artifact/2026-11-03-sudoai.html"><span class="date">2026-11-03</span><span class="name">sudoai</span><span class="title">#sudo R1 背后可能是什么：localization、RGB 怎么进 policy、policy 怎么训 · 专题 · 公开资料倒推 2026-11-03</span><span class="tldr">sudo（原 Hillbot 班底，苏昊的 SAPIEN/ManiSkill 团队）的 #sudo R1 只用仿真数据训 pick policy。按视频截图、招聘帖和采访倒推：点一下 → target mask → 双目算出的 RGB-D（多半转成点云）进单步闭环 policy；在 SAPIEN/ManiSkill 里由看得到真值的 expert 蒸馏出视觉 student。</span></a><button type="button" class="star" data-star="misc:2026-11-03-sudoai" aria-pressed="false" aria-label="星标 sudoai"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="misc/artifact/2026-11-02-MLP-vs-Transformer.html"><span class="date">2026-11-02</span><span class="name">MLP vs Transformer</span><span class="title">为什么机器人 RL 低层控制器大多用 MLP 而不是 Transformer，以及 policy 何时需要历史、历史多长才够 · 专题 · 文献检索 2026-11-02</span><span class="tldr">RL 低层控制器多用 MLP：输入短、要几亿步样本、transformer 在 RL 下难训、板上延迟紧；历史在 0.5–2 s 内常够用，更长要靠蒸馏才训得进去。</span></a><button type="button" class="star" data-star="misc:2026-11-02-MLP-vs-Transformer" aria-pressed="false" aria-label="星标 MLP vs Transformer"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
-<li><a href="misc/artifact/2026-11-02-GOTT.html"><span class="date"><b>2026-10-02</b><small>归档 2026-11-02</small></span><span class="name">GOTT</span><span class="title">GOTT: Object-centric Dexterous Manipulation with a Reusable Cross-Embodiment Primitive · arXiv 2026 (v2, 2026-10-08)</span><span class="tldr">灵巧手缺一个可复用的“建立接触”底层 primitive。GOTT 把执行拆成 reach → acquire → move：高层只给 object trajectory 和大致的 reach，一个跨手的闭环 contact-acquisition RL policy 负责抓稳，再按物体位姿跟踪。真机 4 任务平均 tSR 80.0%，开环 baseline 35.0%。</span></a><button type="button" class="star" data-star="misc:2026-11-02-GOTT" aria-pressed="false" aria-label="星标 GOTT"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-02"><a href="misc/artifact/2026-11-02-MLP-vs-Transformer.html"><span class="date">2026-11-02</span><span class="name">MLP vs Transformer</span><span class="title">为什么机器人 RL 低层控制器大多用 MLP 而不是 Transformer，以及 policy 何时需要历史、历史多长才够 · 专题 · 文献检索 2026-11-02</span><span class="tldr">RL 低层控制器多用 MLP：输入短、要几亿步样本、transformer 在 RL 下难训、板上延迟紧；历史在 0.5–2 s 内常够用，更长要靠蒸馏才训得进去。</span></a><button type="button" class="star" data-star="misc:2026-11-02-MLP-vs-Transformer" aria-pressed="false" aria-label="星标 MLP vs Transformer"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-02"><a href="misc/artifact/2026-11-02-GOTT.html"><span class="date"><b>2026-10-02</b><small>归档 2026-11-02</small></span><span class="name">GOTT</span><span class="title">GOTT: Object-centric Dexterous Manipulation with a Reusable Cross-Embodiment Primitive · arXiv 2026 (v2, 2026-10-08)</span><span class="tldr">灵巧手缺一个可复用的“建立接触”底层 primitive。GOTT 把执行拆成 reach → acquire → move：高层只给 object trajectory 和大致的 reach，一个跨手的闭环 contact-acquisition RL policy 负责抓稳，再按物体位姿跟踪。真机 4 任务平均 tSR 80.0%，开环 baseline 35.0%。</span></a><button type="button" class="star" data-star="misc:2026-11-02-GOTT" aria-pressed="false" aria-label="星标 GOTT"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
 </details>
 </main>

@@ -188,6 +188,45 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
   .crumb .proj { display: none; }
 }
 </style>
+<script type="application/json" id="agent-context">{
+ "about": "Hidden from readers: the facts an agent needs to answer questions about this page and to change it. Written by the paper-explain skill's build_index.py.",
+ "page": "2026-11-07-AgentMemory",
+ "open": "#2026-11-07-AgentMemory after the library artifact's link opens this page directly",
+ "project": "LLM-Harness",
+ "tldr": "Anthropic 讲 agent memory 的四层（transcripts、notes、wiki、injected context）和离线 dreaming：对照日志改错、建 wiki、提炼顶层",
+ "paper": {
+  "title": "The components of agent memory",
+  "venue": "Anthropic Engineering blog 2026",
+  "date": "2026-11-06",
+  "source": "https://www.anthropic.com/research/components-of-agent-memory",
+  "pdf": "https://www.anthropic.com/research/components-of-agent-memory",
+  "links": {
+   "Post": "https://www.anthropic.com/research/components-of-agent-memory",
+   "Cookbook · dreaming": "https://platform.claude.com/cookbook/managed-agents-cma-dreaming-with-a-dynamic-workflow",
+   "Cookbook · knowledge wiki": "https://github.com/anthropics/claude-quickstarts/tree/main/managed-agents/knowledge-wiki",
+   "Docs · dreams": "https://platform.claude.com/docs/en/managed-agents/dreams"
+  }
+ },
+ "sections": [
+  "tldr",
+  "problem",
+  "l1",
+  "l2",
+  "l3",
+  "results",
+  "limits",
+  "for-you"
+ ],
+ "library": {
+  "repo": "https://github.com/EricWang12/all_papers",
+  "page_file": "https://github.com/EricWang12/all_papers/blob/main/LLM-Harness/artifact/2026-11-07-AgentMemory.html",
+  "figures": "https://github.com/EricWang12/all_papers/tree/main/LLM-Harness/artifact/2026-11-07-AgentMemory",
+  "profile": "https://github.com/EricWang12/all_papers/blob/main/preferences.md",
+  "pdf_note": "The PDF is not in the repo (too large): fetch paper.pdf."
+ },
+ "answering": "Answer from the paper itself (paper.pdf), not only from this page; name the figure, table or section a number comes from, and say so when the paper does not report something. The reader's profile (library.profile) says how they like answers.",
+ "changing": "To change the page, edit library.page_file in the repo and republish it to this artifact, with the paper-explain skill (https://github.com/EricWang12/zw-claude-skills/tree/main/plugins/paper-explain) when you can. A page changed only in this artifact is copied into the repo by the skill's next run, so it is not lost."
+}</script>
 </head>
 <body>
 <nav class="bar" aria-label="Page">

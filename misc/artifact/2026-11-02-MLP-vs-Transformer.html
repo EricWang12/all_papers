@@ -180,6 +180,42 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
   .crumb .proj { display: none; }
 }
 </style>
+<script type="application/json" id="agent-context">{
+ "about": "Hidden from readers: the facts an agent needs to answer questions about this page and to change it. Written by the paper-explain skill's build_index.py.",
+ "page": "2026-11-02-MLP-vs-Transformer",
+ "open": "#2026-11-02-MLP-vs-Transformer after the library artifact's link opens this page directly",
+ "project": "misc",
+ "tldr": "RL 低层控制器多用 MLP：输入短、要几亿步样本、transformer 在 RL 下难训、板上延迟紧；历史在 0.5–2 s 内常够用，更长要靠蒸馏才训得进去。",
+ "paper": {
+  "title": "为什么机器人 RL 低层控制器大多用 MLP 而不是 Transformer，以及 policy 何时需要历史、历史多长才够",
+  "venue": "专题 · 文献检索 2026-11-02",
+  "date": "",
+  "source": "",
+  "pdf": "",
+  "links": {}
+ },
+ "sections": [
+  "tldr",
+  "problem",
+  "why-mlp",
+  "history",
+  "hurts",
+  "transformers",
+  "gott",
+  "limits",
+  "for-you",
+  "sources"
+ ],
+ "library": {
+  "repo": "https://github.com/EricWang12/all_papers",
+  "page_file": "https://github.com/EricWang12/all_papers/blob/main/misc/artifact/2026-11-02-MLP-vs-Transformer.html",
+  "figures": "https://github.com/EricWang12/all_papers/tree/main/misc/artifact/2026-11-02-MLP-vs-Transformer",
+  "profile": "https://github.com/EricWang12/all_papers/blob/main/preferences.md",
+  "pdf_note": "The PDF is not in the repo (too large): fetch paper.pdf."
+ },
+ "answering": "Answer from the paper itself (paper.pdf), not only from this page; name the figure, table or section a number comes from, and say so when the paper does not report something. The reader's profile (library.profile) says how they like answers.",
+ "changing": "To change the page, edit library.page_file in the repo and republish it to this artifact, with the paper-explain skill (https://github.com/EricWang12/zw-claude-skills/tree/main/plugins/paper-explain) when you can. A page changed only in this artifact is copied into the repo by the skill's next run, so it is not lost."
+}</script>
 </head>
 <body>
 

@@ -202,6 +202,43 @@ footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-siz
   table.baselines td:last-child { white-space: normal; }
 }
 </style>
+<script type="application/json" id="agent-context">{
+ "about": "Hidden from readers: the facts an agent needs to answer questions about this page and to change it. Written by the paper-explain skill's build_index.py.",
+ "page": "2026-11-05-SO101-MAS",
+ "open": "#2026-11-05-SO101-MAS after the library artifact's link opens this page directly",
+ "project": "Robotic-harness",
+ "tldr": "代码讲解：SO101 harness 的 multi-agent 版本。parent 只能 grasp_engage，harness 开零记忆 child 做一次 pick-and-place，再把 measured 与 claim 分开封装回 parent。",
+ "paper": {
+  "title": "SO101 multi-agent harness (harness/so101_mas): parent session delegating pick-and-place to fresh child sessions",
+  "venue": "Code walkthrough, SO101 commit 42138fa, 2026",
+  "date": "",
+  "source": "https://github.com/EricWang12/SO101/tree/main/harness/so101_mas",
+  "pdf": "https://github.com/EricWang12/SO101/tree/42138fa/harness/so101_mas",
+  "links": {
+   "Code (private)": "https://github.com/EricWang12/SO101/tree/main/harness/so101_mas"
+  }
+ },
+ "sections": [
+  "tldr",
+  "problem",
+  "l1",
+  "l2",
+  "play",
+  "l3",
+  "results",
+  "limits",
+  "for-you"
+ ],
+ "library": {
+  "repo": "https://github.com/EricWang12/all_papers",
+  "page_file": "https://github.com/EricWang12/all_papers/blob/main/Robotic-harness/artifact/2026-11-05-SO101-MAS.html",
+  "figures": "https://github.com/EricWang12/all_papers/tree/main/Robotic-harness/artifact/2026-11-05-SO101-MAS",
+  "profile": "https://github.com/EricWang12/all_papers/blob/main/preferences.md",
+  "pdf_note": "The PDF is not in the repo (too large): fetch paper.pdf."
+ },
+ "answering": "Answer from the paper itself (paper.pdf), not only from this page; name the figure, table or section a number comes from, and say so when the paper does not report something. The reader's profile (library.profile) says how they like answers.",
+ "changing": "To change the page, edit library.page_file in the repo and republish it to this artifact, with the paper-explain skill (https://github.com/EricWang12/zw-claude-skills/tree/main/plugins/paper-explain) when you can. A page changed only in this artifact is copied into the repo by the skill's next run, so it is not lost."
+}</script>
 </head>
 <body>
 
