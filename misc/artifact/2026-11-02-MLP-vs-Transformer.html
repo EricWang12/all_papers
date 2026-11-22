@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>MLP vs Transformer</title>
+<meta name="description" content="RL 低层控制器多用 MLP：输入短、要几亿步样本、transformer 在 RL 下难训、板上延迟紧；历史在 0.5–2 s 内常够用，更长要靠蒸馏才训得进去。">
+<meta name="paper:title" content="为什么机器人 RL 低层控制器大多用 MLP 而不是 Transformer，以及 policy 何时需要历史、历史多长才够">
+<meta name="paper:venue" content="专题 · 文献检索 2026-11-02">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / misc</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#why-mlp">Why MLP</a><a href="#history">History</a>
+      <a href="#hurts">History 不灵</a><a href="#transformers">Transformer 赢</a><a href="#gott">GOTT</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a><a href="#sources">Sources</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">misc · 归档于 2026-11-02 · 专题</p>
+  <h1>MLP vs Transformer</h1>
+  <p class="full-title">为什么机器人 RL 低层控制器大多用 MLP 而不是 Transformer？policy 什么时候需要历史，历史越长越好吗？</p>
+  <p class="meta">文献检索专题，不是单篇 paper · 57 篇一手来源，页面上的数字都对过 arXiv / 会议、期刊原文 · 2026-11-02</p>
+  <p class="links"><a href="2026-11-02-GOTT.html">GOTT 页（running example）</a><a href="#history-table">历史长度对照表</a><a href="#sources">Sources</a></p>
+  <p class="filed">归档到 <b>misc</b>：按要求放进 misc。最近的项目是 Sim-robot-learning（RL 低层控制器、sim-to-real、teacher-student）；也关系到 Robotic-harness 里"高层 transformer、低层 primitive"的分工。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>问题</dt><dd>四足、人形、灵巧手的 RL 低层控制器几乎都是几层 MLP（GOTT：685 个数 → MLP → 32 维动作），而 ACT、Octo、OpenVLA、π0 这类模仿学习 / VLA policy 全是 transformer。差别从哪来？</dd></div>
+    <div><dt>答案</dt><dd>四个约束叠在一起：输入是几百维的定长向量，没有 token 可排；PPO 要几亿步交互（GOTT ≈491.5M 步），网络越便宜越好；大网络和 transformer 在 RL loss 下难训（GTrXL：DMLab-30 human-normalized 分数原版 TrXL 5.0，LSTM 99.3）；板上延迟紧（REAL：50 Hz 只有 20 ms，10 帧 transformer 要 23.07 ms）。</dd></div>
+    <div><dt>历史</dt><dd>看不见、又在变的量（质量、摩擦、地形、接触）要靠历史推：Dactyl 真机 LSTM 中位数 13 vs MLP 3.5，GOTT 去掉历史掉 15.7 点。但收益多在 0.5–3 s 内到顶（HORA 1.5 s 饱和，OmniH2O 0.5 s 最好，Li et al. 4 s 比 3 s 差）；长历史直接塞给 RL 反而崩（OmniH2O 47.11% vs 90.62%），多半靠 teacher 蒸馏才训得进去。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>同一个 GOTT policy，为什么是 685 → MLP → 32，而不是一个 transformer？</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每一节都回到它</p>
+    <p><b>GOTT 的 contact-acquisition policy</b>（<a href="2026-11-02-GOTT.html">GOTT 页</a>，arXiv 2610.03861v2）：每 0.1 s 读入 <span class="ex">o_t = 685 个数</span>，过一个 <span class="ex">MLP [512, 512, 256, 128]</span>，输出 <span class="ex">32 维动作</span>（6 维 wrist 增量 + 26 维 canonical 关节增量），每步 <span class="ex">0.752 ms</span>（Table 14）。PPO（rl_games）在 IsaacLab 里训：<span class="ex">4,096 env × 2,000 epoch ≈ 491.5M 步</span>，单张 L40S 24 h。不进图像，物体位姿由 FoundationPose 在网络外估计。旁边还有一个 contact predictor：2 层 MLP（256），只看 5 步本体感觉，0.085 ms/步。</p>
+  </div>
+
+  <p class="eyebrow">符号表 · o_t 里有什么（GOTT Table 8）</p>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>符号 / 块</th><th>它是什么</th><th>例子里的值</th></tr>
+    <tr><td>o_t</td><td>policy 每一步看到的输入向量</td><td>685 个数（下面各块之和，总数是我们自己加的）</td></tr>
+    <tr><td>手 → 物体向量</td><td>21 个手 link 各自到物体表面最近点的 3D 向量，只给当前帧</td><td>21 × 3 = 63</td></tr>
+    <tr><td>关节位置</td><td>26 个 canonical 关节的位置，最近 K 帧</td><td>26 × 5 = 130</td></tr>
+    <tr><td>上一步关节目标</td><td>policy 上一步给每个关节的目标，最近 K 帧</td><td>26 × 5 = 130</td></tr>
+    <tr><td>link 位置</td><td>21 个 link 的 3D 位置，最近 K 帧</td><td>21 × 3 × 5 = 315</td></tr>
+    <tr><td>mask</td><td>这只手上哪些关节 / link 槽位真实存在</td><td>26 + 21 = 47</td></tr>
+    <tr><td>K</td><td>history length：叠几帧</td><td>5 帧，10 Hz 下是 0.5 s（换算）</td></tr>
+    <tr><td>a_t</td><td>输出动作</td><td>32 维，10 Hz</td></tr>
+  </table></div>
+
+  <p class="eyebrow">在这个例子上换掉一处，会坏在哪</p>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入 o_t</b><br/><span class='ex'>685 个数，K = 5</span>"]:::example
+  IN --> A1["<b>去掉历史</b><br/>K = 1，只看当前帧"]
+  A1 --> AX["丢了时间上的接触线索<br/><span class='ex'>78.7% → 63.0%</span>"]:::gap
+  IN --> B1["<b>换重型 encoder</b><br/>OHRA 式点云 encoder"]
+  B1 --> BX["太大，没法和 PPO 一起训<br/><span class='ex'>换轻 PointNet：25.7%</span>"]:::gap
+  IN --> C1["<b>换 transformer</b><br/>GET-Zero 式跨手"]
+  C1 --> CX["不直接用 PPO 训<br/><span class='ex'>先训 44 个 expert 再蒸馏</span>"]:::gap
+  IN --> D1["<b>GOTT 的做法</b><br/>K = 5 叠帧 + MLP"]
+  D1 --> DX["一次 PPO，三只手一起训<br/><span class='ex'>78.7%，0.752 ms/步</span>"]:::win
+  </pre></div>
+  <p class="note">lane 1、2 是 GOTT 自己的消融（Table 4，§4.6.1）：K = 1 "removes temporal contact cues"；OHRA 的点云 encoder "too large to train jointly with PPO at our training scale"。lane 3 不是 GOTT 跑的：GOTT 只在 related work 里提到 GET-Zero，这里放的是 GET-Zero 自己的训练流程（见 <a href="#gott">Back to GOTT</a>）。</p>
+
+  <p class="eyebrow">范围：这页讲左边这一类 policy</p>
+  <div class="flow"><pre>
+flowchart LR
+  R0["<b>RL 低层控制器</b><br/><span class='ex'>GOTT、ANYmal、Digit</span>"]:::example --> R1["<b>输入</b><br/>本体感觉 + 少量几何<br/>几十到几百个数"]
+  R1 --> R2["<b>小 MLP</b><br/>要历史时加叠帧 / TCN / GRU"]
+  I0["<b>IL / VLA policy</b><br/><span class='ex'>ACT、Octo、OpenVLA、π0</span>"] --> I1["<b>输入</b><br/>多路图像 + 语言<br/>大规模离线 demo"]
+  I1 --> I2["<b>Transformer</b><br/>监督 loss"]
+  </pre></div>
+  <p class="crux"><b>根本问题：</b>RL 低层控制器卡在"样本量 × 训练稳定性 × 板上延迟"，不是表达能力；transformer 擅长的变长 token、海量离线数据、稳定的监督 loss，这里大多用不上。<b>例外是历史：</b>任务里有看不见、又在变的物理量时，policy 必须看一段过去，下面专门讲。<span class="muted">（推断，综合下文各来源）</span></p>
+</section>
+
+<section id="why-mlp">
+  <p class="eyebrow">Why MLP</p>
+  <h2>四个约束叠在一起，把 RL 低层控制器推向小 MLP</h2>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>原因</th><th>在 GOTT 上</th><th>文献里的证据</th></tr>
+    <tr><td><b>1 · 输入短、定长</b></td><td>685 个数；26 关节 / 21 link 槽位固定，缺的用 mask 标；没有图像</td><td><ul class="tight">
+      <li><a href="https://arxiv.org/abs/2107.03996">LocoTransformer</a>：训练环境里把视觉特征和本体感觉直接拼接（State-Depth-Concat）"performs as well as" transformer；差距只出现在没见过的环境（回报 +69% / +56%）</li>
+      <li><a href="https://arxiv.org/abs/2310.10486">ManyQuadrupeds</a>：一个 MLP [512, 256, 128] 控 16 种四足，用 CPG + IK 把动作空间做成定长，不用 padding</li></ul></td></tr>
+    <tr><td><b>2 · RL 要海量样本</b></td><td>4,096 env，≈491.5M 步，L40S 24 h</td><td><ul class="tight">
+      <li><a href="https://arxiv.org/abs/2109.11978">Rudin 2021</a>：PPO 每次更新 1M 样本（20,000 个机器人 × 50 步）；平地 4 分钟内、崎岖地形 20 分钟训完</li>
+      <li><a href="https://arxiv.org/abs/2303.03381">Radosavovic 2024</a>：直接在观测空间用 RL 训 policy "slow and resource-intensive"，所以先训一个 MLP state teacher</li>
+      <li><a href="https://arxiv.org/abs/2503.08997">ULT</a>：训 transformer "data-hungry"；TERT 为两阶段监督迁移额外生成 40M timesteps，Radosavovic 的联合迁移让总步数翻倍</li></ul></td></tr>
+    <tr><td><b>3 · 大网络和 transformer 在 RL loss 下难训</b></td><td>OHRA 式点云 encoder 太大，没法和 PPO 一起训；换轻 PointNet 后 25.7%</td><td><ul class="tight">
+      <li><a href="https://arxiv.org/abs/1910.06764">GTrXL</a>：原版 transformer "often resulting in performance comparable to a random policy"；DMLab-30 上 TrXL 5.0、LSTM 99.3，加 GRU 式 gating、把 LayerNorm 挪到子模块输入后 117.6（Table 1，V-MPO）</li>
+      <li><a href="https://arxiv.org/abs/2410.09754">SimBa</a>：SAC + MLP 在 0.1M–17M 参数间，约 0.25M 时最好（约 340），加到 17M 掉到约 130（读图，DMC humanoid）；加 running-stat 归一化、residual、LayerNorm 后才越大越好</li>
+      <li><a href="https://arxiv.org/abs/2405.16158">BRO</a>：普通 dense critic 超过某个尺寸就退化；BroNet ≈5M 参数，LayerNorm "essential to unlocking scaling"</li>
+      <li><a href="https://arxiv.org/abs/2402.08609">MoE for RL</a>：Rainbow 把倒数第二层加宽 ×8，性能掉约 40%（Atari）；换 Soft MoE 才是参数越多越好</li>
+      <li><a href="https://arxiv.org/abs/2206.06614">TrMRL</a>：PPO 训 transformer "often unstable"，要靠 T-Fixup 初始化</li>
+      <li><a href="https://arxiv.org/abs/2210.04887">HORA</a>：把 TCN 直接接进 PPO "only produce random policies"</li></ul></td></tr>
+    <tr><td><b>4 · 板上延迟</b></td><td>10 Hz；policy 0.752 ms/步，contact predictor 0.085 ms/步</td><td><ul class="tight">
+      <li><a href="https://arxiv.org/abs/2603.17653">REAL</a>：Go2 50 Hz → 20 ms 预算；10 帧历史时 transformer 23.07 ms 超时，Mamba 13.14 ms（Jetson 板上）</li>
+      <li><a href="https://arxiv.org/abs/2107.04034">RMA</a>：1-D CNN 适配模块 10 Hz、MLP base policy 100 Hz，异步跑</li>
+      <li><a href="https://arxiv.org/abs/2409.12949">四旋翼（Zhang, T-RO 2025）</a>：MLP policy 0.078 ms，CNN 适配模块 0.087 ms（RB5 板）</li>
+      <li><a href="https://arxiv.org/abs/2410.24164">π0</a>：RTX 4090 上推理 73 ms，靠 50 步 action chunk，50 Hz 的机器人每 0.5 s 才推理一次</li></ul></td></tr>
+  </table></div>
+  <p class="note">PPO 自己的经验也偏向小 MLP：<a href="https://arxiv.org/abs/2006.05990">Andrychowicz et al.</a>（ICLR 2021）训了 250,000 个 agent。policy 和 value 都是两层隐层就够；policy 宽度要调，太窄太宽都会掉（HalfCheetah 上 16–32 个单元最好），value 可以宽（256）；把 policy 最后一层权重缩小 100×，Humanoid 就涨 66%。</p>
+
+  <h3 style="margin-top: 1.75rem">对照：IL / VLA 为什么反过来全是 transformer</h3>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>Policy</th><th>输入 · 规模</th><th>数据 · loss</th><th>用多少历史</th><th>推理</th></tr>
+    <tr><td><a href="https://arxiv.org/abs/2304.13705"><b>ACT</b></a><br><span class="muted">RSS 2023</span></td><td>4 路 RGB + 14 维关节；≈80M 参数</td><td>每任务 50 条 demo（一个任务 100 条）；CVAE，L1</td><td>只看当前帧，作者说是为了避开 history-conditioned policy 的 causal confusion</td><td>≈0.01 s（2080 Ti）；50 Hz，chunk k = 100</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2303.04137"><b>Diffusion Policy</b></a><br><span class="muted">RSS 2023</span></td><td>图像或状态；CNN 或 transformer backbone</td><td>每个任务单独训；diffusion</td><td>T<sub>o</sub> = 2；视觉 CNN 版 T<sub>o</sub> 越长越差</td><td>0.1 s（3080，DDIM 10 步）；10 Hz 插值到 125 Hz</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2405.12213"><b>Octo</b></a><br><span class="muted">RSS 2024</span></td><td>图像 + 语言或目标图；27M / 93M</td><td>800k 条 OXE 轨迹，25 个数据集</td><td>2 帧（当前 + 1 帧历史）；再往前加，"significantly diminishing gains"</td><td>论文未报告</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2406.09246"><b>OpenVLA</b></a><br><span class="muted">CoRL 2024</span></td><td>单张图 + 语言；7B</td><td>970k episodes；action token cross-entropy</td><td>无："only supports single-image observations"</td><td>≈6 Hz（RTX 4090）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2410.24164"><b>π0</b></a><br><span class="muted">RSS 2025</span></td><td>多路图 + 语言 + 本体感觉；3.3B</td><td>10,000+ 小时；flow matching</td><td>只用当前时刻（按论文的观测定义读出，论文没明说）</td><td>73 ms（RTX 4090）；chunk H = 50</td></tr>
+  </table></div>
+  <p class="crux"><b>为什么反过来（推断）：</b>图像和语言本来就是变长 token 序列；数据是固定的离线 demo，loss 是监督的（L1 / diffusion / cross-entropy），没有 RL 那种边训边变的目标；推理靠 action chunk 摊薄，不用每 20 ms 跑一次大网络。即便这样，Diffusion Policy 仍建议先试 CNN 版，因为 transformer "more sensitive to hyperparameters"。</p>
+</section>
+
+<section id="history">
+  <p class="eyebrow">History · 这页的重点</p>
+  <h2>历史什么时候有用：看不见、在变、又能从过去推出来的量</h2>
+  <ul class="tight">
+    <li><b>为什么要历史：</b>质量、摩擦、地形、接触、物体尺寸，一帧传感器看不到；domain randomization（DR）又让它们每个 episode 都变。"我发了什么指令、身体实际怎么动"的一段历史能把它们推出来，等于隐式 system identification。</li>
+    <li><b>hidden state 里真有这些量：</b><a href="https://arxiv.org/abs/1808.00177">Dactyl</a> 的 LSTM 交互 5 s 后，能 80% 判断方块比平均大还是小；<a href="https://arxiv.org/abs/1910.07113">魔方</a>的探针从 LSTM 状态读 cube size 超过 80%（mass 只有 50–60%）；<a href="https://arxiv.org/abs/2006.02402">Cassie</a> 的 LSTM 状态解码骨盆质心，用 DR 训的误差 1.77 mm，不用 DR 2.99 mm（Table IV）。</li>
+    <li><b>没东西可辨识时，历史没用：</b>Dactyl 不做随机化时，FF 和 LSTM "converge to the same performance in the same amount of time"（fn. 8）。</li>
+  </ul>
+
+  <div class="l3-head">
+    <p class="eyebrow">五代做法 · 大致按时间 · 点节点展开</p>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+  <div class="flow"><pre>
+flowchart TD
+  F["<b>1 · 叠帧 + MLP</b><br/><span class='ex'>GOTT K = 5；Peng 8 步</span>"] --> R["<b>2 · LSTM / GRU</b><br/><span class='ex'>Dactyl、Cassie、ANYmal</span>"]
+  R --> T["<b>3 · TCN / 1-D conv</b><br/><span class='ex'>Lee 2 s；RMA 0.5 s</span><br/><span class='ex'>HORA 1.5 s</span>"]
+  T --> X["<b>4 · Transformer</b><br/><span class='ex'>Digit 16 步；NTP 48 步</span>"]
+  X --> M["<b>5 · SSM（Mamba）</b><br/><span class='ex'>REAL：10 帧 13.14 ms</span>"]
+  click F href "#stage-stack"
+  click R href "#stage-rnn"
+  click T href "#stage-tcn"
+  click X href "#stage-tf"
+  click M href "#stage-tf"
+  </pre></div>
+  <p class="flow-hint">点节点展开每一代的细节；带长度消融的例子都在<a href="#history-table">下面的表</a>里；长历史怎么"训进去"见 <a href="#stage-all">蒸馏是桥</a>。</p>
+
+  <details class="stage" id="stage-stack">
+    <summary>
+      <span class="stage-n">1</span>
+      <span class="stage-name">叠帧 + MLP（frame stacking）</span>
+      <span class="stage-io">最近 K 帧拼成一个更长的向量 → 同一个 MLP</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>最省事：网络结构不变，PPO 照常训，推理还是几次矩阵乘。</li>
+        <li><b>用在哪：</b>GOTT K = 5；Peng 8 步；HIM、DreamWaQ H = 5；Humanoid-Gym actor 15 帧（100 Hz，0.15 s）、critic 3 帧；Walk These Ways 30 步；OmniH2O student 25 步。</li>
+        <li><b>短历史常常就够：</b>Kyon 四足容错行走（PPO）：H 从 1 到 2 提升最大，再加"only marginal gains"，最后选 H = 3。</li>
+        <li><b>局限：</b>输入维度随 K 线性涨，长了 PPO 训不动（HORA Table 4、OmniH2O）；对真机动力学的泛化不如 LSTM（Peng：真机 0.70 vs 0.89）。</li>
+      </ul>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>GOTT 的输入维度是 110 + 115 × K（63 + 47 个只给当前帧的数，加每帧 26 + 26 + 63 个历史量；式子是我们自己推的）：K = 5 时 685 个数，K = 30 就是 3,560 个。HORA 和 OmniH2O 的结果提示，这样直接加长、继续用 PPO 训，很可能更差（推断）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-rnn">
+    <summary>
+      <span class="stage-n">2</span>
+      <span class="stage-name">LSTM / GRU（recurrent memory）</span>
+      <span class="stage-io">每步更新一个定长 hidden state → MLP head 出动作</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>hidden state 定长，理论上记得任意久；推理每步 O(1)。</li>
+        <li><b>赢的地方：</b>Dactyl（真机中位数 13 vs 3.5）、Peng（真机 0.89 vs 0.67）、Cassie（DR 下 10/10 个 seed 走满 40 s）、ANYmal 野外（Miki：GRU belief encoder + attention gate，BC + 重建 loss）、Robot Parkour（GRU 86 / 80 / 100 / 73% vs 无记忆 MLP 0 / 1 / 63 / 43%）。</li>
+        <li><b>坑：</b>BPTT 训得慢（Lee：TCN 的主要优势是训练"much faster"）；不做 DR 会过拟合仿真（Siekmann）；PPO 下 LSTM 吃的历史越长越差（HORA）；Li et al. 2024：recurrent policy "tend to converge to more suboptimal" 解；OmniH2O 真机上 LSTM 误差 87.00 mm，MLP + 25 步 47.94 mm。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  OBS["<b>当前观测</b><br/><span class='ex'>关节、IMU、上一步动作</span>"] --> RNN["<b>LSTM / GRU</b><br/><span class='ex'>hidden state 里存着<br/>摩擦、质量的估计</span>"]
+  RNN --> HEAD["<b>MLP head</b><br/><span class='ex'>动作</span>"]
+  RNN -.-> RNN
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>GOTT 没用 RNN。它要判断的是接触建立了没有、手指滑没滑，这些 5 帧（0.5 s）内就看得出来：K = 1 → 5 涨 15.7 点（Table 4）。更长的记忆有没有用，论文没测。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-tcn">
+    <summary>
+      <span class="stage-n">3</span>
+      <span class="stage-name">TCN / 1-D conv（显式长度的历史编码器）</span>
+      <span class="stage-io">N 步状态-动作序列 → 1-D 卷积 → latent → MLP policy</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>Lee 2020 的理由：能显式控制历史长度，吃得下长历史，对超参稳健。</li>
+        <li><b>几乎都不是 RL 直接训的：</b>Lee 的 TCN student 用 DAgger 模仿 MLP teacher；RMA、HORA 的适配模块用监督回归去拟合 teacher 的 latent（extrinsics）。HORA 把 TCN 直接接进 PPO，只得到 random policy。</li>
+        <li><b>长度：</b>Lee 100 步 = 2 s（50 Hz）；RMA 50 步 = 0.5 s；HORA 30 步 = 1.5 s；Li et al. 2024（Cassie，PPO）66 步 = 2 s，另有 4 步短历史直接进 MLP。</li>
+        <li><b>省延迟的招：</b>RMA 让适配模块 10 Hz 慢跑、base policy 100 Hz 快跑，两者异步。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  HIS["<b>状态-动作历史</b><br/><span class='ex'>最近 50 步 = 0.5 s</span>"] --> ADP["<b>1-D CNN 适配模块</b><br/><span class='ex'>10 Hz，估 extrinsics ẑ</span>"]
+  ADP --> BASE["<b>MLP base policy</b><br/><span class='ex'>100 Hz，当前状态 + ẑ</span>"]
+      </pre></div>
+      <p class="note">上图是 RMA 的部署方式（Fig. 2）。</p>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>GOTT 的 contact predictor 是同一思路的小号版本：policy 训完后，单独用监督学习训一个只看 5 步本体感觉的小 MLP，判断"抓稳了没有"，再决定切到 move。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-tf">
+    <summary>
+      <span class="stage-n">4–5</span>
+      <span class="stage-name">Transformer（和 SSM）</span>
+      <span class="stage-io">最近 L 步，每步一个 token → causal attention → 下一步动作</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>Radosavovic 的假设：观测-动作历史里有关于世界的信息，transformer 能在 context 里调整行为（in-context adaptation），不用改权重。</li>
+        <li><b>Digit 上怎么训的：</b>4 个 block、192 维、4 头，共 1.4M 参数，context 16；teacher 是看全状态的 MLP [512, 512, 256, 128]；loss = PPO + λ·KL(student ‖ teacher)，λ 一般在训练过半时退火到 0；4 张 A100、Isaac Gym。</li>
+        <li><b>别的训法：</b>TERT、Barkour 用 BC / DAgger 从 RL 训好的 teacher 蒸馏；NTP 用离线 next-token 监督；HumanPlus 的 HST（50 Hz，context 8）和 LocoFormer 直接用 PPO。</li>
+        <li><b>代价：</b>每步要对整个 context 做 attention：REAL 里 10 帧 transformer 23.07 ms，超过 20 ms 预算。</li>
+        <li><b>SSM：</b>REAL 换成 Mamba，每步 O(1)，13.14 ms。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  TCH["<b>MLP state teacher</b><br/><span class='ex'>看地形、摩擦等全状态</span>"] --> JNT["<b>PPO + λ·KL</b><br/><span class='ex'>λ 训练过半退火到 0</span>"]
+  JNT --> STU["<b>Transformer student</b><br/><span class='ex'>1.4M 参数，context 16</span>"]:::win
+      </pre></div>
+      <p class="note">上图是 Radosavovic et al. 2024 的训练方式（Materials and Methods，Eq. 2）。</p>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-all">
+    <summary>
+      <span class="stage-n">贯穿 2–5</span>
+      <span class="stage-name">蒸馏是桥：长历史怎么"训进去"</span>
+      <span class="stage-io">RL 训一个看 privileged state 的 MLP teacher → 用监督信号教一个带历史的 student</span>
+    </summary>
+    <div class="stage-body">
+      <div class="flow"><pre>
+flowchart LR
+  TT["<b>RL teacher</b><br/>MLP + privileged state<br/><span class='ex'>地形、摩擦、接触</span>"] --> SS["<b>监督信号</b><br/><span class='ex'>动作、latent、KL</span>"]
+  SS --> UU["<b>带历史的 student</b><br/>TCN / GRU / transformer<br/><span class='ex'>只看本体感觉</span>"]:::win
+      </pre></div>
+      <div class="table-wrap"><table class="grid">
+        <tr><th>论文</th><th>teacher</th><th>student · 历史</th><th>怎么教</th></tr>
+        <tr><td>Lee 2020</td><td>MLP，TRPO</td><td>TCN，2 s</td><td>DAgger，模仿动作 + latent</td></tr>
+        <tr><td>RMA 2021 / HORA 2022</td><td>MLP base policy + 环境编码器，PPO</td><td>1-D CNN，0.5 s / 1.5 s</td><td>监督回归 extrinsics</td></tr>
+        <tr><td>Miki 2022</td><td>MLP，PPO</td><td>GRU belief encoder</td><td>BC + 重建 privileged 信息</td></tr>
+        <tr><td>OmniH2O 2024</td><td>RL teacher</td><td>MLP，25 步叠帧</td><td>DAgger</td></tr>
+        <tr><td>TERT 2023 / Barkour 2023</td><td>RL teacher / RL specialist</td><td>Transformer，20 / 15 步</td><td>BC + DAgger / BC</td></tr>
+        <tr><td>Radosavovic 2024</td><td>MLP，PPO</td><td>Transformer，16 步</td><td>PPO + KL，λ 退火到 0</td></tr>
+        <tr><td>GET-Zero 2025</td><td>每只手一个 PPO expert</td><td>graph embodiment transformer</td><td>BC + self-modeling loss</td></tr>
+        <tr><td>NTP 2024</td><td>RL policy、MPC、mocap、YouTube 轨迹</td><td>Transformer，16–48 步</td><td>离线 next-token 预测</td></tr>
+        <tr><td>ULT 2025</td><td colspan="3">teacher 和 student 放在同一个 transformer 里，RL + next state-action 预测 + 动作模仿一起训，只有一个阶段</td></tr>
+      </table></div>
+      <ul class="tight">
+        <li><b>为什么要绕这一步：</b>Lee 2020 用 TRPO 直接训同一个 TCN-20：坡上速度 0、台阶成功率 0%（Fig. 5E）。OmniH2O 直接用 RL 训 25 步历史只有 47.11%（不带历史 90.62%），因为 "RL being unable to handle the exponential growth in input complexity"。</li>
+        <li><b>代价：</b>先要有 teacher，再加一个甚至几个监督阶段，这正是 ULT 想省掉的。</li>
+      </ul>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>GOTT 只有一个 PPO 阶段、没有 teacher，所以历史停在 5 帧叠帧；它唯一的监督小网络是事后单独训的 contact predictor。</p>
+      </div>
+    </div>
+  </details>
+
+  <h3 id="history-table" style="margin-top: 1.75rem; scroll-margin-top: 3.5rem">带长度 / 记忆消融的例子</h3>
+  <p class="note">按历史编码器分组。"读图"是从论文的图上读的近似值；秒数 = 步数 ÷ 控制频率，是我们换算的。</p>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>论文</th><th>任务 · 怎么训</th><th>试过的历史</th><th>测到的效果</th></tr>
+    <tr><th colspan="4" style="color: var(--accent); padding-top: .9rem">叠帧 + MLP</th></tr>
+    <tr><td><a href="https://arxiv.org/abs/2610.03861">GOTT</a> 2026</td><td>灵巧手接触建立，三只手 · PPO</td><td>K = 1 / 5 帧（10 Hz：0.1 / 0.5 s）</td><td>仿真成功率 63.0% / 78.7%（Table 4）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/1710.06537">Peng</a> 2018</td><td>Fetch 推冰球，真机 · RDPG（DDPG 系）</td><td>无 / 8 步叠帧 / LSTM</td><td>真机成功率 0.67 / 0.70 / 0.89；仿真 0.83 / 0.87 / 0.91（Table II）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2406.08858">OmniH2O</a> 2024</td><td>H1 人形全身跟踪 · MLP student，DAgger</td><td>0 / 5 / 25 / 50 步（50 Hz：0–1 s）</td><td>仿真成功率 93.80 / 93.60 / 94.10 / 93.56%；真机位置误差 83.26 / 62.18 / 47.94 / 50.24 mm（Table 1b、2b）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2608.07328">Gravina</a> 2026</td><td>Kyon 四足容错行走 · PPO</td><td>H = 1 / 2 / 3 / 5 / 7（50 Hz：0.02–0.14 s）</td><td>H 从 1 到 2 提升最大，再长"only marginal gains"（Fig. 8）；选 H = 3</td></tr>
+    <tr><th colspan="4" style="color: var(--accent); padding-top: .9rem">LSTM / GRU</th></tr>
+    <tr><td><a href="https://arxiv.org/abs/1808.00177">Dactyl</a> 2018</td><td>Shadow 手转方块，真机 · PPO</td><td>无记忆 / LSTM</td><td>连续成功次数中位数 3.5 / 13（Table 5）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/1910.07113">魔方</a> 2019</td><td>Shadow 手解魔方 · PPO + ADR</td><td>LSTM，在一个 episode 里累积</td><td>翻面越做越快，比第一次快约 1.6 s，收敛到约 4 s 一次；清空 hidden state 后用时回升（§9）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2006.02402">Siekmann</a> 2020</td><td>Cassie 双足，真机 · PPO</td><td>无记忆 / LSTM，有无 DR</td><td>10 个 seed：LSTM + DR 全部走满 40 s；不加 DR 的 LSTM 平均 11.7 s，FF 12.3 s（Table III）；FF + DR 抖得没法上机</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2201.08117">Miki</a> 2022</td><td>ANYmal 野外感知行走 · GRU student，BC</td><td>GRU / MLP encoder</td><td>GRU 更好；MLP "failed to reconstruct the privileged information"（S9，只有学习曲线）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2309.05665">Robot Parkour</a> 2023</td><td>A1 跑酷，仿真 · GRU student，蒸馏</td><td>GRU / 无记忆 MLP</td><td>爬 / 跳 / 钻 / 侧倾成功率 86 / 80 / 100 / 73% vs 0 / 1 / 63 / 43%（Table 2）</td></tr>
+    <tr><th colspan="4" style="color: var(--accent); padding-top: .9rem">TCN / 1-D conv</th></tr>
+    <tr><td><a href="https://arxiv.org/abs/2010.11251">Lee</a> 2020</td><td>ANYmal 盲走 · TCN student，DAgger</td><td>1 / 20 / 100 步（0.02 / 0.4 / 2.0 s）</td><td>坡上差别小；18 cm 台阶约 22 / 67 / 78%（读图）；50 N 侧推下的方向偏差 TCN-100 比 TCN-1 少 35.5%（Fig. 5）；GRU 介于 TCN-20 和 TCN-100 之间（S8）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2107.04034">RMA</a> 2021</td><td>A1 四足 · 适配模块，监督回归</td><td>有 / 无 50 步（0.5 s）适配模块</td><td>仿真成功率 73.5% / 52.1%，Expert 76.2%（Table II）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2210.04887">HORA</a> 2022</td><td>Allegro 手内转 · 适配模块，监督回归</td><td>10 / 20 / 30 步（20 Hz：0.5 / 1 / 1.5 s）</td><td>RotR 215.81 / 220.46 / 222.27，30 步饱和（App. Table 3）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2401.16889">Li</a> 2024</td><td>Cassie 多技能 · PPO，1-D CNN 长历史 + 4 步短历史</td><td>1 / 2 / 3 / 4 s</td><td>训练回报约 0.07 / 0.085 / 0.10 / 0.085（读图，Fig. 29）；作者选 2 s</td></tr>
+    <tr><th colspan="4" style="color: var(--accent); padding-top: .9rem">Transformer</th></tr>
+    <tr><td><a href="https://arxiv.org/abs/2212.07740">TERT</a> 2023</td><td>A1 四足 · BC + DAgger，teacher 由 RL 训练</td><td>T = 1 … 100（0.02–2 s）</td><td>回报约 17.75（T = 1）→ 18.9（T = 20）→ 19.1（T 约 45–70，峰值）→ 19.03（T = 100）（读图，Fig. 7）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2305.14654">Barkour</a> 2023</td><td>四足敏捷赛道，仿真 · BC 蒸馏 RL specialist</td><td>W = 2 / 4 / 8 / 15（50 Hz：至多 0.3 s）</td><td>Barkour 分数约 0.53 / 0.56 / 0.57 / 0.59，误差棒重叠；MLP 约 0.27（读图，Fig. 11）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2303.03381">Radosavovic</a> 2024</td><td>Digit 人形 · PPO + KL teacher</td><td>context 1 / 8 / 16（50 Hz：16 步 = 0.32 s）</td><td>25° 坡上速度约 0.61 / 0.70 / 0.75 m/s，指令 1 m/s（读图，Fig. 8B）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2402.19469">NTP</a> 2024</td><td>Digit 人形，MuJoCo 评测 · 监督 next-token</td><td>16 / 32 / 48 步</td><td>位置跟踪误差约 0.305 / 0.301 / 0.286 m（读图，Fig. 10）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2605.21330">Yao</a> 2026</td><td>腱驱动灵巧手手内转，真机 · 蒸馏 student</td><td>窗口 1 → 10（20 Hz：0.05–0.5 s）</td><td>RPM 平均 8.08 → 10.58（+31%）；窗口 10 时 transformer 9.33 / LSTM 7.00 / MLP 5.08 RPM（Table II、III）</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2509.23745">LocoFormer</a> 2025</td><td>跨形态 locomotion · PPO 直接训 Transformer-XL</td><td>分段缓存，示例配置最长 896 步 ≈ 18 s</td><td>10 个没见过的机器人平均 0.96 vs GRU 0.37（Table 1）；6 s rollout 里双足的平均存活时间，先适应 0 / 1 / 5 s 时约 4.78 / 5.20 / 5.35 s，收益主要在第 1 s（读图，Fig. 4a）</td></tr>
+    <tr><th colspan="4" style="color: var(--accent); padding-top: .9rem">SSM 和其他</th></tr>
+    <tr><td><a href="https://arxiv.org/abs/2603.17653">REAL</a> 2026</td><td>Go2 跑酷 · 蒸馏 student</td><td>速度估计器 1 / 10 帧</td><td>速度 RMSE 0.33 / 0.28（Table VI）；10 帧时 Mamba 13.14 ms vs transformer 23.07 ms</td></tr>
+    <tr><td><a href="https://arxiv.org/abs/2311.13081">Eschmann</a> 2024</td><td>Crazyflie 四旋翼，真机 · TD3</td><td>有 / 无动作历史</td><td>定点飞行成功 10/10 vs 5/10，轨迹跟踪 10/10 vs 0/10（Table II）</td></tr>
+  </table></div>
+
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-MLP-vs-Transformer/lee-fig5.jpg" alt="Lee et al. 2020 Fig. 5：TCN 历史长度和 privileged training 的消融"></div>
+    <figcaption><b>Fig. 5</b>（作者原图，Lee et al. 2020，裁掉了 A 和 H–J）ANYmal 盲走：历史长度（B–D）和不用 teacher 直接 RL（E–G）。每个模型 5 个 seed，每项测试 100 次。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>图例 TCN-1 (0.02 s) / TCN-20 (0.4 s) / TCN-100 (2.0 s) / Teacher：</b>浅蓝到深蓝是历史越来越长的 student，灰色是看 privileged state 的 MLP teacher。</li>
+    <li><b>B Slope：</b>坡上速度四根柱子几乎一样高：这个任务不需要记忆。</li>
+    <li><b>B Step / C 18 cm step：</b>台阶越高，历史长短差得越多；C 里后腿（Hind legs）差得最多。论文的解释：记忆短的控制器在后腿碰到台阶时失败率特别高，记忆长的会把后腿抬得更高。</li>
+    <li><b>D External force：</b>侧向推 50 N、持续 5 s，偏离指令方向的角度 TCN-100 比 TCN-1 小 35.5%。</li>
+    <li><b>E–G（红 vs 蓝）：</b>同一个 TCN-20，红色是直接用 RL 训：坡上速度和台阶成功率都是 0，F 里奖励一直低于蓝线，G 里 episode 只有几十步，说明它根本没学会站稳。</li>
+  </ol>
+
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-MLP-vs-Transformer/rado-fig8.jpg" alt="Radosavovic et al. 2024 Fig. 8：网络结构、context 长度、训练目标的消融"></div>
+    <figcaption><b>Fig. 8</b>（作者原图，Radosavovic et al. 2024）Digit 人形，仿真中的消融；每次只改一处，其余不变，各结构分别调参。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>A Architecture：</b>同一套 teacher + PPO 流程下只换 student 的结构，3 个场景（坡、台阶、不稳的地面）共 30 次：Transf. 约 97%、LSTM 约 89%、TCN 约 86%、MLP 约 75%（读图）。</li>
+    <li><b>B Context：</b>指令 1 m/s（红虚线）往坡上走，横轴是坡度。context 16（深蓝）在每个坡度都最快，25° 时约 0.75 m/s，context 1 约 0.61。</li>
+    <li><b>C Objective：</b>只用 RL（橙）在 25° 坡上掉到约 0.15 m/s，只模仿 teacher（浅蓝）约 0.63，两者合起来（深蓝）约 0.75：teacher 帮 transformer 起步，RL 让它超过 teacher。</li>
+  </ol>
+
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-02-MLP-vs-Transformer/ntp-fig10.jpg" alt="Humanoid Locomotion as Next Token Prediction Fig. 10：数据量、context 长度、模型大小的 scaling"></div>
+    <figcaption><b>Fig. 10</b>（作者原图，Radosavovic et al. 2024，NeurIPS）离线 next-token 训练的 transformer，在 MuJoCo 里测位置跟踪误差（越低越好）。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>中间 Context Length：</b>16 → 32 → 48 步，误差约 0.305 → 0.301 → 0.286 m；纵轴只跨 0.28–0.31，所以总共只改善了约 2 cm。</li>
+    <li><b>左 Training Data、右 Model Size：</b>轨迹越多、参数越多（1M → 2M → 8M）误差越低。这是监督学习下的 scaling，不是 RL。</li>
+  </ol>
+</section>
+
+<section id="hurts">
+  <p class="eyebrow">Where history stops helping</p>
+  <h2>历史不灵的六种情况</h2>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>情况</th><th>证据</th></tr>
+    <tr><td><b>1 · 饱和</b></td><td>HORA：适配模块 10 → 20 → 30 步，RotR 215.81 → 220.46 → 222.27，到 30 步饱和；Kyon：H ≥ 2 后"only marginal gains"；TERT：T 约 45–70 到顶（读图）；Lee：坡上记忆长度"doesn't have a strong effect"；Li et al.："Using only a long history does not offer a clear benefit compared to a policy relying solely on a short history"</td></tr>
+    <tr><td><b>2 · 太长反而掉</b></td><td>Li et al.：3 s → 4 s 训练回报下降（读图约 0.10 → 0.085）；OmniH2O：真机误差 25 步 47.94 mm，50 步 50.24 mm；TERT：T = 100 略低于峰值（读图）</td></tr>
+    <tr><td><b>3 · 直接喂给 RL 就训不动</b></td><td>HORA Table 4：PPO 直接吃叠帧历史，3 / 5 / 10 / 20 / 30 步的 RotR 是 176.12 / 165.26 / 140.95 / 42.86 / 49.83；LSTM 10 / 20 / 30 步是 115.28 / 94.33 / 75.61；同样 30 步交给监督训练的适配模块是 222.27。OmniH2O：RL 不带历史 90.62%，带 25 步 47.11%。Lee：TCN-20 直接 TRPO，坡和台阶都是 0</td></tr>
+    <tr><td><b>4 · 记忆会过拟合仿真</b></td><td>Siekmann：RNN 在仿真里"significantly outperform memoryless policies"，但不做 DR 时到真机不比 FF 强（平均 11.7 s vs 12.3 s）；Peng：仿真里 FF + 8 步历史 0.87 和 LSTM 0.91 差不多，真机 0.70 vs 0.89</td></tr>
+    <tr><td><b>5 · 没东西可辨识</b></td><td>Dactyl：不做随机化时 FF 和 LSTM 收敛到同一性能；Rudin 2021：给 policy 加 memory 机制"does not improve the final performance"</td></tr>
+    <tr><td><b>6 · 模仿学习里的 copycat / causal confusion</b></td><td><a href="https://arxiv.org/abs/1905.11979">de Haan 2019</a>："access to more information can yield worse performance"；它转引的驾驶实验（Wang et al. 2019）里，带历史的 BC 验证集更好（perplexity 0.834 vs 0.989），上路却更差（行驶距离 144.92 vs 268.95，碰撞 6.49 vs 3.38）。<a href="https://arxiv.org/abs/2010.14876">Wen 2020</a> 把它叫 copycat：学会"predicting the expert's previous action, rather than the next action"。ACT 因此只看当前帧；Diffusion Policy 的视觉 CNN 版 T<sub>o</sub> 越长越差；<a href="https://arxiv.org/abs/2505.09561">Past-Token Prediction</a>：diffusion policy 带 16 步历史 Square 0.17，不带 0.79。<b>但这不是定律：</b>Wen 自己的 MuJoCo 实验里历史在 6 个任务中的 5 个有帮助；<a href="https://arxiv.org/abs/2212.06817">RT-1</a> 去掉 6 帧历史，seen 97 → 82、干扰物 83 → 50；Past-Token Prediction 的 regression policy 带历史 0.78、不带 0.19</td></tr>
+  </table></div>
+  <p class="note">另一个代价是延迟：transformer 每步要看整个 context（REAL：10 帧 23.07 ms），见 <a href="#why-mlp">Why MLP</a> 第 4 行。</p>
+  <p class="crux"><b>经验法则（推断，综合本节和上一节）：</b>① 先问有没有"看不见、在变、能从过去推出来"的量，没有就别加（Dactyl fn. 8、Rudin）。② 有的话，这些论文实际用的长度都在 0.5–2 s（GOTT 0.5 s、RMA 0.5 s、OmniH2O 0.5 s、HORA 1.5 s、Lee 2 s、Li 2 s），再长就不涨或变差（HORA、OmniH2O、Li）。③ 长历史别直接塞进 RL 的输入，用 teacher 蒸馏或监督目标训进去（Lee、RMA、HORA、OmniH2O、Radosavovic）。④ 只有 transformer 配上蒸馏、监督或大量数据时，更长的 context 还在涨（NTP 48 步、TERT 约 45–70 步、LocoFormer 秒级）。</p>
+</section>
+
+<section id="transformers">
+  <p class="eyebrow">When transformers win</p>
+  <h2>transformer 在 RL 控制里赢的三种情况，以及它们是怎么训出来的</h2>
+  <div class="table-wrap"><table class="grid">
+    <tr><th>情况</th><th>例子和数字</th><th>怎么训</th></tr>
+    <tr><td><b>1 · 长上下文，in-context adaptation</b></td><td><ul class="tight">
+      <li>Radosavovic 2024：仿真里 Transformer 约 97% vs MLP 约 75%（读图，Fig. 8A；各结构分别调参，控制了网络大小）</li>
+      <li>Barkour：Transformer 约 0.59 vs MLP 约 0.27（读图）；TERT：同一流程里 TERT 1.00 vs TCN 0.86</li>
+      <li>Yao 2026：真机窗口 10 时 transformer 9.33 / LSTM 7.00 / MLP 5.08 RPM</li>
+      <li><a href="https://arxiv.org/abs/2509.23745">LocoFormer</a>（CoRL 2025）：Transformer-XL，10 个没见过的机器人平均 0.96 vs GRU 0.37</li></ul></td>
+      <td>前三个是 teacher + 蒸馏 / KL；LocoFormer 直接 PPO，靠 Transformer-XL 的分段缓存</td></tr>
+    <tr><td><b>2 · 形态在变</b></td><td><ul class="tight">
+      <li><a href="https://arxiv.org/abs/2010.01856">Amorpheus</a>（ICLR 2021）：每个 limb 一个 token，比 GNN（SMP）好，Walker++ 约 7,000 vs 4,500（读图）；作者指出各形态的输入输出维度不同，单个 MLP（要求定长输入）没法直接表示</li>
+      <li><a href="https://arxiv.org/abs/2203.11931">MetaMorph</a>（ICLR 2022）：100 个 UNIMAL 机器人，约 3.3M 参数，1.5 GPU days；平地约 3,450，接近 100 个各自训练的 MLP（约 3,500，作者称为近似上界）；同参数量的 multi-task MLP 约 400（读图）</li>
+      <li><a href="https://arxiv.org/abs/2409.06366">URMA</a>（CoRL 2024）：16 种机器人，430k 参数；padding MLP "noticeably worse"，零样本到 A1 约 46 vs 9（读图）。注意 URMA 不是 transformer，是关节上的 attention encoder 接一个 MLP</li>
+      <li><a href="https://arxiv.org/abs/2408.06316">Body Transformer</a>（CoRL 2024）：单一形态，把身体结构做成 attention mask；A1-Walk 约 47 vs MLP 约 23（读图；MLP 吃同样的 embedding 拼接）；参数 688,762 vs MLP 699,467</li>
+      <li><a href="https://arxiv.org/abs/2407.15002">GET-Zero</a>（ICRA 2025）：见 <a href="#gott">Back to GOTT</a></li></ul></td>
+      <td>Amorpheus 用 TD3、MetaMorph / URMA / BoT 用 PPO 直接训；MetaMorph 要 replay-buffer balancing；GET-Zero 是蒸馏</td></tr>
+    <tr><td><b>3 · 视觉 token</b></td><td><ul class="tight">
+      <li>LocoTransformer（ICLR 2022）：本体感觉 1 个 token + 深度图 4 × 4 个空间 token；训练环境里和拼接 MLP 一样好，没见过的环境回报 +69% / +56%；真机森林里多走约 90%、零碰撞</li>
+      <li>历史只用了 3 步本体感觉和 4 帧深度图：这里 attention 用在空间上，不在时间上</li></ul></td>
+      <td>PPO 直接训</td></tr>
+  </table></div>
+  <ul class="tight">
+    <li><b>都很小：</b>Digit 1.4M，NTP 1–8M，MetaMorph 约 3.3M，BoT 约 0.69M，URMA 430k。GOTT 的 MLP 按层宽推算约 0.78M（685 × 512 + 512 × 512 + 512 × 256 + 256 × 128 + 128 × 32 个权重，我们自己算的，论文没报），是同一个量级。</li>
+    <li><b>大多有 teacher 或蒸馏：</b>Radosavovic、TERT、Barkour、GET-Zero；<a href="https://arxiv.org/abs/2505.05753">Embodiment Scaling Laws</a>（CoRL 2025）把 1,012 个机器人的 MLP PPO expert（[512, 256, 128]）BC 进一个 2.1M 参数的 URMA，光训 expert 就用了 160 张 GPU 5 天。</li>
+    <li><b>结构要修补：</b>GTrXL 的 gating + LayerNorm 位置；TrMRL 的 T-Fixup；MetaMorph 的 replay-buffer balancing。</li>
+    <li><b>反过来，监督目标下 transformer 才真正 scale：</b>Decision Transformer 把 RL 改写成"conditional sequence modeling"；Stop Regressing 把 value 回归改成分类（HL-Gauss）后，60M 参数的 Q-Transformer 峰值性能高 67%（离线）。</li>
+  </ul>
+</section>
+
+<section id="gott">
+  <p class="eyebrow">Back to GOTT</p>
+  <h2>同一个"跨手"问题的两种答案：GOTT 用 MLP + 固定槽位，GET-Zero 用 transformer + 蒸馏</h2>
+  <div class="flow"><pre>
+flowchart LR
+  G0["<b>GOTT</b><br/><span class='ex'>XHand、Sharpa、Allegro</span>"]:::example --> G1["<b>一次 PPO</b><br/>三只手一起训<br/>canonical 槽位 + mask"]
+  G1 --> G2["<b>MLP</b><br/><span class='ex'>未见 Allegro 变体 72.1%</span>"]:::win
+  Z0["<b>GET-Zero</b><br/><span class='ex'>44 个 LEAP 变体</span>"] --> Z1["<b>每只手一个 expert</b><br/>PPO 训，再 BC 蒸馏"]
+  Z1 --> Z2["<b>Graph embodiment<br/>transformer</b><br/><span class='ex'>未见变体 9.75 °/s</span>"]
+  </pre></div>
+  <div class="table-wrap"><table class="grid">
+    <tr><th></th><th>GOTT（running example）</th><th>GET-Zero（ICRA 2025）</th></tr>
+    <tr><td>任务</td><td>抓取 / 建立接触；XHand、Sharpa Wave、Allegro</td><td>手内旋转；LEAP Hand 去掉不同关节的变体，44 个能完成任务的拿来训练</td></tr>
+    <tr><td>怎么对付不同的手</td><td>固定的 26 关节 / 21 link canonical 槽位 + mask，输入输出定长</td><td>每个关节一个 token，手的连接关系作为 attention bias</td></tr>
+    <tr><td>训练</td><td>一次 PPO，三只手一起训，≈491.5M 步，L40S 24 h</td><td>每只手先训一个 PPO expert，每只手采 7 h demo，再 BC + self-modeling loss 蒸馏</td></tr>
+    <tr><td>网络</td><td>MLP [512, 512, 256, 128]，0.752 ms/步</td><td>transformer；参数量和延迟论文未报告</td></tr>
+    <tr><td>没见过的手</td><td>3 个去掉 link 的 Allegro 变体 72.1%（Table 2）</td><td>新结构 + 新几何 9.75 °/s；训练手上 16.32，RL expert 16.50（"99%"）；Amorpheus 式 ET 基线 8.12（Table I）</td></tr>
+  </table></div>
+  <p class="note">两边任务和指标不同（成功率 vs 旋转角速度），数字不能直接比。GET-Zero 没有 MLP 基线，也没有"同一个 transformer 直接 RL 训"的对照；它给的理由是蒸馏"simplifies data generation"，而联合 RL 训的多形态方法要 replay-buffer balancing。</p>
+  <p class="crux"><b>为什么 GOTT 能留在 MLP（推断）：</b>它把"跨手"变成了定长的槽位对齐问题，输入输出都定长，一次 PPO 就能训。难点在对齐而不在 attention：<a href="https://arxiv.org/abs/2410.02479">CrossDex</a>（ICLR 2025）同样是 MLP，零填充的基线（MT-Raw-OA）到没见过的手只有 0.162（视觉）/ 0.054（状态），用对齐的 eigengrasp 动作空间是 0.352 / 0.391；URMA 也显示 padding 明显差。transformer 的优势在手的结构本身变了、要沿着连接关系泛化的时候（GET-Zero、MetaMorph）。</p>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>这页的局限</h2>
+  <ul class="tight">
+    <li><b>很多数字是读图：</b>Radosavovic Fig. 8、NTP Fig. 10、Lee Fig. 5、TERT、Barkour、Li et al.、LocoFormer Fig. 4a、Amorpheus、MetaMorph、URMA、BoT、SimBa 都只有图，表里标了"读图"，误差约几个百分点。</li>
+    <li><b>只有单篇内部的对照：</b>每个结构对比都在一篇论文内部；跨论文的归纳（"0.5–2 s 往往就够"、四条经验法则）是我们的推断，任务、频率、训练方式都不同。</li>
+    <li><b>"transformer 在 RL 里难训"只有间接证据：</b>没找到"同一个机器人控制任务上，PPO 训 transformer 比 MLP 差"的直接对照。GTrXL 的"接近随机策略"来自 DMLab-30（V-MPO），TrMRL 来自 meta-RL；BoT、LocoFormer、MetaMorph 反而说明小 transformer 用 PPO 也能训好。更准确的说法是：要额外的结构修补、teacher 或很多样本。</li>
+    <li><b>只有一个来源的结论：</b>Radosavovic 的结构对比只在仿真、30 次试验、3 个场景；REAL 的延迟只在一块 Jetson 上测；Yao 2026、Gravina 2026、REAL 是预印本或很新的论文；Barkour、RT-1 的 venue 没核实。</li>
+    <li><b>copycat 的证据比常说的弱：</b>Wen 2020 自己的实验里历史多数有帮助；de Haan 的"带历史更差"数字是转引 Wang et al. 2019 的驾驶实验；而且这些都是模仿学习，不是 RL。</li>
+    <li><b>没覆盖：</b>model-based RL（Dreamer、TD-MPC2）的网络结构、离线 RL、真实世界在线 RL。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For misc（最近的项目：Sim-robot-learning、Agent-centric real-to-sim、Robotic-harness）</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>Sim-robot-learning（在 WorldClaw 的 Genesis sim 里训低层 policy）：</b>起点就用 GOTT / legged_gym 式的 MLP + 3–5 帧叠帧、一次 PPO；只有开了较强的 DR（质量、摩擦、地形）时再加历史编码器，而且按 Lee / RMA / OmniH2O 的做法先训 privileged MLP teacher 再蒸馏，别把 30 帧直接塞进 PPO（HORA、OmniH2O）。</li>
+    <li><b>Agent-centric real-to-sim：</b>real-to-sim 估出来的质量、摩擦本来就不准；与其追求精确，不如把它们当成 DR 的范围，让带历史的 policy 在线辨识（Dactyl、Siekmann、Peng 的结果）。WorldClaw 生成的场景正好可以当 DR 的分布来源。（推断）</li>
+    <li><b>Robotic-harness：</b>文献里的分工和 harness 一样：图像 + 语言 + 离线数据的高层用 transformer（π0 推理 73 ms、OpenVLA 约 6 Hz），接触闭环交给毫秒级的小 MLP primitive（GOTT 0.752 ms/步）。harness 调 primitive 时，不必要求 primitive 本身"更大更通用"。</li>
+  </ul>
+</section>
+
+<section id="sources">
+  <p class="eyebrow">Sources</p>
+  <h2>来源（都读过原文；数字出处在正文里标了 Table / Fig.）</h2>
+  <p class="eyebrow">Running example</p>
+  <ul class="tight">
+    <li><a href="https://arxiv.org/abs/2610.03861">GOTT</a>（arXiv 2610.03861v2）：685 维输入、MLP、K = 5、Table 4 消融、OHRA encoder、0.752 ms。</li>
+  </ul>
+  <p class="eyebrow">历史 / 记忆</p>
+  <ul class="tight">
+    <li><a href="https://arxiv.org/abs/1710.06537">Peng et al.</a>（ICRA 2018）：真机 LSTM vs FF vs FF + 8 步历史（Table II）。</li>
+    <li><a href="https://arxiv.org/abs/1808.00177">OpenAI, Learning Dexterous In-Hand Manipulation</a>（IJRR 39(1)）：LSTM vs FF 真机（Table 5），LSTM 状态预测方块大小 80%，fn. 8。</li>
+    <li><a href="https://arxiv.org/abs/1910.07113">OpenAI, Solving Rubik's Cube with a Robot Hand</a>（arXiv 2019）：emergent meta-learning、清空 hidden state、探针（§9）。</li>
+    <li><a href="https://arxiv.org/abs/2006.02402">Siekmann et al.</a>（RSS 2020）：Cassie LSTM ± DR vs FF（Table III、IV）。</li>
+    <li><a href="https://arxiv.org/abs/2010.11251">Lee et al.</a>（Science Robotics 2020）：TCN-1/20/100、直接 RL 失败、GRU 对比（Fig. 5，S8）。</li>
+    <li><a href="https://arxiv.org/abs/2109.11978">Rudin et al.</a>（CoRL 2021）：分钟级大规模并行 PPO；memory 机制没有提升。</li>
+    <li><a href="https://arxiv.org/abs/2107.04034">Kumar et al., RMA</a>（RSS 2021）：50 步 1-D CNN 适配模块，异步 10 / 100 Hz（Table II）。</li>
+    <li><a href="https://arxiv.org/abs/2210.04887">Qi et al., HORA</a>（CoRL 2022）：适配模块 10/20/30 步（App. Table 3）；PPO 直接吃长历史（App. Table 4）。</li>
+    <li><a href="https://arxiv.org/abs/2201.08117">Miki et al.</a>（Science Robotics 2022）：GRU belief encoder，S9 GRU vs MLP。</li>
+    <li><a href="https://arxiv.org/abs/2107.03996">Yang et al., LocoTransformer</a>（ICLR 2022）：视觉 + 本体感觉 transformer vs 拼接。</li>
+    <li><a href="https://arxiv.org/abs/2303.03381">Radosavovic et al.</a>（Science Robotics 9(89), 2024）：Fig. 8 结构 / context / 目标消融；1.4M 参数；PPO + KL。</li>
+    <li><a href="https://arxiv.org/abs/2402.19469">Radosavovic et al., Humanoid Locomotion as Next Token Prediction</a>（NeurIPS 2024）：Fig. 10 context 16/32/48。</li>
+    <li><a href="https://arxiv.org/abs/2503.08997">Liu et al., ULT</a>（IROS 2025）：teacher-student 多阶段的代价；transformer data-hungry。</li>
+    <li><a href="https://arxiv.org/abs/2603.17653">Liu et al., REAL</a>（预印本 2026）：板上延迟 13.14 vs 23.07 ms；速度估计 1 vs 10 帧（Table VI）。</li>
+    <li><a href="https://arxiv.org/abs/2406.08858">He et al., OmniH2O</a>（CoRL 2024）：历史 0/5/25/50 步、LSTM / GRU、RL vs DAgger（Table 1、2）。</li>
+    <li><a href="https://arxiv.org/abs/2401.16889">Li et al.</a>（IJRR 2024）：Cassie 1–4 s 历史（Fig. 29）、长短历史（Fig. 6）。</li>
+    <li><a href="https://arxiv.org/abs/2212.07740">Lai et al., TERT</a>（ICRA 2023）：transformer T = 1–100（Fig. 7）、TERT vs TCN（Fig. 3）。</li>
+    <li><a href="https://arxiv.org/abs/2305.14654">Caluwaerts et al., Barkour</a>（arXiv 2023）：Locomotion-Transformer W = 2–15、vs MLP（Fig. 11）。</li>
+    <li><a href="https://arxiv.org/abs/2608.07328">Gravina et al.</a>（IROS 2026）：H = 1–7（Fig. 8）。</li>
+    <li><a href="https://arxiv.org/abs/2605.21330">Yao et al.</a>（预印本 2026）：手内转 transformer，窗口 1–10、vs LSTM / MLP（Table II、III）。</li>
+    <li><a href="https://arxiv.org/abs/2509.23745">Liu et al., LocoFormer</a>（CoRL 2025）：PPO 训 Transformer-XL，vs GRU（Table 1、Fig. 4a）。</li>
+    <li><a href="https://arxiv.org/abs/2309.05665">Zhuang et al., Robot Parkour Learning</a>（CoRL 2023）：GRU vs MLP（Table 2）。</li>
+    <li><a href="https://arxiv.org/abs/2311.13081">Eschmann et al., Learning to Fly in Seconds</a>（RA-L 2024）：动作历史消融（Table II）。</li>
+    <li><a href="https://arxiv.org/abs/2404.05695">Gu et al., Humanoid-Gym</a>（ICRA 2024 workshop）、<a href="https://arxiv.org/abs/2406.10454">Fu et al., HumanPlus</a>（CoRL 2024）、<a href="https://arxiv.org/abs/2312.11460">Long et al., HIM</a>（ICLR 2024）、<a href="https://arxiv.org/abs/2301.10602">Nahrendra et al., DreamWaQ</a>（ICRA 2023）、<a href="https://arxiv.org/abs/2212.03238">Margolis &amp; Agrawal, Walk These Ways</a>（CoRL 2022）：只报告所用历史长度，没有消融。</li>
+    <li><a href="https://arxiv.org/abs/2409.12949">Zhang et al.</a>（T-RO 2025）：四旋翼 MLP policy 0.078 ms、CNN 适配模块 0.087 ms。</li>
+  </ul>
+  <p class="eyebrow">RL 里的网络规模和稳定性</p>
+  <ul class="tight">
+    <li><a href="https://arxiv.org/abs/1910.06764">Parisotto et al., GTrXL</a>（ICML 2020）：原版 transformer 接近随机策略；DMLab-30 Table 1。</li>
+    <li><a href="https://arxiv.org/abs/2410.09754">Lee et al., SimBa</a>（ICLR 2025）：SAC + MLP 参数越多越差；SimBa 的三个组件。</li>
+    <li><a href="https://arxiv.org/abs/2405.16158">Nauman et al., BRO</a>（NeurIPS 2024）：dense critic 退化；BroNet ≈5M + LayerNorm。</li>
+    <li><a href="https://arxiv.org/abs/2402.08609">Obando-Ceron et al., MoE for Deep RL</a>（ICML 2024）：Rainbow 加宽 ×8 掉约 40%。</li>
+    <li><a href="https://arxiv.org/abs/2305.19452">Schwarzer et al., BBF</a>（ICML 2023）："scaling network size is not sufficient on its own"。</li>
+    <li><a href="https://arxiv.org/abs/2106.01151">Bjorck et al.</a>（NeurIPS 2021）：更深的网络在 SAC / DDPG 下不稳，spectral norm 修复。</li>
+    <li><a href="https://arxiv.org/abs/2006.05990">Andrychowicz et al.</a>（ICLR 2021）：on-policy 的网络宽度、深度、初始化建议。</li>
+    <li><a href="https://arxiv.org/abs/2403.03950">Farebrother et al., Stop Regressing</a>（ICML 2024）：回归 loss 难以扩到大网络 / transformer；HL-Gauss 后 Q-Transformer +67%。</li>
+    <li><a href="https://arxiv.org/abs/2206.06614">Melo, TrMRL</a>（ICML 2022）：PPO 训 transformer 不稳，T-Fixup。</li>
+    <li><a href="https://arxiv.org/abs/2106.01345">Chen et al., Decision Transformer</a>（NeurIPS 2021）：RL 写成 conditional sequence modeling。</li>
+  </ul>
+  <p class="eyebrow">跨形态</p>
+  <ul class="tight">
+    <li><a href="https://arxiv.org/abs/2010.01856">Kurin et al., Amorpheus</a>（ICLR 2021）、<a href="https://arxiv.org/abs/2203.11931">Gupta et al., MetaMorph</a>（ICLR 2022）、<a href="https://arxiv.org/abs/2409.06366">Bohlinger et al., URMA</a>（CoRL 2024）、<a href="https://arxiv.org/abs/2408.06316">Sferrazza et al., Body Transformer</a>（CoRL 2024）：形态 token / attention，直接 RL 训。</li>
+    <li><a href="https://arxiv.org/abs/2407.15002">Patel &amp; Song, GET-Zero</a>（ICRA 2025）：PPO expert → BC 蒸馏（Table I）。</li>
+    <li><a href="https://arxiv.org/abs/2410.02479">Yuan et al., CrossDex</a>（ICLR 2025）：MLP + eigengrasp vs 零填充（Table 1）。</li>
+    <li><a href="https://arxiv.org/abs/2505.05753">Ai et al., Towards Embodiment Scaling Laws in Robot Locomotion</a>（CoRL 2025）：1,012 个机器人，MLP expert → 2.1M URMA。</li>
+    <li><a href="https://arxiv.org/abs/2310.10486">Shafiee et al., ManyQuadrupeds</a>（ICRA 2024）：一个 MLP 控 16 种四足。</li>
+  </ul>
+  <p class="eyebrow">模仿学习 / VLA 对照</p>
+  <ul class="tight">
+    <li><a href="https://arxiv.org/abs/2304.13705">Zhao et al., ACT</a>（RSS 2023）、<a href="https://arxiv.org/abs/2303.04137">Chi et al., Diffusion Policy</a>（RSS 2023）、<a href="https://arxiv.org/abs/2405.12213">Octo</a>（RSS 2024）、<a href="https://arxiv.org/abs/2406.09246">Kim et al., OpenVLA</a>（CoRL 2024）、<a href="https://arxiv.org/abs/2410.24164">Black et al., π0</a>（RSS 2025）：规模、输入、历史、延迟。</li>
+    <li><a href="https://arxiv.org/abs/2010.14876">Wen et al.</a>（NeurIPS 2020）、<a href="https://arxiv.org/abs/1905.11979">de Haan et al.</a>（NeurIPS 2019）：copycat / causal confusion。</li>
+    <li><a href="https://arxiv.org/abs/2212.06817">Brohan et al., RT-1</a>（arXiv 2022）、<a href="https://arxiv.org/abs/2505.09561">Torne et al., Past-Token Prediction</a>（arXiv 2025）：历史有时帮、有时害。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">专题页，没有 PDF；来源见 <a href="#sources">Sources</a> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+</body>
+</html>
