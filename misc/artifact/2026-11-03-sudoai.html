@@ -1,0 +1,968 @@
+<!doctype html>
+<!-- sudoai: a teardown page, not a paper page. It keeps the library's tokens and chart machinery
+     (same fonts, colors and Mermaid setup as the paper template) but its own structure: every claim
+     carries a source chip (官方 / 视频 / 招聘 / 推测·把握) because the company published no paper. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>sudoai</title>
+<meta name="description" content="sudo（原 Hillbot 班底，苏昊的 SAPIEN/ManiSkill 团队）的 #sudo R1 只用仿真数据训 pick policy。按视频截图、招聘帖和采访倒推：点一下 → target mask → 双目算出的 RGB-D（多半转成点云）进单步闭环 policy；在 SAPIEN/ManiSkill 里由看得到真值的 expert 蒸馏出视觉 student。">
+<meta name="paper:title" content="#sudo R1 背后可能是什么：localization、RGB 怎么进 policy、policy 怎么训">
+<meta name="paper:source" content="https://www.sudo.ai/">
+<meta name="paper:venue" content="专题 · 公开资料倒推 2026-11-03">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* Layout: one ~72ch reading column; photos, UI screenshots and charts use the full 1040px frame.
+   Source chips encode where a claim comes from: blue = sudo's own words, green = seen in their
+   videos, amber = their job posts, violet dashed = my inference with a confidence level. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --guess: #6a3db8; --guess-bg: #f3eefc; --pin: #2346c8; --pin-ink: #ffffff; --press: #0b6e80;
+  --paper: #ffffff; --fig-dim: 1;
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --guess: #c3a5ff; --guess-bg: #21192f; --pin: #93b0ff; --pin-ink: #0f1216; --press: #6fd4e4;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --guess: #c3a5ff; --guess-bg: #21192f; --pin: #93b0ff; --pin-ink: #0f1216; --press: #6fd4e4;
+  --fig-dim: .9; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.6rem, 8vw, 4rem); font-weight: 800; font-stretch: 118%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.08rem; font-weight: 700; margin-top: 1.6rem; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+code, .ex { font-family: var(--f-mono); font-size: .86em; overflow-wrap: anywhere; }
+.ex { color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+q { font-style: italic; }
+.table-wrap { overflow-x: auto; }
+
+/* source chips */
+.chip { display: inline-block; font: 500 .68rem/1.55 var(--f-mono); letter-spacing: .03em; padding: 0 .42em; border-radius: 3px; border: 1px solid currentColor; vertical-align: .14em; white-space: nowrap; }
+.chip.claim { color: var(--accent); }
+.chip.seen { color: var(--win); }
+.chip.job { color: var(--ex); }
+.chip.guess { color: var(--guess); border-style: dashed; background: var(--guess-bg); }
+.chip.paper { color: var(--muted); }
+.chip.press { color: var(--press); }
+.legend { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; margin: .9rem 0 0; font-size: .88rem; color: var(--muted); max-width: none; padding: 0; list-style: none; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .65rem; }
+.full-title { font-size: 1.22rem; line-height: 1.45; margin: 0; font-weight: 700; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+.lead { font-size: 1.05rem; margin: 0 0 1rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; max-width: none; }
+.tldr dl > div { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .7rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.04rem; max-width: 72ch; }
+
+/* evidence cards: four sources, same anatomy */
+.sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: .75rem; margin-top: 1rem; }
+.src-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: .9rem 1rem; min-width: 0; }
+.src-card h3 { margin: 0 0 .15rem; font-size: 1rem; }
+.src-card .what { font: 500 .75rem var(--f-mono); color: var(--muted); margin: 0 0 .5rem; }
+.src-card ul { padding-left: 1.05rem; margin: 0; font-size: .92rem; }
+.src-card li + li { margin-top: .25rem; }
+
+/* photos and screenshots with numbered pins */
+.shot { margin: 1.25rem 0; }
+.shot .mat { position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--rule); background: var(--paper); line-height: 0; }
+.shot .mat img { display: block; width: 100%; height: auto; filter: brightness(var(--fig-dim)); }
+.pin { position: absolute; transform: translate(-50%, -50%); width: clamp(1.25rem, 3.2vw, 1.7rem); height: clamp(1.25rem, 3.2vw, 1.7rem); border-radius: 50%;
+  display: grid; place-items: center; background: var(--pin); color: var(--pin-ink); font: 600 clamp(.66rem, 1.6vw, .82rem)/1 var(--f-mono);
+  box-shadow: 0 0 0 2px var(--surface); }
+.tag { position: absolute; font: 500 clamp(.6rem, 1.5vw, .78rem)/1.3 var(--f-mono); background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--ink); padding: .1rem .4rem; border-radius: 3px; }
+.shot figcaption, .clip figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; line-height: 1.55; }
+.shot figcaption b, .clip figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+ol.read { padding-left: 1.6rem; margin: .6rem 0 0; }
+ol.read li + li { margin-top: .35rem; }
+ol.read li::marker { font: 600 .85em var(--f-mono); color: var(--accent); }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: .75rem; }
+.pair .shot { margin: 0; }
+
+/* videos */
+.clips { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: .75rem; margin: 1.25rem 0; }
+.clip { margin: 0; min-width: 0; }
+.clip video { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; background: #000; }
+
+/* tables */
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .55rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+table.grid td:first-child { font-weight: 700; }
+table.grid.opts { min-width: 38rem; }
+table.grid.opts td:first-child { font-weight: 400; width: 24%; }
+table.spec { min-width: 640px; }
+table.spec td:nth-child(2) { width: 38%; }
+table.map { min-width: 640px; }
+table.map td:first-child { width: 30%; }
+table.rel { table-layout: fixed; min-width: 760px; }
+table.rel th:nth-child(1) { width: 20%; }
+table.rel th:nth-child(2) { width: 26%; }
+table.rel th:nth-child(3) { width: 27%; }
+table.rel tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: .4rem 0 0; }
+
+/* three meanings of localization, three options for the target: side-by-side cards */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: .75rem; margin-top: 1rem; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: .9rem 1rem 1rem; min-width: 0; }
+.card h3 { margin: 0 0 .1rem; }
+.card .sub { font: 500 .75rem var(--f-mono); color: var(--muted); margin: 0 0 .5rem; }
+.card ul { padding-left: 1.05rem; margin: 0; font-size: .93rem; }
+.card li + li { margin-top: .3rem; }
+.card.pick { border-color: var(--guess); box-shadow: inset 0 0 0 1px var(--guess); }
+.verdict { font: 500 .78rem var(--f-mono); color: var(--guess); margin: .6rem 0 0; }
+
+/* running example strip */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .85rem 1.1rem; max-width: none; margin: 0 0 1rem; }
+.setup .eyebrow { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+
+/* staged training walkthrough */
+ol.stages { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: .6rem; max-width: none; counter-reset: st; }
+ol.stages > li { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: .85rem 1rem; display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: .2rem .8rem; counter-increment: st; }
+ol.stages > li::before { content: counter(st); grid-row: span 3; font: 600 1.35rem/1.1 var(--f-display); color: var(--accent); }
+ol.stages .st-name { font-family: var(--f-display); font-weight: 700; }
+ol.stages .st-io { font-size: .88rem; color: var(--muted); }
+ol.stages ul { padding-left: 1.05rem; margin: .35rem 0 0; font-size: .93rem; max-width: 72ch; }
+ol.stages ul li + li { margin-top: .25rem; }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end) */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+ol.qs { padding-left: 1.5rem; margin: .6rem 0 0; }
+ol.qs li + li { margin-top: .45rem; }
+ol.qs li::marker { font: 600 .85em var(--f-mono); color: var(--accent); }
+ul.refs { padding-left: 1.1rem; font-size: .9rem; }
+ul.refs li + li { margin-top: .3rem; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+.shot .mat img { cursor: zoom-in; }
+
+@media (max-width: 560px) {
+  .tldr dl > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+<script type="application/json" id="agent-context">{
+ "about": "Hidden from readers: the facts an agent needs to answer questions about this page and to change it. Written by the paper-explain skill's build_index.py.",
+ "page": "2026-11-03-sudoai",
+ "open": "#2026-11-03-sudoai after the library artifact's link opens this page directly",
+ "project": "misc",
+ "tldr": "sudo（原 Hillbot 班底，苏昊的 SAPIEN/ManiSkill 团队）的 #sudo R1 只用仿真数据训 pick policy。按视频截图、招聘帖和采访倒推：点一下 → target mask → 双目算出的 RGB-D（多半转成点云）进单步闭环 policy；在 SAPIEN/ManiSkill 里由看得到真值的 expert 蒸馏出视觉 student。",
+ "paper": {
+  "title": "#sudo R1 背后可能是什么：localization、RGB 怎么进 policy、policy 怎么训",
+  "venue": "专题 · 公开资料倒推 2026-11-03",
+  "date": "",
+  "source": "https://www.sudo.ai/",
+  "pdf": "",
+  "links": {
+   "sudo.ai 博客": "https://www.sudo.ai/",
+   "Careers · 91 个职位": "https://www.sudo.ai/careers",
+   "bothaus": "https://www.sudo.ai/bothaus",
+   "X @sudo_robotics": "https://x.com/sudo_robotics"
+  }
+ },
+ "sections": [
+  "tldr",
+  "evidence",
+  "hardware",
+  "click",
+  "localization",
+  "policy",
+  "training",
+  "behaviors",
+  "related",
+  "who",
+  "foryou",
+  "open",
+  "sources"
+ ],
+ "library": {
+  "repo": "https://github.com/EricWang12/all_papers",
+  "page_file": "https://github.com/EricWang12/all_papers/blob/main/misc/artifact/2026-11-03-sudoai.html",
+  "figures": "https://github.com/EricWang12/all_papers/tree/main/misc/artifact/2026-11-03-sudoai",
+  "profile": "https://github.com/EricWang12/all_papers/blob/main/preferences.md",
+  "pdf_note": "The PDF is not in the repo (too large): fetch paper.pdf."
+ },
+ "answering": "Answer from the paper itself (paper.pdf), not only from this page; name the figure, table or section a number comes from, and say so when the paper does not report something. The reader's profile (library.profile) says how they like answers.",
+ "changing": "To change the page, edit library.page_file in the repo and republish it to this artifact, with the paper-explain skill (https://github.com/EricWang12/zw-claude-skills/tree/main/plugins/paper-explain) when you can. A page changed only in this artifact is copied into the repo by the skill's next run, so it is not lost."
+}</script>
+</head>
+<body>
+
+<nav class="bar" aria-label="页面导航">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / misc</span> / sudoai</span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#hardware">Hardware</a>
+      <a href="#click">Click</a>
+      <a href="#localization">Localization</a>
+      <a href="#policy">RGB → policy</a>
+      <a href="#training">Training</a>
+      <a href="#behaviors">行为 ↔ 机制</a>
+      <a href="#related">Related</a>
+      <a href="#who">Who</a>
+      <a href="#open">待验证</a>
+    </div>
+  </div>
+</nav>
+
+<header class="frame head">
+  <p class="eyebrow">Misc · 专题 · 公开资料倒推 · 2026-11-03</p>
+  <h1>sudoai</h1>
+  <p class="full-title">#sudo R1 背后可能是什么：localization、RGB 怎么进 policy、policy 怎么训</p>
+  <p class="meta">sudo robotics（sudo.ai）没发论文，也没开源。这页用五类公开材料拼出最可能的实现：官网博客、17 段官方视频（逐帧截图）、91 个招聘帖、采访报道、相关论文。每条结论都标了来源，推测还标了把握。</p>
+  <p class="links">
+    <a href="https://www.sudo.ai/">sudo.ai 博客</a>
+    <a href="https://www.sudo.ai/careers">Careers · 91 个职位</a>
+    <a href="https://www.sudo.ai/bothaus">bothaus</a>
+    <a href="https://x.com/sudo_robotics">X @sudo_robotics</a>
+  </p>
+  <ul class="legend" aria-label="来源图例">
+    <li><span class="chip claim">官方</span> 官网原话</li>
+    <li><span class="chip seen">视频</span> 官方视频里看得到</li>
+    <li><span class="chip job">招聘</span> 招聘帖原文</li>
+    <li><span class="chip press">报道</span> 采访、新闻里的原话</li>
+    <li><span class="chip paper">论文</span> 公开论文里的先例</li>
+    <li><span class="chip guess">推测·高/中/低</span> 我的推断和把握</li>
+  </ul>
+</header>
+
+<main class="frame">
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>谁做的</dt><dd>苏度科技（上海）/ Sudo AI GmbH（瑞士），核心就是原 Hillbot 班底：苏昊（Hao Su，SAPIEN、ManiSkill 的作者）、CEO 韩铮、COO Martina Hansen。sudo.ai 这个域名 2023–2025 年挂的是他们的 3D 生成 app sudoAI <span class="chip press">报道</span> <span class="chip paper">论文</span></dd></div>
+    <div><dt>是什么</dt><dd>一台自研的双臂上身机器人，加一个只做 pick 的 policy。官方说完全用仿真数据训练、零真机数据，首抓成功率约 98%，两次内接近 100% <span class="chip claim">官方</span>。7 月以后的采访改口：最后 1% 要靠真机数据微调 <span class="chip press">报道</span></dd></div>
+    <div><dt>谁定目标</dt><dd>演示平板上有 <b>Pick Specified Object Demo</b> 模式：人在胸口相机画面上点一下目标 <span class="chip seen">视频</span>。点击 → 分割出 target mask → 每帧跟踪，mask 和图像一起喂给 policy <span class="chip guess">推测·中</span>。点击也能换成 VLM 指物，UI 里有 Reasoning 面板 <span class="chip guess">推测·中</span></dd></div>
+    <div><dt>Policy 吃什么</dt><dd>胸口双目 + 手腕三目，都是被动双目，没有投射器 <span class="chip seen">视频</span>；sudo 的招聘写着机器人数据里有 <q>图像与深度流</q>，要质检 <q>深度-彩色对齐</q> <span class="chip job">招聘</span>。所以 policy 多半吃双目算出、和彩色对齐的 RGB-D（多半转成点云），加 target mask 和关节状态 <span class="chip guess">推测·中</span>。每步只出一个动作，15–25 Hz，不做 action chunking <span class="chip claim">官方</span>。CEO 说仿真里渲染的“分辨率其实非常非常低”，部署时“是一个端到端的模型” <span class="chip press">报道</span></dd></div>
+    <div><dt>怎么训</dt><dd>在 SAPIEN/ManiSkill 里大规模生成场景 <span class="chip job">招聘</span>；看得到真值的 expert（沿标注好的 grasp pose 做 motion planning，或用 state 训的 RL）出动作，再蒸馏成只看相机的 student，DAgger 式 <span class="chip guess">推测·高</span>；视觉随机化、传感器仿真、延迟和频率随机化补 sim2real <span class="chip claim">官方</span> <span class="chip guess">推测·中</span></dd></div>
+  </dl>
+</section>
+
+<section id="evidence">
+  <p class="eyebrow">Evidence · 手里有什么</p>
+  <h2>手里的材料，各能说明什么</h2>
+  <div class="sources">
+    <article class="src-card">
+      <h3>官网博客 <span class="chip claim">官方</span></h3>
+      <p class="what">sudo.ai 首页，全站唯一一篇文章</p>
+      <ul>
+        <li>零真机数据：<q>no real-world demonstrations, no teleoperation, no manual labeling</q></li>
+        <li>首抓 ~98%，两次内 ~100%；60 分钟不剪辑评测</li>
+        <li>每步都看最新观测，15–25 Hz；没有 open-loop 规划，没有 action chunking</li>
+        <li>避障是 policy 学会的，<q>not a separate collision-avoidance module</q></li>
+        <li>鲁棒来自仿真里的 <q>massive visual randomization</q></li>
+        <li>sim2real 要同时补齐 physics fidelity、contact modeling、domain randomization、sensor simulation</li>
+      </ul>
+    </article>
+    <article class="src-card">
+      <h3>官方视频 <span class="chip seen">视频</span></h3>
+      <p class="what">17 段 HLS 视频，最长 60 分 36 秒</p>
+      <ul>
+        <li>硬件外形、相机位置、夹爪（见 Hardware）</li>
+        <li>一段素材开头露出了演示平板的 UI（见 Click）</li>
+        <li>3.6 s 仿真渲染：胸口视角和手腕视角并排</li>
+        <li>60 分钟评测：大屏计时，有人复位物体；网页播放器叠了 “1 / 240” 计数和成功率，约 15 s 一次</li>
+      </ul>
+    </article>
+    <article class="src-card">
+      <h3>招聘帖 <span class="chip job">招聘</span></h3>
+      <p class="what">91 个职位：上海为主，北京、Mountain View</p>
+      <ul>
+        <li><q>基于 SAPIEN 等平台构建和验证机器人操作环境</q>；ManiSkill 开源生态工程师（上海 + 山景城）</li>
+        <li><q>场景生成、技能训练、RL / motion planning、数据生产与闭环 evaluation 的完整 pipeline</q></li>
+        <li>资产要标 <q>geometry、collision、joint、material、physical properties、grasp pose</q></li>
+        <li><q>图生 3D 资产管线</q>；PPO/SAC/TD-MPC/RLPD；<q>Policy Distillation</q></li>
+        <li>数采平台要汇聚 <q>图像与深度流</q>，质检 <q>深度-彩色对齐</q></li>
+        <li>还有 VSLAM 导航、UMI 数采、世界模型、VLA 后训练、端侧 ASIC/FPGA</li>
+      </ul>
+    </article>
+    <article class="src-card">
+      <h3>采访与报道 <span class="chip press">报道</span></h3>
+      <p class="what">量子位、硅谷101、PingWest、Automate 等</p>
+      <ul>
+        <li>COO：<q>our open-source simulator, Sapien, really comes in</q>，另有闭源版本</li>
+        <li>CEO 韩铮：一张 GPU 上开 <q>上万、甚至上百万个并行的环境…分辨率其实非常非常低</q></li>
+        <li>投资方横店资本：<q>世界模型与强化学习一体化设计</q>；韩铮：部署时 <q>是一个端到端的模型</q></li>
+        <li>60 分钟评测是 <q>240次抓放…将近98%</q>；ICRA 上 <q>将近1000人</q> 拿自己的东西来试</li>
+        <li>7 月后：<q>这1%的鸿沟…必须补上真机数据的微调</q>；数据源还有遥操作、UMI、第一视角视频</li>
+      </ul>
+    </article>
+  </div>
+  <figure class="shot" style="max-width:640px">
+    <div class="mat"><img src="2026-11-03-sudoai/web-eval.jpg" alt="60 分钟评测：机器人站在显示屏桌面后，背后大屏显示计时 00:09:55" loading="lazy"></div>
+    <figcaption><b>60 分钟评测截图</b>（第 10 分钟）：背后大屏计时，桌面是显示屏。前 10 分钟左右背景是窗帘，之后换成窗边自然光；偶尔有人复位物体，没看到有人点屏幕。</figcaption>
+  </figure>
+</section>
+
+<section id="hardware">
+  <p class="eyebrow">Hardware · 视频截图</p>
+  <h2>一只手臂干活，胸口两目、手腕三目在看</h2>
+  <figure class="shot">
+    <div class="mat">
+      <img src="2026-11-03-sudoai/web-robot.jpg" alt="sudo 机器人：白色双臂上身，右侧手臂带三目相机和平行夹爪，桌面是显示屏，桌上立着印有 sudo 的盒子" loading="lazy">
+      <span class="pin" style="left:57%;top:17%">1</span>
+      <span class="pin" style="left:48.5%;top:44%">2</span>
+      <span class="pin" style="left:73.5%;top:33%">3</span>
+      <span class="pin" style="left:74%;top:55%">4</span>
+      <span class="pin" style="left:27%;top:58%">5</span>
+      <span class="pin" style="left:57%;top:76%">6</span>
+      <span class="pin" style="left:30%;top:92%">7</span>
+    </div>
+    <figcaption><b>官方视频截图</b>（首页开场片 0:20）。原片 <a href="https://www.sudo.ai/">sudo.ai</a>。</figcaption>
+  </figure>
+  <ol class="read">
+    <li><b>头上两个圆孔</b>：可能是第三组相机，也可能只是造型 <span class="chip guess">推测·低</span></li>
+    <li><b>胸口下沿的黑色窗口</b>，里面两个镜头 = UI 里的 <code>chest_left_camera</code> 那一对，俯看桌面 <span class="chip seen">视频</span></li>
+    <li><b>手腕三目模组</b>：三颗相机，每颗一根线，没有红外投射器，是被动双目（下面 4K 特写）。UI 里叫 <code>left_hand_left_camera</code>，画面是彩色的 <span class="chip seen">视频</span></li>
+    <li><b>平行夹爪</b>：两指装在导轨上，一个开合自由度 <span class="chip seen">视频</span></li>
+    <li><b>另一只手臂</b>：所有片段里都不动。干活的是机器人自己的<b>左</b>臂（画面右侧），和 UI 的 <code>left_hand</code> 对得上 <span class="chip seen">视频</span></li>
+    <li><b>障碍物</b>：印着 #sudo 的盒子，演示绕障从缝里伸进去抓 <span class="chip seen">视频</span></li>
+    <li><b>桌面本身是显示屏</b>：胸口相机往下看，看到的“背景”就是桌面，所以他们把桌面换成会动的画面来测鲁棒性 <span class="chip seen">视频</span></li>
+  </ol>
+  <div class="pair">
+    <figure class="shot">
+      <div class="mat"><img src="2026-11-03-sudoai/web-torso.jpg" alt="躯干特写：头部两个圆孔，躯干下沿一条带两个镜头的黑色窗口" loading="lazy"></div>
+      <figcaption><b>躯干特写</b>：头部两孔；胸口下沿的双目窗口。</figcaption>
+    </figure>
+    <figure class="shot">
+      <div class="mat"><img src="2026-11-03-sudoai/web-wrist.jpg" alt="手腕特写：白色三目相机模组装在平行夹爪上方" loading="lazy"></div>
+      <figcaption><b>手腕特写</b>：三目模组在夹爪上方、朝前看。</figcaption>
+    </figure>
+  </div>
+  <figure class="shot">
+    <div class="mat"><img src="2026-11-03-sudoai/web-wrist4k.jpg" alt="4K 特写：手腕模组背面三根线各接一个青色接头，正面一排三个镜头；下半张把线上的标签转正，中间那根写着“右腕中”，旁边一根写着“…左”" loading="lazy"></div>
+    <figcaption><b>官方 4K 片段</b>（<a href="https://www.youtube.com/watch?v=SvKdfY8WEj0">five skills 演示</a> 0:03，这台用的是右手）。上：三颗镜头各接一根线，接头一模一样；下：把标签转正，中间那根写着 <q>右腕中</q>，旁边一根写着 <q>…左</q> <span class="chip seen">视频</span></figcaption>
+  </figure>
+  <ul class="tight">
+    <li><b>被动双目就是深度相机</b>：RealSense D405、ZED 都没有投射器，靠两颗相机的视差出深度。上一版我把“看不到投射器”当成“不是深度相机”，是错的</li>
+    <li><b>三颗不一样</b>：上图里中、右两颗镜头一模一样，像一对双目；左边那颗更凸、会反光，像广角（也可能只是反光角度） <span class="chip guess">推测·中</span></li>
+    <li><b>深度在主机上算</b>：三颗各走一根线、按位置编号；青色接头像 GMSL 相机用的 FAKRA 同轴头，原图送进主机，由 stereo 网络出深度 <span class="chip guess">推测·低</span></li>
+    <li><b>招聘对得上</b>：数采平台岗写着机器人数据有 <q>RGB-D、点云</q>，要实时汇聚 <q>图像与深度流</q>，质检 <q>深度-彩色对齐</q> <span class="chip job">招聘</span></li>
+  </ul>
+  <h3>拆机表</h3>
+  <div class="table-wrap">
+    <table class="grid spec">
+      <tr><th>部件</th><th>看得到的</th><th>推测</th></tr>
+      <tr><td>手臂</td><td>双臂上身，只用左臂；腰部一个黑色圆柱关节</td><td>7 自由度级别；腰可转，扩大够得到的范围 <span class="chip guess">推测·低</span></td></tr>
+      <tr><td>末端</td><td>平行夹爪，指尖细长</td><td>policy 的动作里只有一个开合量 <span class="chip guess">推测·高</span></td></tr>
+      <tr><td>胸口相机</td><td>双镜头窗口；UI 名带 <code>_left</code></td><td>stereo 对，看全局：目标、障碍、手在哪 <span class="chip guess">推测·高</span></td></tr>
+      <tr><td>手腕相机</td><td>三颗相机，各一根线；标签 <q>右腕中</q> <q>…左</q>；看不到投射器；UI 名 <code>left_hand_left_camera</code></td><td>一对被动双目出深度，另一颗可能是广角；深度在主机上算 <span class="chip guess">推测·中</span>。看近处：对准、指尖和物体的相对位置</td></tr>
+      <tr><td>计算</td><td>看不到</td><td>端侧 GPU；招聘在做 ASIC/FPGA 端侧推理 <span class="chip job">招聘</span></td></tr>
+      <tr><td>底座</td><td>演示里固定在支架上</td><td>另有轮式底盘 + 双臂整机，招聘提到 <q>人形轮臂机器人</q> <span class="chip job">招聘</span></td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="click">
+  <p class="eyebrow">Click · 你在 demo 里看到的那一下</p>
+  <h2>点一下：目标是人告诉它的，policy 只管抓</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每节都跟着它</p>
+    <p>桌上几个透明玻璃瓶。操作员在平板的胸口相机画面上<b>点中间那只</b> → 机器人去抓 → 抓到一半，有人把瓶子挪开 → 它追过去重新抓起。</p>
+    <p class="muted">这个例子是把官方两段片段拼起来的：“透明物体”片段（开头露出平板 UI）和“干扰”片段。</p>
+  </div>
+  <figure class="shot">
+    <div class="mat">
+      <img src="2026-11-03-sudoai/web-tablet.jpg" alt="演示平板 UI：顶部两个模式按钮 Pick Specified Object Demo 和 Sorting Workflow Demo；左栏两路相机画面 chest_left_camera（叠了绿色四边形）和 left_hand_left_camera；右侧 Detection 标签页、Picking up object 状态条、Reasoning 面板" loading="lazy">
+      <span class="pin" style="left:27%;top:17%">1</span>
+      <span class="pin" style="left:22%;top:27.5%">2</span>
+      <span class="pin" style="left:22%;top:58.5%">3</span>
+      <span class="pin" style="left:39.5%;top:22.5%">4</span>
+      <span class="pin" style="left:57.5%;top:28%">5</span>
+      <span class="pin" style="left:38%;top:83%">6</span>
+      <span class="pin" style="left:86%;top:18%">7</span>
+    </div>
+    <figcaption><b>官方视频截图</b>（“透明物体”片段的第一帧，平板在画面左侧，已放大）。原片 <a href="https://www.sudo.ai/">sudo.ai</a> “Zero-Shot Generalization” 一节。</figcaption>
+  </figure>
+  <ol class="read">
+    <li><b>两个模式</b>：<code>Pick Specified Object Demo</code>（选中）和 <code>Sorting Workflow Demo</code>。前者就是你看到的“点一下再抓”。分拣要高层决定哪件放哪，所以才有 ⑥ <span class="chip seen">视频</span> <span class="chip guess">推测·中</span></li>
+    <li><b><code>chest_left_camera</code></b>：胸口 stereo 的左目。上面叠的绿色四边形四角有圆点，像一块能拖动的工作区（只在这块桌面里找目标） <span class="chip guess">推测·中</span></li>
+    <li><b><code>left_hand_left_camera</code></b>：左手相机的左目，所以手腕上也是 stereo <span class="chip seen">视频</span></li>
+    <li><b><code>Detection</code> 标签页</b>（另外两个标签太糊，读不出）：有一步显式的检测/分割结果给人看，支持“点击 → mask” <span class="chip guess">推测·中</span></li>
+    <li><b>状态条 <code>Picking up object</code></b>：pick 外面包着一个任务状态机（选目标 → 抓取 → 放下 …） <span class="chip guess">推测·中</span></li>
+    <li><b><code>Reasoning</code> 面板</b>（截图时为空）：给 VLM/LLM 写推理过程的地方，点击之外的第二个“选目标”入口 <span class="chip guess">推测·中</span></li>
+    <li><b>红色按钮</b>：大概是停止 <span class="chip guess">推测·低</span></li>
+  </ol>
+  <h3>运行时：从“点一下”到“动一步”</h3>
+  <div class="flow"><pre>
+flowchart TD
+  CAM["<b>相机</b><br/>chest + wrist stereo"]
+  U["<b>操作员点一下</b><br/><span class='ex'>中间那只玻璃瓶</span>"]:::example
+  V["<b>或 VLM 指物</b><br/>Reasoning 面板"]
+  SEG["<b>分割 + 跟踪</b><br/>点 → target mask"]
+  POL["<b>单步 policy</b><br/>RGB-D + mask + 关节"]:::win
+  CTL["<b>关节伺服</b><br/>高频跟踪目标"]
+  U --> SEG
+  V -.-> SEG
+  CAM --> SEG
+  CAM --> POL
+  SEG --> POL
+  POL -- "Δ位姿 + 夹爪" --> CTL
+  CTL -- "40–67 ms 后重新看" --> CAM
+  </pre></div>
+  <p class="flow-hint">实线是我认为每帧都在跑的部分；虚线是可替换的目标来源。整张图都是 <span class="chip guess">推测·中</span>，依据是 UI 上的标签和官方“每步都看最新观测”。</p>
+  <ul class="tight">
+    <li><b>为什么要人点</b>：把“抓哪个”这个语义问题交给人或 VLM，policy 只学一件事：<b>把 mask 盖住的那个东西抓起来</b>。仿真里 mask 的真值不要钱，真机上 mask 是二值图，没有颜色和纹理的 sim2real gap <span class="chip guess">推测·高</span></li>
+    <li><b>公开展会大多不用点</b>：官方 LinkedIn 写 <q>Bring an item and test it yourself!</q>，PingWest 写观众把物品放到机器人面前，<q>机器人会自己选择一个可以下手的局部区域</q> <span class="chip claim">官方</span> <span class="chip press">报道</span>。可见有两种模式：自动挑目标，和你看到的“人来指定” <span class="chip guess">推测·高</span></li>
+    <li><b>60 分钟评测没人点</b>：官方标的是 “fully autonomous”。我在 60 分钟里抽看了 16 帧，只有人路过或复位物体，没人碰平板。那时目标多半由程序自动挑，比如工作区里任选一个检测到的物体 <span class="chip guess">推测·中</span></li>
+    <li><b>点到一半物体被挪走</b>：mask 由跟踪器每帧更新，policy 每帧重新看，所以能追（下文 “行为 ↔ 机制”）</li>
+  </ul>
+</section>
+
+<section id="localization">
+  <p class="eyebrow">Localization · 三件不同的事</p>
+  <h2>“定位”在这套系统里分三层，只有第一层在 policy 里</h2>
+  <div class="cards">
+    <article class="card">
+      <h3>目标在哪</h3>
+      <p class="sub">object localization · 在 policy 里</p>
+      <ul>
+        <li>点击只给一个像素 <span class="ex">(u, v)</span>；分割把它扩成整块 mask；跟踪让 mask 跟着物体和相机走 <span class="chip guess">推测·中</span></li>
+        <li><b>不一定算 3D 坐标</b>。闭环 policy 像 visual servoing：每步看“指尖和目标在图里差多少”再修一点，误差每步都被重新测，标定误差不会累积 <span class="chip guess">推测·高</span></li>
+        <li>要 3D 的地方（绕障、够不够得着），用胸口和手腕双目算出的深度（见 <a href="#depth">深度和点云去哪了</a>） <span class="chip guess">推测·中</span></li>
+      </ul>
+    </article>
+    <article class="card">
+      <h3>相机在哪</h3>
+      <p class="sub">extrinsics · 出厂固定</p>
+      <ul>
+        <li>相机都长在机器人身上：胸口相机相对底座固定，手腕相机跟着正运动学走，出厂标一次即可 <span class="chip guess">推测·高</span></li>
+        <li>有聚合站转述 sudo “不需要 calibration”。更可能指部署现场不做 hand-eye 标定：训练时把相机内外参随机抖几毫米、几度，policy 就不在乎安装误差 <span class="chip guess">推测·中</span></li>
+        <li>先例：ManiSkill3 的 sim2real 每步把相机抖 2.5 cm；GraspVLA 在 15 cm 的球内、±5° 随机外参；Sadeghi et al. 2017 的 recurrent policy 换视角后能“隐式自标定” <span class="chip paper">论文</span></li>
+      </ul>
+    </article>
+    <article class="card">
+      <h3>机器人在哪</h3>
+      <p class="sub">robot localization · 不在 R1 里</p>
+      <ul>
+        <li>R1 演示是固定底座，用不到这一层</li>
+        <li>招聘里的 VSLAM（单目/双目/RGB-D VI-SLAM，ORB-SLAM、VINS 一系，加 3DGS-SLAM）和自研导航栈（定位、建图、规划、避障），是给超市这类移动场景的 <span class="chip job">招聘</span></li>
+        <li>两者分工：导航把底盘停到货架前，pick policy 只管相机里看到的那一块 <span class="chip guess">推测·中</span></li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<section id="policy">
+  <p class="eyebrow">RGB → policy · 你问的第二个问题</p>
+  <h2>每 40–67 ms：取最新的几张图 → 更新 mask → 一次前向 → 发一个动作</h2>
+  <div class="flow"><pre>
+flowchart TD
+  IN["<b>胸口双目 + 手腕三目</b><br/>低分辨率彩色图"]
+  ST["<b>learned stereo</b><br/>每组出一张深度<br/>对齐到彩色"]
+  M["<b>target mask</b><br/>点击 → 分割 → 跟踪"]
+  PC["<b>RGB-D + mask → 点云</b><br/>每点带颜色和目标标志<br/>合到底座坐标系"]
+  ENC["<b>点云编码器</b><br/>PointNet 类"]
+  P["<b>本体</b><br/>关节 · 夹爪 · 上一步动作"]
+  Z["<b>隐式状态 z</b><br/>目标在哪 · 多大 · 障碍"]
+  AUX["<b>辅助头 · 只在训练时</b><br/>回归仿真真值<br/>目标位姿 · 抓哪块 · 质量"]
+  MEM["<b>LSTM / GRU</b><br/>遮挡时记住目标"]
+  HEAD["<b>MLP</b><br/>一步：Δ末端位姿 + 夹爪"]:::win
+  IN --> ST --> PC
+  M --> PC
+  PC --> ENC --> Z
+  P --> Z
+  Z -.-> AUX
+  Z --> MEM --> HEAD
+  </pre></div>
+  <p class="flow-hint">整体是 <span class="chip guess">推测·中</span>。上一版我让网络自己从多目图里学深度（DextrAH-RGB 的做法）；现在改成先用 learned stereo 算出深度，因为硬件是被动双目，招聘里也有深度流。点云这一支是 Hao Su 组的老路（<a href="https://arxiv.org/abs/2211.09423">DexPoint</a>、<a href="https://arxiv.org/abs/2306.06799">3D 点云 RL</a>） <span class="chip paper">论文</span>；辅助头照 DextrAH-RGB：loss = 动作 KL + 物体位置辅助 loss <span class="chip paper">论文</span>。点云也可能换成每路一张 2.5D RGB-D 图走 CNN。官方只确认了：每步都基于最新观测，没有 action chunking；部署在端侧的 <q>是一个端到端的模型</q> <span class="chip press">报道</span>。stereo 网络和 policy 打包部署，也可以叫端到端 <span class="chip guess">推测·中</span>。</p>
+  <ul class="tight">
+    <li><b>低分辨率是关键</b>：一张 GPU 跑上万个并行环境，只能渲染很小的图；小图把纹理细节抹掉，sim2real gap 也跟着变小；小图 + 小 CNN 才跑得动单步 15–25 Hz <span class="chip guess">推测·中</span>。ManiSkill3 的 sim2real 例子也是一个相机的 RGB + NatureCNN 小网络，直接在像素上跑 PPO <span class="chip paper">论文</span></li>
+  </ul>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>输入</th><th>大概长什么样</th><th>为什么要它</th></tr>
+      <tr><td>chest 左/右 RGB</td><td>2 张，大幅降采样。CEO 说仿真渲染的 <q>分辨率其实非常非常低</q> <span class="chip press">报道</span>，真机图也得缩到同样大小</td><td>全局：目标、障碍、手在哪；左右两张先算出深度</td></tr>
+      <tr><td>wrist 三目</td><td>一对双目出深度和彩色；第三颗可能是广角（见 Hardware 的 4K 特写）</td><td>近处：对准、指尖和瓶身的相对位置</td></tr>
+      <tr><td>target mask</td><td>每张图多 1 个通道；转成点云后，是每个点一个“是不是目标”的标志</td><td>告诉网络“抓这个”；跟踪器每帧更新</td></tr>
+      <tr><td>本体</td><td>关节角、夹爪开度、上一步动作</td><td>自己在哪、刚刚做了什么</td></tr>
+      <tr><td>深度</td><td>learned stereo 算出，对齐到彩色；多半反投影成点云，胸口和手腕合到底座坐标系</td><td>3D 直接给，网络不用自己学视差；见下文 <a href="#depth">深度和点云去哪了</a></td></tr>
+      <tr><td>记忆（可选）</td><td>GRU 状态，或 2–3 帧历史</td><td>瓶子被手挡住时还记得；估计物体速度</td></tr>
+      <tr><td>辅助输出（只在训练时）</td><td>目标位姿、抓哪一块、质量</td><td>仿真里都有真值；逼网络把 3D 和物理量学进隐变量</td></tr>
+      <tr><td>输出</td><td>Δ末端位姿（6 维）+ 夹爪（1 维），或关节目标</td><td>低层关节伺服在两帧之间高频插值跟踪</td></tr>
+    </table>
+  </div>
+  <h3>点击是怎么“插进”网络的：三种做法</h3>
+  <div class="cards">
+    <article class="card pick">
+      <h3>A · mask 当第 4 通道</h3>
+      <p class="sub">RGB-M，每帧由跟踪器更新</p>
+      <ul>
+        <li>仿真：渲染器直接给目标的真值分割</li>
+        <li>真机：点击 → SAM 类分割 → 视频跟踪（SAM 2 一类）</li>
+        <li>物体被挪走，mask 跟着走，policy 自然追过去</li>
+        <li>代价：每帧多跑一次跟踪。不算瓶颈：SAM 2.1 tiny 在 A100 上 91.2 FPS，Cutie 约 45 FPS <span class="chip paper">论文</span></li>
+        <li>公开样板：DexGraspVLA（框 → SAM → Cutie 每步跟踪 → mask 变 token）；ManipGen（首帧 + 目标 mask 当额外通道） <span class="chip paper">论文</span></li>
+      </ul>
+      <p class="verdict">我最看好：和 Detection 标签、追移动目标都对得上</p>
+    </article>
+    <article class="card">
+      <h3>B · 点击坐标当 token</h3>
+      <p class="sub">只在第一帧给 (u, v)，网络自己记</p>
+      <ul>
+        <li>不用外部跟踪器，最省算力</li>
+        <li>网络要自己完成“认出是哪个 + 一直记住”</li>
+        <li>被手挡住、被人挪走以后容易认错</li>
+      </ul>
+      <p class="verdict">把握低：和 UI 里显式的 Detection 不太搭</p>
+    </article>
+    <article class="card">
+      <h3>C · 反投影成 3D 目标点</h3>
+      <p class="sub">stereo 深度把点击变成 (x, y, z)</p>
+      <ul>
+        <li>当 goal 向量给 policy，最像传统 goal-conditioned RL</li>
+        <li>物体一动就要重新检测，否则追的是旧位置</li>
+        <li>透明物体深度不准，点会偏</li>
+      </ul>
+      <p class="verdict">把握低到中：可能作为 A 的辅助输入</p>
+    </article>
+  </div>
+  <h3 id="depth">深度和点云去哪了：三种可能</h3>
+  <p>改过的排序：B &gt; A ≫ C <span class="chip guess">推测·中</span>。上一版是 A &gt; B，因为我把手腕看成了普通相机；其实被动双目就是深度相机。输入里一定有 RGB：显示屏桌面测试只对看 RGB 的 policy 有意义；官方也说视觉随机化让 policy <q>rely on the geometric and physical cues relevant to grasping</q> <span class="chip claim">官方</span>。所以 B 是 RGB-D，不是只有深度。</p>
+  <div class="table-wrap">
+    <table class="grid opts">
+      <tr><th>做法</th><th>透明玻璃上</th><th>支持</th><th>反对</th></tr>
+      <tr><td><b>B · 双目先算深度，和彩色对齐成 RGB-D</b>（你的猜测）<br>learned stereo 出深度 → 点云（每点带颜色和目标标志）进 PointNet 类编码器，或每路一张 2.5D 图</td><td>stereo 网络用仿真里的透明物体训过，玻璃上也能出深度：SimNet 抓透明这类难物体 95%，RGB-D baseline 35% <span class="chip paper">论文</span></td><td>手腕、胸口都是被动双目；招聘里有深度流和 <q>深度-彩色对齐</q> <span class="chip job">招聘</span>；苏昊组的老路：PointNet、ManiSkill 的点云观测、<a href="https://arxiv.org/abs/2211.09423">DexPoint</a>、<a href="https://arxiv.org/abs/2306.06799">3D 点云 RL</a>；T-RO'23 的手腕深度 student 真机 96.25%</td><td>多一个网络、一份延迟；仿真里要渲染左右图、跑同一个 stereo 网络，深度的瑕疵才和真机一致。但只有蒸馏 student 时才渲染（teacher 读真值），规模小得多</td></tr>
+      <tr><td><b>A · 图像进，3D 在网络里</b><br>多目 RGB + mask 直接进网络，网络自己学视差；训练时让辅助头回归目标 3D 位置、深度</td><td>玻璃的像素一直在图里，网络从轮廓、折射、高光里学几何</td><td>CEO 的“隐式表达”和“端到端”；官网说 3D 避障是 <q>integrated learned behavior</q>；DextrAH-RGB（真机 stereo 77%，单目 73%）、GraspVLA（只用 RGB，透明物体 86.6%，AnyGrasp 10%）都这么做 <span class="chip paper">论文</span></td><td>硬件能出深度、数据里也存深度，不用而让网络自己学，需要一个理由；从图像学深度最吃数据</td></tr>
+      <tr><td><b>C · 传统 stereo 匹配出深度 → 点云</b><br>SGM 一类算法，或相机自带的深度芯片</td><td>玻璃上出洞、错位；T-RO'23 要专门模拟这种失效</td><td>最省事；ManipGen、T-RO'23 都用手腕深度相机</td><td>透明瓶是招牌演示；三根线把原图送进主机，看不出有自带深度芯片 <span class="chip guess">推测·低</span></td></tr>
+    </table>
+  </div>
+  <ul class="tight">
+    <li><b>CEO 原话</b>：<q>在仿真器里，机器人要知道物体的几何位置，预估材质和重量，分清瓶盖和瓶身，操作时往哪个方向转——这些都是有理解和推断的，可以用隐式表达来描述</q> <span class="chip press">报道</span></li>
+    <li>这就是 teacher-student 的老套路：teacher 直接读这些真值，student 只看图，被逼着把它们编进隐变量。<a href="https://arxiv.org/abs/2107.04034">RMA</a> 的 student 估的就是质量、摩擦这类隐变量 <span class="chip paper">论文</span> <span class="chip guess">推测·中</span></li>
+    <li><b>B 和 A 的边界很细</b>：把 stereo 网络的中间特征而不是深度图交给 policy，B 就滑成了 A；区别只在中间有没有一张显式的深度图 <span class="chip guess">推测·中</span></li>
+    <li><b>分割</b>：目标 mask 几乎肯定给。仿真里用真值 mask，训练时故意腐蚀、膨胀、偶尔丢几帧，模拟真机上分割和跟踪出错 <span class="chip guess">推测·中</span>。全场景分割多半不给：真机上每帧都跑又慢又不稳，正是 sim2real 最容易出问题的地方 <span class="chip guess">推测·中</span></li>
+  </ul>
+  <h3>为什么不做 action chunking</h3>
+  <ul class="tight">
+    <li>Chunking 是看一次、执行 N 步再看。官方的例子：<q>20 Hz with 20-step chunks effectively observes the environment only once per second</q> <span class="chip claim">官方</span></li>
+    <li>单步就是每 40–67 ms 都重新看一次，所以能追移动的瓶子、被推开后马上修正</li>
+    <li>单步 policy 也正好配 DAgger 或 RL：expert 在任何状态都能给出“此刻该怎么动”的标签，不需要整段轨迹 <span class="chip guess">推测·高</span></li>
+    <li>Chunking 主要帮的是模仿人类示范：ACT 里 chunk 从 1 加到 100，成功率 1% → 44%。π0 的 50 步块开环执行，每 0.5–0.8 s 才推理一次 <span class="chip paper">论文</span>。expert 是算法时，同一状态的标签前后一致，单步就够；DextrAH 系和 ManipGen 的单步 student 都跑 60 Hz <span class="chip paper">论文</span> <span class="chip guess">推测·中</span></li>
+    <li>“15–25 Hz，随情况自适应”：可能是推理耗时随场景变（几路 mask、多少物体）。训练时随机化控制周期，policy 就不依赖固定频率 <span class="chip guess">推测·低</span></li>
+  </ul>
+</section>
+
+<section id="training">
+  <p class="eyebrow">Training · 你问的第三个问题</p>
+  <h2>在仿真里先训一个“看得到答案”的 expert，再把它蒸馏成只看相机的 student</h2>
+  <div class="flow"><pre>
+flowchart TD
+  A["<b>1 · 资产工厂</b><br/>供应商 + 重建 + 图生 3D"]
+  B["<b>2 · 场景生成</b><br/>杂乱 · 障碍 · 光照 · 背景"]
+  E["<b>3 · Privileged expert</b><br/>知道位姿和几何"]
+  S["<b>4 · 视觉 student</b><br/>只看渲染 RGB + mask"]:::win
+  V["<b>5 · 闭环评测</b><br/>sim benchmark"]
+  F["<b>6 · 挖失败</b><br/>生成新的训练分布"]
+  R["<b>真机 zero-shot</b><br/><span class='ex'>玻璃瓶</span>"]:::example
+  RF["<b>7 · 真机微调</b><br/>7 月以后的说法"]
+  A --> B --> E
+  E -- "每步标动作 (DAgger)" --> S
+  S --> V --> F
+  F -- "补场景" --> B
+  S --> R
+  S -.-> RF
+  RF -.-> R
+  </pre></div>
+  <p class="flow-hint">1、2、5、6 招聘帖里写着；3、4 的具体形式是 <span class="chip guess">推测·高</span>（招聘写了 <q>RL / motion planning</q> 和 <q>Policy Distillation</q>，但没写怎么接）。</p>
+  <ol class="stages">
+    <li>
+      <span class="st-name">资产工厂</span>
+      <span class="st-io">各种来源的 3D 模型 → 能直接进仿真的资产</span>
+      <ul>
+        <li>外部供应商资产、真实扫描重建，加 <q>图生 3D 资产管线</q> 批量补类别 <span class="chip job">招聘</span></li>
+        <li>每个资产标 <q>geometry、collision、joint、material、physical properties、grasp pose</q>，并有“视觉 + 物理保真”的验收 <span class="chip job">招聘</span></li>
+        <li>图生 3D 是他们的老本行：Zero123++、One-2-3-45++（单图 → 带贴图网格约 1 分钟）挂在 SUDO-AI-3D 的 GitHub 下，MeshFormer 的署名里有 Hillbot <span class="chip paper">论文</span></li>
+        <li>没见过的玻璃瓶也能抓，主要靠这一层的覆盖面：同类形状和材质在训练里见过足够多 <span class="chip guess">推测·高</span>。Tobin et al. 2017 只用几百万个随机程序生成的物体训练，真机抓取 80% <span class="chip paper">论文</span></li>
+      </ul>
+    </li>
+    <li>
+      <span class="st-name">场景生成</span>
+      <span class="st-io">资产库 → 成千上万个可解的抓取场景</span>
+      <ul>
+        <li><q>场景采样、机器人初始状态与物体位姿生成、任务约束、可解性验证、corner case 挖掘</q> <span class="chip job">招聘</span></li>
+        <li>可解性验证 = 只保留存在无碰撞可达 grasp 的场景；障碍物密集、目标半遮挡的场景故意多放 <span class="chip guess">推测·中</span></li>
+        <li>在同一步里把桌面贴图、背景、光照、相机参数、机器人外观一起随机（见下表）</li>
+      </ul>
+    </li>
+    <li>
+      <span class="st-name">Privileged expert</span>
+      <span class="st-io">真值状态 → 每一步的“正确动作”</span>
+      <ul>
+        <li>expert 直接读仿真里的物体位姿、几何、标注好的 grasp pose，不需要看图 <span class="chip guess">推测·高</span></li>
+        <li>两条路招聘里都有：motion planning 沿 grasp pose 生成无碰撞轨迹（避障天然包含）；或者 PPO 之类的 state-based RL，查询便宜、被打扰后会自己纠正 <span class="chip job">招聘</span> <span class="chip guess">推测·中</span></li>
+        <li>先例：GraspVLA、MolmoBot 用规划器（cuRobo 等）离线生成上百万条演示；DextrAH-G 用读物体真值位姿的 PPO teacher；Hao Su 组 T-RO'23 用 SAC teacher <span class="chip paper">论文</span></li>
+        <li>RL 是主线的旁证：投资方稿件写的是 <q>世界模型与强化学习一体化设计</q>；TD-MPC 的作者里也有苏昊 <span class="chip press">报道</span></li>
+        <li>例子里：expert 知道中间那只瓶子的真实位姿，瓶子被挪走的那一帧就给出“转向新位置”的动作</li>
+      </ul>
+    </li>
+    <li>
+      <span class="st-name">蒸馏成视觉 student</span>
+      <span class="st-io">渲染的 RGB + 真值 mask + 关节 → 单步动作</span>
+      <ul>
+        <li>student 只能看到真机上也有的东西：几路相机图和双目深度、目标 mask、关节状态 <span class="chip guess">推测·高</span></li>
+        <li>除了模仿动作，再加辅助 loss：让 student 从观测里回归目标位姿等真值。DextrAH-RGB 的 loss 就是动作 KL + 物体位置辅助 loss <span class="chip paper">论文</span>；CEO 说的 <q>隐式表达</q> 多半就是这一类 <span class="chip guess">推测·中</span></li>
+        <li>DAgger：让 student 自己开车，expert 在 student 走到的每个状态上标正确动作；student 因此见过自己犯错后的状态，学会恢复 <span class="chip guess">推测·高</span></li>
+        <li>训练时故意在抓取中途挪动目标、推一下物体，制造“被打扰”的状态 <span class="chip guess">推测·中</span></li>
+        <li>公开样板：DextrAH-G/RGB 正是“PPO teacher → 在线 DAgger → 单步 LSTM student”，RGB student 在 4×L40S 上训了 53 h <span class="chip paper">论文</span></li>
+        <li>另一种可能：直接在像素上做 RL，critic 看真值、actor 看图（asymmetric actor-critic）；ManiSkill3 带渲染能跑到 30,000+ FPS，它的 sim2real 例子就是像素上直接 PPO <span class="chip paper">论文</span> <span class="chip guess">推测·低</span></li>
+      </ul>
+    </li>
+    <li>
+      <span class="st-name">闭环评测</span>
+      <span class="st-io">新 student → 在仿真 benchmark 上的成功率</span>
+      <ul>
+        <li><q>从强化学习的训练配置导入生成评测环境</q>，再另做多样化评测集；设计失败判定 <span class="chip job">招聘</span></li>
+        <li>测试经理一职写着 <q>仿真用于筛选、真机用于确认</q> <span class="chip job">招聘</span></li>
+      </ul>
+    </li>
+    <li>
+      <span class="st-name">挖失败、再生成</span>
+      <span class="st-io">失败案例 → 新的场景分布 → 回到第 2 步</span>
+      <ul>
+        <li><q>根据模型表现持续发现失败模式、生成新的训练分布和高价值数据</q> <span class="chip job">招聘</span></li>
+        <li>官方说的 “a fundamentally different scaling curve” 就是这个循环：加数据靠算力，不靠人 <span class="chip claim">官方</span></li>
+      </ul>
+    </li>
+    <li>
+      <span class="st-name">（7 月以后）真机数据补最后 1%</span>
+      <span class="st-io">仿真预训练好的 policy → 少量真机数据微调</span>
+      <ul>
+        <li>量子位 7 月报道：<q>这1%的鸿沟…必须补上真机数据的微调</q>；PingWest 列出的数据源还有遥操作、UMI、第一视角视频 <span class="chip press">报道</span></li>
+        <li>和招聘对得上：UMI/DexUMI 无本体数采、VLA 后训练与持续学习 <span class="chip job">招聘</span>。4 月发布的 R1 本身仍说零真机数据 <span class="chip claim">官方</span></li>
+      </ul>
+    </li>
+  </ol>
+  <figure class="shot">
+    <div class="mat">
+      <img src="2026-11-03-sudoai/web-simviews.jpg" alt="仿真渲染四宫格：上排一个场景（手腕视角看锅铲，胸口视角看夹爪和手腕相机），下排另一个场景（胸口视角看台灯、碗、玩具飞机，手腕视角特写玩具飞机）" loading="lazy">
+      <span class="tag" style="left:1%;top:2%">wrist · 场景 1</span>
+      <span class="tag" style="left:51%;top:2%">chest · 场景 1</span>
+      <span class="tag" style="left:1%;top:52%">chest · 场景 2</span>
+      <span class="tag" style="left:51%;top:52%">wrist · 场景 2</span>
+    </div>
+    <figcaption><b>官方仿真片段截图</b>（“Why Simulation” 一节，3.6 s）。视角标签是我加的。</figcaption>
+  </figure>
+  <ul class="tight">
+    <li>每个场景渲染两路：胸口 + 手腕，和真机 UI 的两路相机对应 <span class="chip seen">视频</span></li>
+    <li>软阴影、金属碗的反光、锅铲边缘的少量噪点，像低采样光线追踪加降噪；SAPIEN 自带光追渲染 <span class="chip guess">推测·中</span></li>
+    <li>仿真里夹爪是绿色、手腕模组是深灰，真机是白色：机器人外观也在随机 <span class="chip guess">推测·中</span></li>
+    <li>场景是家居（棋盘地砖、柜子、台灯），比演示桌面宽得多：训练分布远大于测试场景 <span class="chip seen">视频</span></li>
+  </ul>
+  <figure class="clip" style="max-width:640px">
+    <video src="2026-11-03-sudoai/web-sim.mp4" autoplay muted loop playsinline controls></video>
+    <figcaption><b>同一片段的视频</b>：两个场景、四个视角同时在动。</figcaption>
+  </figure>
+  <h3>sim2real：每个旋钮对应演示里的哪个现象</h3>
+  <div class="table-wrap">
+    <table class="grid map">
+      <tr><th>随机化 / 建模</th><th>具体随机什么</th><th>对应的真机现象</th></tr>
+      <tr><td>外观</td><td>桌面和背景贴图（随机图片、视频帧）、光源数量/颜色/位置、物体材质、机器人颜色</td><td>显示屏桌面、白天和夜景之间不用重新标定 <span class="chip claim">官方</span></td></tr>
+      <tr><td>传感器</td><td>相机内外参抖动、曝光、噪声、模糊、压缩；渲染左右图后跑同一个 stereo 网络，让深度的瑕疵和真机一致（Hao Su 组 T-RO'23 对主动红外 stereo 在 SAPIEN 里做过同样的事）</td><td>免现场标定；透明、反光物体 <span class="chip guess">推测·中</span></td></tr>
+      <tr><td>物理</td><td>摩擦、质量、接触刚度、软体参数、夹爪力</td><td>软布、瓶子、金属件都能抓稳 <span class="chip job">招聘</span></td></tr>
+      <tr><td>时间</td><td>观测延迟、控制周期（40–67 ms）、执行器响应</td><td>15–25 Hz 自适应仍稳定；招聘写了 <q>执行器建模和延迟建模</q> <span class="chip job">招聘</span></td></tr>
+      <tr><td>场景</td><td>杂乱程度、障碍摆放、目标半遮挡</td><td>绕障、杂乱堆里抓 <span class="chip guess">推测·中</span></td></tr>
+      <tr><td>扰动</td><td>抓取中途挪动目标、碰一下物体</td><td>被人干扰后恢复 <span class="chip guess">推测·中</span></td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="behaviors">
+  <p class="eyebrow">行为 ↔ 机制 · 回到官方视频</p>
+  <h2>演示里的每个“绝活”，最可能来自哪一块</h2>
+  <div class="clips">
+    <figure class="clip">
+      <video src="2026-11-03-sudoai/web-perturb.mp4" autoplay muted loop playsinline controls></video>
+      <figcaption><b>干扰</b>：抓到一半瓶子被挪走，它追过去（官方 “True Closed-Loop Agility”）。</figcaption>
+    </figure>
+    <figure class="clip">
+      <video src="2026-11-03-sudoai/web-obstacle.mp4" autoplay muted loop playsinline controls></video>
+      <figcaption><b>绕障</b>：目标夹在盒子中间，从缝里伸进去（官方 “Spatial Intelligence”）。</figcaption>
+    </figure>
+    <figure class="clip">
+      <video src="2026-11-03-sudoai/web-glass.mp4" autoplay muted loop playsinline controls></video>
+      <figcaption><b>透明玻璃</b>：开头那块平板就是上面 UI 截图的来源。</figcaption>
+    </figure>
+  </div>
+  <div class="table-wrap">
+    <table class="grid map">
+      <tr><th>演示里的行为</th><th>最可能的机制</th></tr>
+      <tr><td>显示屏桌面、夜景/白天，成功率几乎不变</td><td>仿真里桌面、背景、光照大范围随机 <span class="chip claim">官方</span></td></tr>
+      <tr><td>透明瓶、反光金属</td><td>stereo 网络在仿真透明物体上训过，玻璃上也有深度；光追渲染折射和高光，RGB 再补一手 <span class="chip guess">推测·中</span>。SimNet 走的就是这条路 <span class="chip paper">论文</span></td></tr>
+      <tr><td>抓到一半被挪走，追过去</td><td>单步闭环 + mask 每帧跟踪 + DAgger 见过“偏离”的状态 <span class="chip guess">推测·高</span></td></tr>
+      <tr><td>从障碍缝里伸进去</td><td>expert 本身避碰（规划器或带碰撞惩罚的 RL）+ 训练场景里障碍多 + stereo 给 3D <span class="chip guess">推测·中</span></td></tr>
+      <tr><td>首抓 98%，两次内接近 100%</td><td>大规模仿真评测 + 挖失败补数据；失败后再试一次（夹爪合到底或手腕图里物体还在，就重来） <span class="chip guess">推测·低</span></td></tr>
+      <tr><td>新物体不用调参</td><td>资产库覆盖面，包括图生 3D 批量补的类别 <span class="chip job">招聘</span></td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="related">
+  <p class="eyebrow">Related · 公开论文里的先例</p>
+  <h2>R1 的每一块，公开论文里都有人做过；没人把它们同时做到 98%</h2>
+  <p class="lead">R1 声称同时做到四件事：零真机数据、任意物体、单步闭环、学出来的避障。下表按“同一问题”和“相似做法”分组，数字都摘自各论文原文。</p>
+  <div class="table-wrap">
+    <table class="grid rel">
+      <tr><th>工作</th><th>解决什么 · 怎么做</th><th>关键数字</th><th>和 R1 的关系</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 只用仿真数据训视觉抓取</th></tr>
+      <tr><td><a href="https://arxiv.org/abs/2412.01791">DextrAH-RGB</a> / <a href="https://arxiv.org/abs/2407.02274">-G</a><br><span class="muted">NVIDIA 2024</span></td><td>灵巧手从筐里抓任意物体。PPO teacher 读物体真值位姿 → 在线 DAgger；RGB 版吃 stereo 左右图（ResNet-18 + 跨图 transformer + LSTM），光追 tiled rendering</td><td>单步 60 Hz（RTX 3090）；真机 74–77%（RGB），87%（深度版）</td><td>训练方式和我猜的最像；它不指定目标，靠 geometric fabric 控制器避碰</td></tr>
+      <tr><td><a href="https://arxiv.org/abs/2505.03233">GraspVLA</a><br><span class="muted">Galbot 2025</span></td><td>按语言抓指定物体。1,000 万条合成轨迹（约 10 亿帧，grasp 合成 + cuRobo），Isaac Sim 光追；先出框 → grasp pose → 动作块</td><td>zero-shot 基础场景 93.3%；透明物体 86.6%（AnyGrasp 10%）；4 步一块，约 5 Hz</td><td>同样零真机；它是 BC + chunking、5 Hz，R1 强调单步 15–25 Hz</td></tr>
+      <tr><td><a href="https://arxiv.org/abs/2603.16861">MolmoBot</a><br><span class="muted">2026</span></td><td>仿真里 pick-and-place。180 万条规划器轨迹做 BC（MuJoCo），重随机化，不追求照片级</td><td>15 Hz、16 步一块；真机 79.2%，π0.5 39.2%</td><td>说明规划器演示 + 大规模随机化已能胜过真机数据训的 VLA；仍是 chunking</td></tr>
+      <tr><td><a href="https://arxiv.org/abs/2410.00425">ManiSkill3 sim2real</a><br><span class="muted">Hao Su 组 2024</span></td><td>低成本机械臂抓方块。像素上直接 PPO（一个 RGB 相机），真实背景 green-screen 进仿真图，相机每步抖 2.5 cm</td><td>30 Hz；4090 上约 1 h；Koch 臂真机 91.6%</td><td>同一仿真器谱系的最小版；R1 要的是任意物体 + 指定目标</td></tr>
+      <tr class="group"><th colspan="4">同一问题 · 透明、反光物体</th></tr>
+      <tr><td><a href="https://arxiv.org/abs/2201.11924">Active stereo 仿真</a><br><span class="muted">Zhang et al., T-RO 2023，Hao Su 组</span></td><td>深度相机在透明/反光物体上出洞。在 SAPIEN 里光追渲染红外散斑 + CUDA stereo 匹配，复现 D415 的失效方式；SAC teacher → BC 手腕深度 student</td><td>真机 96.25%，用干净仿真深度只有 61%；10 个没见过的难物体 100%</td><td>苏昊组做传感器仿真的前身；R1 是被动双目，不用仿真散斑，但“仿真里跑同一条深度管线”这招照搬；物体集小（8 个）</td></tr>
+      <tr><td><a href="https://arxiv.org/abs/2106.16118">SimNet</a> · <a href="https://arxiv.org/abs/2405.05648">ASGrasp</a> · <a href="https://arxiv.org/abs/2501.09898">FoundationStereo</a></td><td>只用合成 stereo 对训练的深度/抓取网络，绕开深度传感器</td><td>SimNet 难/透明物体 95%，RGB-D baseline 35%；ASGrasp 透明物体 &gt;90%</td><td>R1 的双目深度多半就出自这类网络</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 用 mask 告诉 policy 抓哪个</th></tr>
+      <tr><td><a href="https://arxiv.org/abs/2502.20900">DexGraspVLA</a><br><span class="muted">2025</span></td><td>杂乱中按指令抓。VLM 给框 → SAM 出 mask → Cutie 每步跟踪；mask 经 ViT 变 token，和 DINOv2 特征拼起来进 DiT</td><td>单次成功 90.8%；用 2,094 条真机示范训练</td><td>“点 → mask → 跟踪 → 进 policy”的公开样板；差别是真机数据 + chunking</td></tr>
+      <tr><td><a href="https://arxiv.org/abs/2410.22332">ManipGen</a><br><span class="muted">ICRA 2025</span></td><td>仿真训的局部技能拼长任务。Grounded-SAM 选目标，每步把首帧 + 目标 mask 当额外通道给手腕深度 policy</td><td>单步 60 Hz</td><td>证明“mask 当输入通道 + 仿真训练”能上真机</td></tr>
+      <tr><td><a href="https://arxiv.org/abs/2401.12202">OK-Robot</a><br><span class="muted">2024</span></td><td>家里按语言抓放。LangSAM mask 过滤 AnyGrasp 的抓取候选，规划器开环执行</td><td>家里 58.5%，干净场景 82.4%</td><td>模块化、开环的代表，正是 R1 说要避开的那种</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 避障，和 chunking 的另一边</th></tr>
+      <tr><td><a href="https://arxiv.org/abs/2210.12209">MπNets</a> · <a href="https://arxiv.org/abs/2409.05864">Neural MP</a></td><td>学出来的避障运动规划：从几百万条规划器解里学，输入分好类的点云</td><td>Neural MP 比采样、优化、学习型规划器分别 +23 / +17 / +79%</td><td>“避障是学出来的”在规划这一侧的证据</td></tr>
+      <tr><td><a href="https://arxiv.org/abs/2410.24164">π0</a> · <a href="https://arxiv.org/abs/2506.07339">RTC</a></td><td>通用 VLA：50 步动作块开环执行；RTC 冻结已发出的部分、补全其余，扛住延迟</td><td>每 0.5–0.8 s 推理一次</td><td>R1 官方点名反对的设计</td></tr>
+    </table>
+  </div>
+  <p class="note">表里的工作和数字由一个检索 agent 在 arXiv 上逐条打开核对；“和 R1 的关系”一列是我的推测。LEGO（2510.12866）和 DexGraspVLA 的真机结果都用了真机示范，不算零真机。</p>
+</section>
+
+<section id="who">
+  <p class="eyebrow">Who · 公司与人</p>
+  <h2>原 Hillbot 班底：写 SAPIEN/ManiSkill 的人，加一个 3D 生成团队</h2>
+  <p class="lead">上面的推测往这个方向猜，是因为这群人写过 R1 管线里几乎每一块的开源前身。</p>
+  <div class="table-wrap">
+    <table class="grid spec">
+      <tr><th>人</th><th>角色</th><th>和 R1 有关的背景</th></tr>
+      <tr><td>苏昊 Hao Su</td><td>联合创始人、董事长兼 CTO（4 月的报道写的是首席技术顾问）</td><td>ShapeNet、PointNet、PartNet-Mobility、SAPIEN、ManiSkill 1–3、TD-MPC、One-2-3-45++、Zero123++；2026 年 4 月起任复旦通用物理智能研究院首任院长</td></tr>
+      <tr><td>韩铮 Robin Han</td><td>联合创始人、CEO</td><td>前微软亚洲研究院；创办 ZEPP（2018 年被华米收购）；Hillbot 联合创始人</td></tr>
+      <tr><td>Martina Hansen</td><td>联合创始人、COO</td><td>Hillbot COO；聚合站说此前在 Verity、Covariant</td></tr>
+      <tr><td>徐泽祥 Zexiang Xu</td><td>研发副总裁</td><td>前 Adobe Research，做 3D 大模型；现管机器人多模态基础模型</td></tr>
+      <tr><td>其他高管</td><td>陈润泽（硬件）、张校珩（战略/商业）</td><td>前源码资本投资人；ABB、华为、蓝驰</td></tr>
+    </table>
+  </div>
+  <h3>以前的开源工作 → R1 管线的哪一块</h3>
+  <div class="table-wrap">
+    <table class="grid map">
+      <tr><th>以前做过的</th><th>对应 R1 的哪一块</th></tr>
+      <tr><td><a href="https://arxiv.org/abs/2410.00425">ManiSkill3</a> / SAPIEN</td><td>仿真器和 GPU 并行渲染（训练第 2–4 步）。ManiSkill3 论文作者署名就是 Hillbot；COO 说 Sudo 还有一个闭源版本</td></tr>
+      <tr><td><a href="https://arxiv.org/abs/2201.11924">Active stereo 传感器仿真</a>（T-RO'23）</td><td>官方说的 sensor simulation；透明、反光物体</td></tr>
+      <tr><td><a href="https://arxiv.org/abs/2310.15110">Zero123++</a>、<a href="https://arxiv.org/abs/2311.07885">One-2-3-45++</a>、<a href="https://arxiv.org/abs/2408.10198">MeshFormer</a></td><td>图生 3D 资产管线（训练第 1 步）。前两个挂在 SUDO-AI-3D 的 GitHub 下，MeshFormer 署名有 Hillbot</td></tr>
+      <tr><td>TD-MPC</td><td>RL 一侧；投资方稿件写 <q>世界模型与强化学习一体化设计</q></td></tr>
+    </table>
+  </div>
+  <h3>时间线</h3>
+  <ul class="tight">
+    <li><b>2023-10 → 2025</b>：sudo.ai 是 Hillbot 的 3D 生成 app sudoAI（<q>create 3D content from text or image</q>）；One-2-3-45++ 的 demo 就在 sudo.ai/3dgen，Zero123++ 的权重在 Hugging Face 的 sudo-ai 下（你记得的就是这个）</li>
+    <li><b>2024</b>：Hillbot 官网团队：苏昊（董事长兼 CTO）、韩铮（CEO）、Hansen（COO）</li>
+    <li><b>2025-05</b>：苏度科技在上海注册；<b>2025-11-20</b>：Sudo AI GmbH 进入瑞士商业登记，唯一股东 Sudo Holdings HK Limited，三人都是董事</li>
+    <li><b>2026-04-20</b>：发布 #sudo R1；同期报道 5 亿美元 Pre-A、估值超 20 亿美元，宁德时代、阿里、高瓴、腾讯、蚂蚁、IDG、蓝驰等参投（投资方横店资本确认了估值）</li>
+    <li><b>2026-06 → 07</b>：山景城 Pick Anything Challenge #1；达沃斯超市 demo；WAIC 上展出移动版，号称 <q>端到端的全身控制策略</q></li>
+    <li><b>2026-09-30</b>：超 10 亿元人民币新一轮，上海国投先导、孚腾资本、国泰海通联合领投</li>
+    <li><b>2026-11-09 → 12</b>：CoRL 2026，展位 #202</li>
+  </ul>
+  <p class="note">来源以报道为主（量子位、机器人前瞻、硅谷101、PingWest、凤凰科技、Automate），人员信息有瑞士商业登记和 2025 年 Hillbot 官网存档佐证。各家说法有出入：苏昊的头衔、成立时间（2025 年 5 月 vs “约两年”）、估值（超 20 亿美元 / 近 20 亿美元 / 超 200 亿人民币）。hillbot.ai 仍在线，没找到正式的更名或合并公告。搜索结果里的 “1.491 亿美元” 只是 9 月那一轮的汇率换算；Product Hunt 上的 “Sudo AI” 是一个 LLM API 路由，和这家无关。</p>
+</section>
+
+<section id="foryou">
+  <p class="eyebrow">For you</p>
+  <h2>和我们三条线的关系</h2>
+  <ul class="tight">
+    <li><b>Robotic harness</b>：sudo 的切分正是 harness 的接口，“抓哪个”交给人或 VLM，“怎么抓”交给一个可靠的 <code>pick(target_mask)</code> 技能。他们还在招 <q>具身智能体 Tech Lead</q>，写着 Agent SDK、tool schema、MCP，要在这个技能层上搭 agent。</li>
+    <li><b>Agent-centric real-to-sim</b>：他们的资产管线（图生 3D、重建资产、“视觉 + 物理保真”验收）和 <q>三维视觉与虚实融合</q> 岗位，和 WorldClaw 是同一个问题；区别是他们要的是一整个训练分布，不是一个数字孪生。</li>
+    <li><b>Sim robot learning</b>：可以在 ManiSkill3 里复现一个最小版：state-based PPO teacher → 带 target mask 的 RGB student（DAgger）→ 低成本机械臂 zero-shot，验证上面哪些推测站得住。</li>
+  </ul>
+</section>
+
+<section id="open">
+  <p class="eyebrow">待验证 · CoRL 2026 展位 #202（11 月 9–12 日，Austin）</p>
+  <h2>还不确定的，以及去展位能直接问的</h2>
+  <p><b>98% 该怎么读</b>：公开的零真机结果，在宽物体集上大多是 74–93%（DextrAH、GraspVLA）；95–100% 的都来自小物体集（T-RO'23 的 8 个物体，SimNet）。R1 的 98% 更可能来自平行夹爪 + 桌面这种较窄的设定，加上大得多的规模，而不是一个全新的机制 <span class="chip guess">推测·中</span>。官方也没公布评测用了哪些物体、各多少次。</p>
+  <ol class="qs">
+    <li>policy 吃的是点云，还是每路一张 RGB-D？深度是哪个 stereo 网络算的，和 policy 一起训吗？手腕上更凸的那颗相机干什么用？</li>
+    <li>点击之后跑的是什么分割/跟踪？目标 mask 是只给胸口相机，还是两路都给？</li>
+    <li>点一个被挡住一半的物体会怎样？先挪开挡着的东西，还是直接从缝里抓？</li>
+    <li>expert 是规划器还是 RL？student 是 DAgger 蒸馏，还是直接在像素上 RL？</li>
+    <li>模型多大、跑在什么芯片上？“15–25 Hz 自适应”到底随什么变？</li>
+    <li>“两次内接近 100%”的第二次是谁触发的：policy 自己接着抓，还是外层检测到失败再重启？</li>
+    <li>Sorting Workflow 里 Reasoning 面板接的是哪个模型？它输出的是点、框还是 mask？</li>
+  </ol>
+</section>
+
+<section id="sources">
+  <p class="eyebrow">Sources</p>
+  <h2>来源</h2>
+  <ul class="refs">
+    <li>官网博客与视频：<a href="https://www.sudo.ai/">sudo.ai</a>（2026-11-03 抓取；视频是 assets.sudo.ai 上的 HLS 流，截图和片段由我导出、压缩）；手腕 4K 特写取自官方 YouTube 的 <a href="https://www.youtube.com/watch?v=SvKdfY8WEj0">five skills 演示</a>（2026-10-19）</li>
+    <li>招聘：<a href="https://www.sudo.ai/careers">sudo.ai/careers</a> → 飞书职位详情（91 个，2026-11-03 全部渲染存档）；深度流、深度-彩色对齐出自 <a href="https://wcn7iq2vq1am.jobs.feishu.cn/863711/position/detail/7684224004328327487">具身智能数采平台研发工程师</a></li>
+    <li>bothaus 与活动：<a href="https://www.sudo.ai/bothaus">sudo.ai/bothaus</a></li>
+    <li>论文：Related 表里每一行都链到 arXiv；另有 SAM 2（2408.00714）、Cutie（2310.12982）、ACT（2304.13705）、Tobin et al.（1710.06425）、Sadeghi et al.（1712.07642）、Zero123++（2310.15110）、One-2-3-45++（2311.07885）、MeshFormer（2408.10198）</li>
+    <li>公司与人：<a href="https://zh.chregister.ch/cr-portal/auszug/auszug.xhtml?uid=CHE-473.241.501">瑞士商业登记（Sudo AI GmbH）</a> · <a href="https://web.archive.org/web/20250905232444/https://www.hillbot.ai/">Hillbot 官网 2025 存档</a> · <a href="https://www.fudan.edu.cn/en/2026/0423/c344a148925/page.htm">复旦发布</a> · <a href="https://www.hengdian.com/zh-cn/news/detail-11195">横店资本</a></li>
+    <li>报道：<a href="https://www.qbitai.com/2026/04/403543.html">量子位 4 月</a> · <a href="https://news.qq.com/rain/a/20260422A079NG00">机器人前瞻 4 月</a> · <a href="https://www.huxiu.com/article/4877057.html">虎嗅</a> · <a href="https://www.pingwest.com/a/315587">PingWest</a> · <a href="https://tech.ifeng.com/c/8wqcCx0woBF">凤凰科技 9 月</a> · <a href="https://www.automate.org/ai/industry-insights/sudo-robotics-hits-the-super-market">Automate（达沃斯超市）</a>；“分辨率非常非常低”出自硅谷101 的采访</li>
+    <li>公司和人员部分由一个检索 agent 汇总（中英文报道、Wayback 存档、登记信息）。我抽查了其中 5 条，都对得上：Hillbot 存档的团队名单、One-2-3-45++ README 的 demo 链接（www.sudo.ai/3dgen）、ManiSkill3 论文的 Hillbot 署名、横店资本稿、复旦发布</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">专题页，不是论文页：sudo 没有发表论文，推测都标了把握 · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "← 横向滚动 →";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".shot .mat img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); drawShown(); });
+})();
+</script>
+</body>
+</html>

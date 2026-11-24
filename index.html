@@ -525,6 +525,14 @@ code { font-family: var(--f-mono); font-size: .9em; }
    "file": "LLM-Harness/artifact/2026-11-07-AgentMemory.html"
   },
   {
+   "page": "2026-11-15-PEAR",
+   "project": "Robotic-harness",
+   "title": "PEAR: a Post-training Engine for Agentic Robotics (first release, f32aa1f)",
+   "date": "2026-11-13",
+   "source": "https://github.com/mit-han-lab/pear",
+   "file": "Robotic-harness/artifact/2026-11-15-PEAR.html"
+  },
+  {
    "page": "2026-11-05-SO101-MAS",
    "project": "Robotic-harness",
    "title": "SO101 multi-agent harness (harness/so101_mas): parent session delegating pick-and-place to fresh child sessions",
@@ -571,6 +579,22 @@ code { font-family: var(--f-mono); font-size: .9em; }
    "date": "2026-04-18",
    "source": "https://github.com/NVIDIA/Isaac-GR00T",
    "file": "Sim-robot-learning/artifact/2026-11-15-GR00T-N17.html"
+  },
+  {
+   "page": "2026-11-15-FlashALOHA",
+   "project": "Sim-robot-learning",
+   "title": "Flash ALOHA: Learning Fast and Precise Manipulation",
+   "date": "2026-11-11",
+   "source": "https://johnyao93.github.io/flash-aloha/",
+   "file": "Sim-robot-learning/artifact/2026-11-15-FlashALOHA.html"
+  },
+  {
+   "page": "2026-11-15-FastRoboticsLandscape",
+   "project": "Sim-robot-learning",
+   "title": "高速 / 高频控制的机器人学习系统：近两年的地图（综述页，不是单篇论文）",
+   "date": "2026-11-15",
+   "source": "https://johnyao93.github.io/flash-aloha/",
+   "file": "Sim-robot-learning/artifact/2026-11-15-FastRoboticsLandscape.html"
   },
   {
    "page": "2026-11-07-SimulationBasics",
@@ -680,13 +704,13 @@ code { font-family: var(--f-mono); font-size: .9em; }
  "changing": "Pages are made by the paper-explain skill (https://github.com/EricWang12/zw-claude-skills/tree/main/plugins/paper-explain), which keeps this artifact and the repo in step on every run."
 }</script>
 <header class="frame">
-  <p class="eyebrow">all_papers/ · 6 个 project · 72 篇 paper</p>
+  <p class="eyebrow">papers/ · 6 个 project · 75 篇 paper</p>
   <h1>Zhaoning Paper Pile</h1>
   <p class="sub">每篇 paper 先对着一个 <span class="ex">running example</span> 讲清 problem，
   再 big picture → stages → details，并逐块解读作者原图。下面的文件夹和磁盘上的
-  <code>all_papers/</code> 一一对应，点名字展开。每张卡左边是论文首次公开的日期（arXiv v1 或 release），小字是归档日期。</p>
+  <code>papers/</code> 一一对应，点名字展开。每张卡左边是论文首次公开的日期（arXiv v1 或 release），小字是归档日期。</p>
   <div class="seg" id="star-filter" role="group" aria-label="显示哪些 paper">
-    <button type="button" data-filter="all" aria-pressed="true">全部 72</button>
+    <button type="button" data-filter="all" aria-pressed="true">全部 75</button>
     <button type="button" data-filter="recent" aria-pressed="false">最近一周 <span id="recent-count">0</span></button>
     <button type="button" data-filter="starred" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>星标 <span id="star-count">0</span></button>
   </div>
@@ -760,18 +784,21 @@ code { font-family: var(--f-mono); font-size: .9em; }
 <li data-added="2026-11-07"><a href="LLM-Harness/artifact/2026-11-07-AgentMemory.html"><span class="date"><b>2026-11-06</b><small>归档 2026-11-07</small></span><span class="name">AgentMemory</span><span class="title">The components of agent memory · Anthropic Engineering blog 2026</span><span class="tldr">Anthropic 讲 agent memory 的四层（transcripts、notes、wiki、injected context）和离线 dreaming：对照日志改错、建 wiki、提炼顶层</span></a><button type="button" class="star" data-star="LLM-Harness:2026-11-07-AgentMemory" aria-pressed="false" aria-label="星标 AgentMemory"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
 </details>
-<details id="Robotic-harness" data-proj="Robotic-harness"><summary class="proj"><h2>Robotic-harness</h2><span class="count">Robotic-harness/ · 4 篇</span><button type="button" class="fstar" data-star="Robotic-harness" aria-pressed="false" aria-label="给整个 Robotic-harness 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
+<details id="Robotic-harness" data-proj="Robotic-harness"><summary class="proj"><h2>Robotic-harness</h2><span class="count">Robotic-harness/ · 5 篇</span><button type="button" class="fstar" data-star="Robotic-harness" aria-pressed="false" aria-label="给整个 Robotic-harness 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
 <ol class="papers">
+<li data-added="2026-11-15"><a href="Robotic-harness/artifact/2026-11-15-PEAR.html"><span class="date"><b>2026-11-13</b><small>归档 2026-11-15</small></span><span class="name">PEAR</span><span class="title">PEAR: a Post-training Engine for Agentic Robotics (first release, f32aa1f) · GitHub release 2026-11-13</span><span class="tldr">用仿真里的纯 RL 把开源 27B reasoning model 训成无 harness 的 robot-use agent：LIBERO 1.6→74.4%，真机 0→18/30；PEAR 是配套的训练、评测、部署代码。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-11-15-PEAR" aria-pressed="false" aria-label="星标 PEAR"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-11-05"><a href="Robotic-harness/artifact/2026-11-05-SO101-MAS.html"><span class="date">2026-11-05</span><span class="name">SO101-MAS</span><span class="title">SO101 multi-agent harness (harness/so101_mas): parent session delegating pick-and-place to fresh child sessions · Code walkthrough, SO101 commit 42138fa, 2026</span><span class="tldr">代码讲解：SO101 harness 的 multi-agent 版本。parent 只能 grasp_engage，harness 开零记忆 child 做一次 pick-and-place，再把 measured 与 claim 分开封装回 parent。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-11-05-SO101-MAS" aria-pressed="false" aria-label="星标 SO101-MAS"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-11-03"><a href="Robotic-harness/artifact/2026-11-03-ZAP.html"><span class="date">2026-11-03</span><span class="name">ZAP</span><span class="title">Pretraining Knows What, Simulation Teaches How: Compositional Generalization for Agentic Robotics · CoRL 2026 (LBR)</span><span class="tldr">小 VLM 懂任务不会动：只在仿真简单任务上用自己的成功轨迹 + GRPO 教 motion，27B 真机 96.7%，追平 GPT-6 Astra 且快 3×、便宜 17×</span></a><button type="button" class="star" data-star="Robotic-harness:2026-11-03-ZAP" aria-pressed="false" aria-label="星标 ZAP"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-10-21"><a href="Robotic-harness/artifact/2026-10-21-MAST.html"><span class="date"><b>2025-03-17</b><small>归档 2026-10-21</small></span><span class="name">MAST</span><span class="title">Why Do Multi-Agent LLM Systems Fail? · NeurIPS 2025 (Datasets and Benchmarks)</span><span class="tldr">MAS 为什么失败：从 150 条 trace 归纳出 3 类 14 个 failure mode（MAST，κ=0.88），用 o1 标注 1642 条 trace；失败多来自系统设计而非模型，改 ChatDev topology 即 +15.6%。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-10-21-MAST" aria-pressed="false" aria-label="星标 MAST"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-10-16"><a href="Robotic-harness/artifact/2026-10-16-RPent.html"><span class="date"><b>2026-07-09</b><small>归档 2026-10-16</small></span><span class="name">RPent</span><span class="title">Harness VLA: Steering Frozen VLAs into Reliable Manipulation Primitives via Memory-Guided Agents · arXiv 2026</span><span class="tldr">Harness VLA（RPent 的第一篇论文）：把冻结的 VLA 包成可重试的 VLA_ACT primitive，由 Claude Code / Codex planner 组合固定的 analytic primitives；LIBERO-Pro 50.0% → 82.4%。</span></a><button type="button" class="star" data-star="Robotic-harness:2026-10-16-RPent" aria-pressed="false" aria-label="星标 RPent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
 </details>
-<details id="Sim-robot-learning" data-proj="Sim-robot-learning"><summary class="proj"><h2>Sim-robot-learning</h2><span class="count">Sim-robot-learning/ · 12 篇</span><button type="button" class="fstar" data-star="Sim-robot-learning" aria-pressed="false" aria-label="给整个 Sim-robot-learning 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
+<details id="Sim-robot-learning" data-proj="Sim-robot-learning"><summary class="proj"><h2>Sim-robot-learning</h2><span class="count">Sim-robot-learning/ · 14 篇</span><button type="button" class="fstar" data-star="Sim-robot-learning" aria-pressed="false" aria-label="给整个 Sim-robot-learning 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
 <ol class="papers">
 <li data-added="2026-11-15"><a href="Sim-robot-learning/artifact/2026-11-15-GR00T2.html"><span class="date"><b>2026-11-09</b><small>归档 2026-11-15</small></span><span class="name">GR00T2</span><span class="title">GR00T 2: Scaling Robot Foundation Models for Generalization, Dexterity, and Adaptation · NVIDIA whitepaper, Nov 2026</span><span class="tldr">World-action model：一个 2B DiT 同时预测未来视频和动作，所以人类视频和手持 UMI 示范也能教机器人；零遥操作下 YAM 装玩具车 60%，加 agent 后 97/100。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-15-GR00T2" aria-pressed="false" aria-label="星标 GR00T2"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-11-15"><a href="Sim-robot-learning/artifact/2026-11-15-GR00T-N17.html"><span class="date"><b>2026-04-18</b><small>归档 2026-11-15</small></span><span class="name">GR00T-N17</span><span class="title">Isaac GR00T N1.7 (GA, main @ 3b49067) · GitHub release 2026-04-18 (EA), GA 2026-07-07; paper arXiv 2025</span><span class="tldr">开源 VLA：VLM（System 2）读图和指令，DiT（System 1）用 flow matching 出动作 chunk，换机器人只换一组小 MLP。N1.7 换成 Cosmos-Reason2-2B，加 20K 小时人类视频；LIBERO 94–98%。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-15-GR00T-N17" aria-pressed="false" aria-label="星标 GR00T-N17"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-15"><a href="Sim-robot-learning/artifact/2026-11-15-FlashALOHA.html"><span class="date"><b>2026-11-11</b><small>归档 2026-11-15</small></span><span class="name">FlashALOHA</span><span class="title">Flash ALOHA: Learning Fast and Precise Manipulation · Preprint 2026 (ICRA 2026 as ALOHA Lightning)</span><span class="tldr">握着可反驱机械臂直接示教，涂黑手、混合 chunk 接缝：每任务 50 条示范学到接近人速的双臂操作，Battery Insertion 85% / 5.70 s。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-15-FlashALOHA" aria-pressed="false" aria-label="星标 FlashALOHA"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
+<li data-added="2026-11-15"><a href="Sim-robot-learning/artifact/2026-11-15-FastRoboticsLandscape.html"><span class="date"><b>2026-11-15</b><small>归档 2026-11-15</small></span><span class="name">FastRobotics 全景</span><span class="title">高速 / 高频控制的机器人学习系统：近两年的地图（综述页，不是单篇论文） · Literature map, 2026-11-15</span><span class="tldr">从 Flash ALOHA 出发的调研：32 篇近两年让机器人动得快、控得快的工作，按“速度丢在哪一环”分五类，每篇一张图、三行字，供挑选精读。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-15-FastRoboticsLandscape" aria-pressed="false" aria-label="星标 FastRobotics 全景"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-11-07"><a href="Sim-robot-learning/artifact/2026-11-07-SimulationBasics.html"><span class="date">2026-11-07</span><span class="name">仿真从零讲起</span><span class="title">仿真从零讲起：拿 RoboSimStudio 当例子（讲解页） · 讲解页, 2026-11-07</span><span class="tldr">给高中生的物理仿真入门：循环、三个身体、刚体、接触、软体和每个参数的意思，拿 RoboSimStudio 的海绵当例子，带一个能拖的软体演示。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-07-SimulationBasics" aria-pressed="false" aria-label="星标 仿真从零讲起"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-11-05"><a href="Sim-robot-learning/artifact/2026-11-05-SimOpt.html"><span class="date"><b>2018-10-12</b><small>归档 2026-11-05</small></span><span class="name">SimOpt</span><span class="title">Closing the Sim-to-Real Loop: Adapting Simulation Randomization with Real World Experience · ICRA 2019</span><span class="tldr">SimOpt：不再手调随机化范围，用几条真机 rollout 更新模拟器参数分布，让 policy 在 sim 和真机行为一致；Franka 开抽屉 20 次全开。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-05-SimOpt" aria-pressed="false" aria-label="星标 SimOpt"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-11-05"><a href="Sim-robot-learning/artifact/2026-11-05-RealityGap.html"><span class="date"><b>2025-10-23</b><small>归档 2026-11-05</small></span><span class="name">RealityGap</span><span class="title">The Reality Gap in Robotics: Challenges, Solutions, and Best Practices · Annual Review of Control, Robotics, and Autonomous Systems 2026</span><span class="tldr">Reality gap 综述：4 类 gap、18 个来源、20 个方法的 gap 地图、6 个度量、5 个开放问题。没有实验，价值在这张地图。</span></a><button type="button" class="star" data-star="Sim-robot-learning:2026-11-05-RealityGap" aria-pressed="false" aria-label="星标 RealityGap"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
