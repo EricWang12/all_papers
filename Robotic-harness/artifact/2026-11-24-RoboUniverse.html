@@ -434,6 +434,7 @@ flowchart LR
         <li><b>Why：</b>每个任务都要一个物理上说得通的交互场景和一个判分器，手工做正是规模瓶颈。</li>
         <li><b>工具：</b>Real2Sim harness 给 agent 三样：Perception（SAM 3.1 掩码 → 物体轮廓，DA3 深度 → 空间布局）、Asset Library（预建 mesh 和纹理，缺的走检索或程序生成）、Physics Skills（碰撞几何、质量惯量、摩擦、关节限位、驱动参数，和支撑 / 接触 / 释放检查）（§2.3）。</li>
         <li><b>三份代码：</b>scene、reference control program、verifier；对比 sim 渲染和源视频、看物理执行反馈，反复改，直到机器人靠真实接触、摩擦、动力学完成任务，而不是脚本动作（§2.3）。</li>
+        <li><b>“像”的标准（§C.2）：</b>保留外观、物体关系和任务含义，“exact coordinates, dimensions and timing are unnecessary”；DA3 只给相对深度；质量、摩擦等参数由 agent 按 physics skill 设，论文没说用真机数据标定。</li>
         <li><b>禁令（§C.2）：</b>不许把物体焊到手上、改写物体位姿、直接驱动目标、加完成任务的外力、关掉物体动力学、逐帧回放关节；碰撞体要贴合可见表面。</li>
         <li><b>指令和 verifier 对齐（§C.2）：</b>几句话说清什么要发生可见变化、要不要松手；verifier 接受合理范围的结果，不能因为参考解恰好这样做就规定精确位移、朝向或时长。</li>
       </ul>
@@ -520,6 +521,32 @@ flowchart TD
         <li><b>目录树：</b>instruction.md（task）、task.toml（config）、environment/（Dockerfile = Isaac Sim、harness/ = session、runtime/ = scene、workspace/ = agent view）。</li>
         <li><b>workspace/ 里：</b>primitives/、scripts/（client）、submission/（code）、scratch/，这是 agent 能看到的部分。</li>
         <li><b>红底两行：</b>solution/solve.sh 和 tests/test.sh，hidden from the agent。</li>
+      </ol>
+      <figure class="paper-fig">
+          <div class="table-wrap">
+            <table class="grid">
+              <tr><th>verifier 条件</th><th>阈值</th></tr>
+              <tr><td>把手朝向变了</td><td>净变化 ≥ 0.35 rad</td></tr>
+              <tr><td>杯子还立着</td><td>杯底离桌 ≤ 12 mm，倾斜 ≤ 0.25 rad</td></tr>
+              <tr><td>松手且静止</td><td>最后 0.35 s 内 ≤ 0.025 m/s、≤ 0.35 rad/s</td></tr>
+              <tr><td>是接触转动的</td><td>受力接触链中转 ≥ 0.01 rad（接触阈值 0.08 N）</td></tr>
+              <tr><td>没有瞬移</td><td>位姿跳变 ≤ 0.02 m + 4 m/s·Δt，≤ 0.10 rad + 15 rad/s·Δt</td></tr>
+            </table>
+          </div>
+          <div class="table-wrap">
+            <table class="grid">
+              <tr><th>期望判定</th><th>改写已录轨迹（不重跑仿真）</th></tr>
+              <tr><td>failure</td><td>杯子不动；杯子转了但手没碰到；转完后沉下 7 cm、离开桌面</td></tr>
+              <tr><td>inconclusive</td><td>缺朝向数据；缺最后 0.35 s 的数据</td></tr>
+              <tr><td>success</td><td>时间原点平移；手撤开后才合爪；降采样到 30 Hz；降采样 + 平移</td></tr>
+            </table>
+          </div>
+        <figcaption><b>数据样例</b>（非论文）发布包 <code>000247_rotate_twist</code>，Verified 500 之一：“Turn the tall tan travel mug … so its side handle faces a noticeably different direction. Leave the mug standing on the table and release it.” 上表来自包里的 evidence.md，下表来自 verifier_fixtures.py。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>build_and_replay.py --mode complete：</b>reset → 参考控制 → 判分 → reset → 重放保存的控制 → 再判分 → 接口探测。</li>
+        <li><b>自述局限：</b>能拒明显瞬移，但 “cannot rule out every penetration or tunneling event”；外观和物理合理性仍要看两路视频。</li>
+        <li><b>6 个样例：</b>接口文件同一套模板；检查脚本每题不同（verifier_fixtures.py、check_verifier.py、audit_physics.py…）；QA 的 quality/ 记录没随包发布。</li>
       </ol>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
@@ -822,7 +849,7 @@ flowchart LR
     <li><b>论文自己写的（§6）：</b>重建场景偏简化，复杂物体的动力学（微波炉门的卡扣阻力、铰链摩擦、接触力学）很难只从视频恢复；任务以短的原子技能为主，不是长程多阶段。</li>
     <li><b>只做了 SFT：</b>环境号称 RL-ready，却没有 RL 结果；也没有数据量、老师模型的消融（§4）。</li>
     <li><b>迁移只有定性：</b>外部 benchmark 和真机没有成功率、题数、试验次数（§4.3）。</li>
-    <li><b>流水线本身没给数：</b>每个环境的成本和耗时、QA 通过率、和源视频的量化 fidelity 都没报；人工核验只覆盖 500 道考题，10,307 个训练环境只过了自动 QA（§2.3、§B.1）。</li>
+    <li><b>流水线本身没给数：</b>每个环境的 token、成本和耗时，builder 和 QA 用哪个模型，QA 通过率，和源视频的量化 fidelity 都没报；人工核验只覆盖 500 道考题，10,307 个训练环境只过了自动 QA（§2.3、§B.1）。</li>
     <li><b>harness 混在差距里：</b>GPT 系列跑 Codex，其余跑 Claude Code，没有同一 harness 的对照（§3.1）。</li>
     <li><b>发布说明（dataset README，非论文）：</b>500 题里有 68 题是 “used previously observed success cases” 替换进来的，作者提醒不要当盲抽样本、也不要用来无偏估计参与挑选的模型；38 个 grader 经两轮复查改过；README 写 “No train/test disjointness guarantee is made”，model card 则说训练用的 6,327 个任务不在他们评测的 2,000 题里。</li>
   </ul>
