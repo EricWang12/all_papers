@@ -370,6 +370,53 @@ flowchart TD
   click S5 href "#stage-5"
   </pre></div>
   <p class="flow-hint">点击 stage 展开 Level 3 细节。绿色的 Harbor 任务包是 stage 3–5 共用的 harness，见 <a href="#stage-all">Harness</a>。</p>
+  <details class="recap">
+    <summary>全流程清单：造环境 11 步 · 每局 9 步 · 训练 5 步（论文 + 代码核对）</summary>
+    <p class="eyebrow">造环境（每道题一遍）</p>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>#</th><th>步骤（拧杯子）</th><th>谁做</th><th>论文</th><th>代码</th></tr>
+        <tr><td>1</td><td>挑视频、五层去重</td><td>论文没说</td><td>§2.2–2.3</td><td>✗</td></tr>
+        <tr><td>2</td><td>看视频写任务说明</td><td>coding agent</td><td>§2.3</td><td>只有 instruction.md</td></tr>
+        <tr><td>3</td><td>用 SAM 3.1、DA3、素材库写 scene.py</td><td>builder</td><td>§2.3、§C.2</td><td>scene.py ✓ · 工具 ✗</td></tr>
+        <tr><td>4</td><td>源帧和渲染并排比，改到像</td><td>builder</td><td>§C.2</td><td>compare_views.py（2 包）</td></tr>
+        <tr><td>5</td><td>写机器人接口：reset / observe / step / 导出证据</td><td>builder</td><td>§C.2</td><td>env_backend.py ✓</td></tr>
+        <tr><td>6</td><td>写参考动作（7 步）</td><td>builder</td><td>§2.3</td><td>reference_controller.py ✓</td></tr>
+        <tr><td>7</td><td>写判分 + 9 个自测</td><td>builder</td><td>§2.3</td><td>verify.py · verifier_fixtures.py ✓</td></tr>
+        <tr><td>8</td><td>GPU 队列上跑 design / run / replay / probe</td><td>builder</td><td>§C.2–C.3</td><td>build_and_replay.py ✓ · 队列 ✗</td></tr>
+        <tr><td>9</td><td>模板检查，打包成 Harbor 任务</td><td>固定脚本</td><td>Fig. 4</td><td>delivery_template ✗（只被引用）</td></tr>
+        <tr><td>10</td><td>独立 QA：看视频、重放、测判分、修</td><td>QA agent</td><td>§2.3、§A.3、§C.3</td><td>提示词节选 · quality/ ✗</td></tr>
+        <tr><td>11</td><td>人工核验（只查 500 道考题）</td><td>10 位专家</td><td>§B.1</td><td>heldout500.csv · 事后改过 38 个判分</td></tr>
+      </table>
+    </div>
+    <p class="eyebrow">每局（评测或采数据；代码全发布）</p>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>#</th><th>步骤</th><th>代码</th></tr>
+        <tr><td>1</td><td>校验压缩包、下载机器人模型、生成 agent / oracle 密钥、放 3 个 Dockerfile、sim CPU ≥ 8</td><td>evaluate.py</td></tr>
+        <tr><td>2</td><td>harbor run -p 任务 -a agent -e docker</td><td>evaluate.py；自家模型用 inference.py</td></tr>
+        <tr><td>3</td><td>sim 启动：载场景、自生成 verifier 密钥、开 8000 端口；健康后才开 main</td><td>sidecar.py · service.py</td></tr>
+        <tr><td>4</td><td>agent 用 roboenv 发请求</td><td>client.py · service.py</td></tr>
+        <tr><td>5</td><td>每次 step 前查：在范围内、基于最新一步、一次 ≤ 256 步、总 ≤ 3,000 步、≤ 2 h</td><td>session.py</td></tr>
+        <tr><td>6</td><td>收卷：main 里 kill -9 -1，sim 里 sidecar collect</td><td>task.toml</td></tr>
+        <tr><td>7</td><td>sim 里用 verifier 密钥 grade：导出证据 → verify.py → result.json</td><td>sidecar.py · session.py · verify.py</td></tr>
+        <tr><td>8</td><td>判分容器核对一致，写 reward.txt</td><td>tests/grade.py</td></tr>
+        <tr><td>9</td><td>汇总成功率；基础设施出错的局单列</td><td>summarize.py</td></tr>
+      </table>
+    </div>
+    <p class="eyebrow">训练（训练代码 ✗）</p>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>#</th><th>步骤</th><th>出处</th></tr>
+        <tr><td>1</td><td>GPT-6 Astra (Medium) 在训练环境做题：约 17K 条、0.79B tokens</td><td>§4.1</td></tr>
+        <tr><td>2</td><td>转成 Claude Code 多轮 tool-use 格式</td><td>§4.1</td></tr>
+        <tr><td>3</td><td>只留成功的局</td><td>代码 README（论文没写）</td></tr>
+        <tr><td>4</td><td>全参数 SFT Qwen3.6-35B-A3B 语言主干，冻结视觉，约 1,500 H100 小时</td><td>§4.1</td></tr>
+        <tr><td>5</td><td>部署：inference.py 用 SGLang 起服务，接 Claude Code，thinking 关</td><td>代码</td></tr>
+      </table>
+    </div>
+    <p class="note">会“动脑子”的只有 builder、QA 两个 agent，SAM 3.1、DA3，Isaac Sim 和 10 位专家；其余是脚本、模板和检查清单。</p>
+  </details>
 </section>
 
 <section id="l3">
@@ -464,6 +511,56 @@ flowchart TD
         <li><b>Physics execution：</b>sim rollout 必须 “solved via contact, friction &amp; dynamics; no scripted motion”，compare → patch。</li>
         <li><b>底部红色虚线：</b>QA 的 feedback 从这里回来。</li>
       </ol>
+      <p class="eyebrow">数据样例（非论文）· 拧杯子 000247 实际怎么搭：看到什么 → 怎么改</p>
+      <div class="flow"><pre>
+flowchart TD
+  b1["<b>1 · 看视频估尺寸</b><br/><span class='ex'>SAM 3.1 没找到杯子<br/>拿 Franka 当尺子</span>"]:::example
+  b1 --> b2["<b>2 · 写 scene.py</b><br/><span class='ex'>高约 27 cm · 0.32 kg<br/>机器人前方 54 cm</span>"]
+  b2 --> b3["<b>3 · 渲染，和源视频帧比</b><br/><span class='ex'>哪里最不像先改哪里</span>"]
+  b3 -.->|"不像：改数字"| b2
+  b3 --> b4["<b>4 · 跑 7 步参考动作</b><br/><span class='ex'>看两路视频<br/>+ 打印的杯子位姿</span>"]
+  b4 -.->|"没做成"| fx["<b>改做法</b><br/><span class='ex'>抓法 · 动作 · 碰撞形状</span>"]
+  fx -.-> b4
+  b4 --> b5["<b>5 · 写判分 + 自测</b><br/><span class='ex'>转 ≥ 0.35 rad · 9 个用例</span>"]
+  b5 --> b6["<b>6 · 交给 QA</b><br/><span class='ex'>见 Stage 3</span>"]:::win
+      </pre></div>
+      <ol class="read">
+        <li><b>没有误差信号：</b>README 写 “Dimensions are estimated from the video and the Franka, not from metric depth”；差多少靠 builder 看图判断，停在“看着像 + 真靠接触做成”。</li>
+        <li><b>改数字的痕迹：</b>scene.py 里的 <code>reflect_clutter</code> 把桌上杂物整体沿 Y 翻了一次，杯子没动（为什么翻是推断：对比时发现左右反了）。</li>
+        <li><b>改做法的痕迹（另一包，双臂叠布垫）：</b>attempt 2–7 失败，attempt 8 第一次成：没夹牢就再夹一次；机械臂底座垫高 12 cm，让手腕一直朝下。拧杯子的调参记录没随包发布。</li>
+      </ol>
+      <p class="eyebrow">数据样例 · 关节和布料：不是单独一步，搭 scene 时按任务需要加</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>6 个样例包</th><th>物理</th><th>怎么设的</th></tr>
+          <tr><td>拧杯子 000247</td><td>纯刚体</td><td>杯盖和杯身当一体（“lid is modeled as secured”）</td></tr>
+          <tr><td>关冰箱门 002491</td><td>1 个竖直转轴，0–105°</td><td>代码拼的 8 kg 钢板（宽 0.68 m）；铰链摩擦借全场共用的角阻尼 0.25；无马达、无回弹、无磁吸；README：“ordinary vertical pin”</td></tr>
+          <tr><td>毛巾抓成堆 000045</td><td>PBD 粒子布料（125×101 点）</td><td>见下表</td></tr>
+          <tr><td>双臂叠布垫 agx…1b45</td><td>PBD 粒子布料</td><td>见下表</td></tr>
+          <tr><td>双臂放橘子 agx…002eb</td><td>纯刚体</td><td>检查：不许有关节连着橘子或篮子</td></tr>
+          <tr><td>双臂交接 agx…0741</td><td>纯刚体</td><td>—</td></tr>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>布料参数（都是估的）</th><th>毛巾</th><th>布垫</th></tr>
+          <tr><td>抗拉 stretch</td><td>12000</td><td>800</td></tr>
+          <tr><td>抗弯 bend</td><td>0.008</td><td>0.03</td></tr>
+          <tr><td>抗剪 shear</td><td>120</td><td>500</td></tr>
+          <tr><td>弹簧阻尼</td><td>0.08</td><td>0.12</td></tr>
+          <tr><td>摩擦</td><td>0.8</td><td>0.75</td></tr>
+          <tr><td>质量</td><td>0.12 kg</td><td>0.18 kg</td></tr>
+          <tr><td>结果</td><td>抓 3 次才成（视频 1 次）；穿进桌面 5.4 mm 仍判成功</td><td>attempt 8 才成；README：“estimates, not metric video measurements”</td></tr>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>Franka 任务名标签（catalog.csv，4,132 题）</th><th>题数</th><th>占比</th></tr>
+          <tr><td>机构：door_hinge_or_open_close 753 · press_switch 252 · drawer_slide 196</td><td>1,201</td><td>29%</td></tr>
+          <tr><td>软体：fold_spread 63 · cable_routing 63 · dough_deformation 54</td><td>180</td><td>4%</td></tr>
+        </table>
+      </div>
+      <p class="note">双臂包里的固定关节只把机械臂底座钉在桌上。标签按任务含义分，不代表实际用了哪种物理；线缆、面团没有样例包。判分跟着变：门看门缝 ≤ 12 mm；Isaac 5.1 拿不到布料接触力，布料题只看形状。</p>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
         <p>感知分出 <span class="ex">pot、lid、bowl、bench、jar、lamp</span>；asset 库里拿到 Franka、锅、盖、碗、木架和桌面纹理；agent 写 Scene / Ref. control / Verifier，对着 DROID 真帧调布局；rollout 里 Franka 真的抓起锅盖盖到锅上。</p>
@@ -478,6 +575,16 @@ flowchart TD
       <span class="stage-io">builder 的环境副本 → Pass 的 Harbor 任务包，或带诊断退回</span>
     </summary>
     <div class="stage-body">
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>查什么</th><th>谁来查</th><th>数值标准</th></tr>
+          <tr><td>每局 0 / 1</td><td>判分程序读仿真记下的数字，不用模型</td><td>有：固定阈值</td></tr>
+          <tr><td>判分准不准</td><td>把改过的记录喂给判分程序</td><td>有：每个用例有预期结果</td></tr>
+          <tr><td>能否重复</td><td>reset 后重放参考控制</td><td>有：两次都得 1</td></tr>
+          <tr><td>场景像不像、物理合不合理</td><td>QA agent（语言模型）看两段视频</td><td><span class="gap">没有</span></td></tr>
+          <tr><td>人工</td><td>10 位专家，只查 500 道考题</td><td>4 条清单；事后仍改过 38 个判分（dataset README）</td></tr>
+        </table>
+      </div>
       <ul class="tight">
         <li><b>Why：</b>builder 自己写的 verifier 可能被钻空子，场景可能和视频对不上，参考解可能不可复现。</li>
         <li><b>证据：</b>另一个 QA agent 看四样：source video、sim rollout、scene code、state logs（§2.3）。</li>
@@ -569,6 +676,7 @@ flowchart TD
         <li><b>只收关节目标：</b>没有 IK 服务。Franka 7 个关节角 + 2 个手指位移，20 Hz 控制 / 240 Hz 物理；AgileX 每臂 6 角 + 2 指、共 16 通道，15 Hz / 240 Hz（§A.1 的两个代表任务）。</li>
         <li><b>藏起来的：</b>物体真值状态、参考解、verifier；没有 success flag、进度信号；一次机会，不能 reset、不能查中间分；有步数和 wall-clock 预算。</li>
         <li><b>判分：</b>finish() 或预算用完后，verifier 读执行日志和最终仿真状态给 0 / 1；finish 不加 settling 步，要等物体停稳得自己多走几步（§A.1、§C.1）。</li>
+        <li><b>训练也走这条路：</b>GPT-6 Astra 在 10,307 道训练题上照样做题，只留得 1 分的局（代码 README）做 SFT：约 17K 条，0.8% → 21.2%；每局的 0 / 1 可直接当 RL 奖励，但论文没做 RL（§4.1）。</li>
       </ul>
       <div class="flow"><pre>
 flowchart LR
@@ -602,6 +710,50 @@ flowchart LR
         <div class="mat"><img src="2026-11-24-RoboUniverse/tab1.jpg" alt="Table 1：describe、observe、step、step_chunk、finish 五个工具的输入、输出和是否推进仿真"></div>
         <figcaption><b>Table 1</b>（作者原图）看最右 Advances Sim 列：只有 step 和 step_chunk 是 Yes。</figcaption>
       </figure>
+      <p class="eyebrow">数据样例（非论文）· 一局拧杯子：三个容器</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>容器</th><th>里面有什么</th><th>作用</th></tr>
+          <tr><td><b>sim</b></td><td>Isaac Sim 5.1、本题代码（含 verify.py）；GPU；8000 端口服务</td><td>跑物理、拍两路相机，后台记杯子位姿和接触力；收卷时用只有它有的 verifier 密钥跑 verify.py → result.json</td></tr>
+          <tr><td><b>main</b></td><td>终端、roboenv 客户端、agent（如 Claude Code）</td><td>agent 写 Python、发请求；拿不到坐标</td></tr>
+          <tr><td><b>判分</b></td><td>grade.py；不联网、1 CPU、无 GPU</td><td>收卷后才开：只核对 result.json 的分数和结论一致，写 reward.txt</td></tr>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="grid">
+          <tr><th>密钥</th><th>sim 服务放行的接口</th></tr>
+          <tr><td>任何</td><td>describe · observe · 取图</td></tr>
+          <tr><td>agent</td><td>step（step_chunk 也走它）· finish</td></tr>
+          <tr><td>verifier（sim 里生成，只存在 sim）</td><td>grade</td></tr>
+          <tr><td>oracle</td><td>oracle（参考解，solve.sh 调它）</td></tr>
+          <tr><td>—</td><td><span class="gap">没有 reset，没有物体状态</span>：§3 弱模型拿密钥探后端，这两样根本不存在（<a href="#exp-5">E5</a>）</td></tr>
+        </table>
+      </div>
+      <p class="eyebrow">数据样例 · 一局怎么走（第二行是代码里的调用链）</p>
+      <div class="flow"><pre>
+flowchart TD
+  e1["<b>1 · 开 sim</b><br/><span class='ex'>摆好桌子和杯子</span>"] --> e2["<b>2 · 开 main</b><br/><span class='ex'>放进 agent + 指令</span>"]
+  e2 --> e3["<b>3 · describe / observe</b><br/><span class='ex'>动作 = 9 个数 · 每步 0.05 s<br/>2 张图 + 关节角，没坐标</span>"]
+  e3 --> e4["<b>4 · step</b><br/><span class='ex'>roboenv → service<br/>→ session → env_backend</span>"]
+  e4 -.->|"看图再写"| e3
+  e4 --> e5["<b>5 · finish 或 2 h 到</b><br/><span class='ex'>main 里 kill -9 -1</span>"]
+  e5 --> e6["<b>6 · sim 里判分</b><br/><span class='ex'>export_evidence<br/>→ verify.py → result.json</span>"]
+  e6 --> e7["<b>7 · 判分容器</b><br/><span class='ex'>grade.py → reward.txt</span>"]:::win
+      </pre></div>
+      <p class="eyebrow">数据样例 · 一个任务包的代码分两层</p>
+      <div class="flow"><pre>
+flowchart TD
+  k1["<b>共用外壳 · 6 包一模一样</b><br/><span class='ex'>client · service · session<br/>sidecar · grade.py</span>"]
+  k1 --> k2["<b>env_spec.json</b><br/><span class='ex'>9 个关节 · 3 个入口</span>"]
+  k2 --> k3["<b>env_backend.py</b><br/><span class='ex'>reset · step · 导出证据</span>"]
+  k2 --> k4["<b>reference_controller.py</b><br/><span class='ex'>7 个航点 + IK</span>"]
+  k2 --> k5["<b>verify.py</b><br/><span class='ex'>经 evaluator_adapter 接入<br/>查作弊 + 6 个条件</span>"]
+  k6["<b>scene.py</b><br/><span class='ex'>杯身旋转体 + 32 根小棍</span>"] --> k3
+      </pre></div>
+      <ol class="read">
+        <li><b>第一行是外壳（约 600 行），其余由 builder 每题现写：</b>拧杯子 7 个 .py；外壳只认 env_spec.json 的三个入口，所以每题怎么拆都行（放橘子拆成 sim_scene.py + scene_geometry.py，叠布垫自己写 IK）。</li>
+        <li><b>图外两个现写文件：</b>verifier_fixtures.py（9 个改记录测试）；build_and_replay.py（builder 的运行按钮：design / run / replay / probe / complete）。</li>
+      </ol>
       <div class="on-example">
         <p class="eyebrow ex-label">Running example 在这一步</p>
         <p>agent 从 instruction.md 读到 <span class="ex">"Cover a pot with its lid."</span> 和 API 文档；写 control.py 自建 fk / ik / move；observe 看 RGB 和关节，step_chunk 发关节目标；roboenv finish 后，五个条件全成立才给 <span class="ex">reward = 1</span>。</p>
@@ -847,6 +999,7 @@ flowchart LR
   <h2>局限和开放问题</h2>
   <ul class="tight">
     <li><b>论文自己写的（§6）：</b>重建场景偏简化，复杂物体的动力学（微波炉门的卡扣阻力、铰链摩擦、接触力学）很难只从视频恢复；任务以短的原子技能为主，不是长程多阶段。</li>
+    <li><b>不保证准，本质是“调到能做成 + 筛掉做不成的”（数据样例）：</b>门和布料的参数都是估的，毛巾穿进桌面 5.4 mm 仍判成功；做不成的不发布（dataset README：不含 “failed authoring attempts”），筛掉多少没报。</li>
     <li><b>只做了 SFT：</b>环境号称 RL-ready，却没有 RL 结果；也没有数据量、老师模型的消融（§4）。</li>
     <li><b>迁移只有定性：</b>外部 benchmark 和真机没有成功率、题数、试验次数（§4.3）。</li>
     <li><b>流水线本身没给数：</b>每个环境的 token、成本和耗时，builder 和 QA 用哪个模型，QA 通过率，和源视频的量化 fidelity 都没报；人工核验只覆盖 500 道考题，10,307 个训练环境只过了自动 QA（§2.3、§B.1）。</li>

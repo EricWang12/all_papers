@@ -40,6 +40,11 @@ papers explained in general rather than about one paper.
   before the reading: each symbol, what it is in plain words, and its value in the
   running example. The reading itself says things in plain words first, with the symbol
   in parentheses. Never explain a symbol with other symbols.
+- **Answering my questions: plain words, one walked example.** When I ask how something
+  works, say what it sees, what it does, then walk one concrete example from start to end
+  with its real values. Define each tool or term in a few words the first time it
+  appears. Don't stack file names, parameters or section numbers in every bullet; put the
+  sources in one line at the end.
 
 ## My projects
 
@@ -105,3 +110,4 @@ Each project is one folder in the library. The scope line decides where a paper 
 - 2026-11-07: WwBL now holds all 40 pages in `all_papers` (36 committed, AgentMemory, and Peel, MLP-vs-Transformer and sudoai, which exist only as uncommitted files in the `all_papers` clone). To stay under 511 files, the published pages carry their images inline as data URIs; git keeps the image files, and videos stay files. WwBL has 172 files. A page published later the usual way, with its figure files, works beside them.
 - 2026-11-22, ComputerUseAgents: the request was a topic, not a paper link, so the run made a topic page in `LLM-Harness`, anchored on the Efficient GUI Agents survey (arXiv 2609.02309) with four more papers and the three vendors' docs. Sync with 3cWG (this account's copy): MLP-vs-Transformer, ZAP and CamVLA came down from it into the repo, 21 pages went up, and 27 older pages do not fit. 3cWG now holds 490 of 511 files (36 pages), so a paper with more than about 20 files will not fit there until room is made.
 - 2026-11-23, sync from the 3cWG account: figures now live in each copy's asset store (paper-explain 0.4.3). 3cWG stores all 974 figures there and holds all 63 pages in 66 files, so the 511-file limit no longer keeps papers out of it. GGxY and WwBL catch up at their own accounts' next run.
+- 2026-11-24, RoboUniverse follow-up questions: dense answers with file names, parameters and section numbers in every bullet did not land, and a walked example did. Answers to questions now use plain words and one example from start to end ("Answering my questions" above); the page got the same walk-throughs (how the mug task was built, the three Harbor containers, the two layers of task code).
