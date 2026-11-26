@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>OPAL</title>
+<meta name="description" content="coding agent 在一次训练里反复重写 analysis.py（看什么）和 updater.py（怎么更新），zero-shot；LightningDiT-XL/1 的 FID-50K 4.33，官方 recipe 5.15，约 100 次 decision 花 $6.42。">
+<meta name="paper:title" content="Reactive Optimizers">
+<meta name="paper:source" content="https://arxiv.org/abs/2610.33826">
+<meta name="paper:venue" content="arXiv 2026">
+<meta name="paper:pdf" content="https://arxiv.org/pdf/2610.33826v2">
+<meta name="paper:date" content="2026-10-24">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;700&display=swap">
+<style>
+/* tokens:start */
+/* Layout: one ~72ch reading column for text; figures and flowcharts use the full 1040px frame.
+   Amber always means "the running example"; blue is structure; red is a gap; green is a win. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #161a21; --muted: #586070; --rule: #dbe0e7;
+  --accent: #2346c8; --ex: #a84b07; --ex-bg: #fff1e3; --gap: #b3261e; --win: #13784a;
+  --paper: #ffffff; --fig-dim: 1;  /* authors' figures keep their white page in both themes */
+  --f-display: "Archivo", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "Noto Sans SC", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+    --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+    --fig-dim: .9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b22; --ink: #e6e9ef; --muted: #9aa3b3; --rule: #2a303a;
+  --accent: #93b0ff; --ex: #f3a25a; --ex-bg: #2b1d10; --gap: #ff8f84; --win: #5fd3a0;
+  --fig-dim: .9; color-scheme: dark;
+}
+/* tokens:end */
+
+* { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.7 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.frame { max-width: 1040px; margin: 0 auto; }
+p, ul, ol, dl { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.5rem, 7vw, 3.75rem); font-weight: 800; font-stretch: 115%; line-height: 1; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; margin-bottom: .9rem; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+.eyebrow { font: 500 .75rem/1.3 var(--f-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+ul.tight { padding-left: 1.15rem; margin: .5rem 0; }
+ul.tight li + li { margin-top: .3rem; }
+b, strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.ex { font-family: var(--f-mono); font-size: .86em; color: var(--ex); background: var(--ex-bg); padding: 0 .3em; border-radius: 3px; }
+.ex, code { overflow-wrap: anywhere; }  /* long commands and paths must not widen the page on a phone */
+span.gap { color: var(--gap); font-weight: 700; }
+span.win { color: var(--win); font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.bar .frame { display: flex; align-items: center; gap: 1.25rem; padding-block: .6rem; }
+.crumb { font: 500 .8rem var(--f-mono); white-space: nowrap; color: var(--muted); }
+.crumb a { color: var(--ink); text-decoration: none; }
+.jump { display: flex; gap: 1rem; overflow-x: auto; scrollbar-width: none; font-size: .88rem; min-width: 0; }
+.jump a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.jump a:hover { color: var(--accent); }
+
+/* header */
+.head { padding-block: 2.5rem 1.75rem; display: grid; gap: .6rem; }
+.full-title { font-size: 1.2rem; line-height: 1.4; margin: 0; }
+.meta { color: var(--muted); margin: 0; font-size: .95rem; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 0; }
+.links a { font: 500 .82rem var(--f-mono); text-decoration: none; border: 1px solid var(--rule); background: var(--surface); padding: .25rem .6rem; border-radius: 4px; }
+.filed { margin: .35rem 0 0; font-size: .95rem; }
+
+section { padding-block: 2.25rem; border-top: 1px solid var(--rule); scroll-margin-top: 3.5rem; }
+
+/* TL;DR */
+.tldr dl { margin: 0; display: grid; }
+.tldr dl > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .65rem; border-bottom: 1px dashed var(--rule); }
+.tldr dt { font: 500 .78rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tldr dd { margin: 0; font-size: 1.08rem; }
+
+/* problem, told on the running example */
+.setup { background: var(--ex-bg); border: 1px solid color-mix(in srgb, var(--ex) 35%, transparent); border-radius: 8px; padding: .9rem 1.1rem; max-width: none; }
+.setup .eyebrow, .ex-label { color: var(--ex); }
+.setup p { margin: .2rem 0 0; }
+table.grid { width: 100%; border-collapse: collapse; font-size: .93rem; margin: 1rem 0; }
+table.grid th, table.grid td { text-align: left; padding: .5rem .6rem; border-top: 1px solid var(--rule); vertical-align: top; }
+table.grid th { font: 500 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-top: 0; }
+#related { margin-top: 1.75rem; scroll-margin-top: 3.5rem; }
+/* fixed columns keep every page's table the same shape; on a phone it scrolls inside .table-wrap */
+table.related { table-layout: fixed; min-width: 720px; }
+table.related tr:first-child th:nth-child(1) { width: 22%; }
+table.related tr:first-child th:nth-child(2), table.related tr:first-child th:nth-child(3) { width: 24%; }
+table.related tr.group th { font: 700 .85rem var(--f-display); letter-spacing: .02em; text-transform: none; color: var(--accent); border-top: 1px solid var(--rule); padding-top: .9rem; }
+.note { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+.crux { font-size: 1.05rem; margin: 1rem 0 0; }
+
+/* authors' figures */
+.paper-fig { margin: 1.25rem 0; }
+.paper-fig .mat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: .6rem; }
+.paper-fig img { display: block; width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; cursor: zoom-in; filter: brightness(var(--fig-dim)); }
+.paper-fig figcaption { font-size: .88rem; color: var(--muted); margin-top: .5rem; max-width: 80ch; }
+.paper-fig figcaption b { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
+/* project-page media: videos, and two or three of them side by side to compare */
+.paper-fig video { display: block; width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 4px; background: #000; }
+.media-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .6rem; }
+.media-row figure { margin: 0; }
+.media-row figcaption { font: 500 .8rem var(--f-mono); color: #3a4250; margin-top: .3rem; }
+ol.read { padding-left: 1.4rem; margin: .5rem 0 0; }
+ol.read li + li { margin-top: .3rem; }
+ol.read li::marker { font: 500 .85em var(--f-mono); color: var(--accent); }
+
+/* flowcharts (mermaid source in <pre>, drawn by the script at the end). A drawn chart shrinks to
+   fit the box, down to 70% of its natural width; beyond that its .flow-scroller scrolls sideways
+   and the box shows a right-edge fade plus a hint. */
+.flow { margin: 1.1rem 0; padding: .9rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
+.flow-scroller { overflow-x: auto; }
+.flow svg { display: block; margin: 0 auto; height: auto; }
+/* Mermaid wraps a subgraph title longer than 200px onto a second line that the first node then covers;
+   keep the title on one line, centred, and let it show past its 200px box. */
+.flow .cluster-label foreignObject { overflow: visible; }
+.flow .cluster-label foreignObject > div { white-space: nowrap !important; max-width: none !important; width: max-content !important; position: relative; left: 50%; transform: translateX(-50%); }
+.flow .scroll-hint { display: none; margin: .4rem 0 0; font: 500 .72rem var(--f-mono); letter-spacing: .06em; color: var(--muted); }
+.flow.scrolls .scroll-hint { display: block; }
+.flow.scrolls::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 40px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--surface)); transition: opacity .2s; }
+.flow.scrolls.at-end::after { opacity: 0; }
+.flow pre { margin: 0; font: .78rem/1.5 var(--f-mono); color: var(--muted); white-space: pre-wrap; }
+.flow .node.example rect, .flow .node.example polygon { fill: var(--ex-bg) !important; stroke: var(--ex) !important; stroke-dasharray: 5 3; }
+.flow .node.gap rect, .flow .node.gap polygon { stroke: var(--gap) !important; stroke-width: 2px !important; }
+.flow .node.win rect, .flow .node.win polygon { stroke: var(--win) !important; stroke-width: 2px !important; }
+.flow a { cursor: pointer; }
+.flow-hint { font-size: .85rem; color: var(--muted); margin: -.4rem 0 0; }
+
+/* level 3: one block per stage */
+.l3-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; }
+button.ghost { font: 500 .8rem var(--f-mono); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; cursor: pointer; }
+details.stage { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; scroll-margin-top: 3.5rem; }
+details.stage + details.stage { margin-top: .75rem; }
+details.stage > summary { list-style: none; cursor: pointer; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .2rem .9rem; align-items: baseline; }
+details.stage > summary::-webkit-details-marker { display: none; }
+details.stage > summary::after { content: "+"; font: 500 1.1rem var(--f-mono); color: var(--muted); grid-column: 3; grid-row: 1; }
+details.stage[open] > summary::after { content: "\2212"; }
+.stage-n { font: 500 .78rem var(--f-mono); color: var(--accent); text-transform: uppercase; letter-spacing: .07em; }
+.stage-name { font-family: var(--f-display); font-weight: 700; font-size: 1.08rem; }
+.stage-io { grid-column: 2; font-size: .9rem; color: var(--muted); }
+.stage-body { padding: 0 1rem 1.1rem; border-top: 1px dashed var(--rule); }
+.on-example { background: var(--ex-bg); border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; }
+.on-example p { margin: .25rem 0 0; }
+details.recap { margin-top: 1.25rem; }
+details.recap > summary { cursor: pointer; font-size: .92rem; color: var(--muted); }
+
+/* results: one block per experiment, the authors' table first */
+.exp { margin-top: 1.75rem; }
+.exp + .exp { padding-top: 1.75rem; border-top: 1px dashed var(--rule); }
+.exp-n { font: 500 .85rem var(--f-mono); color: var(--accent); margin-right: .5rem; }
+.exp-src { font: 400 .8rem var(--f-mono); color: var(--muted); margin-left: .5rem; }
+dl.exp-notes { margin: 0; display: grid; }
+dl.exp-notes > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; padding-block: .55rem; border-bottom: 1px dashed var(--rule); }
+dl.exp-notes dt { font: 500 .8rem var(--f-mono); color: var(--muted); }
+dl.exp-notes dd { margin: 0; }
+dl.exp-notes ul.tight { margin: 0; }
+
+footer { border-top: 1px solid var(--rule); padding-block: 1.5rem 3rem; font-size: .85rem; color: var(--muted); }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); cursor: zoom-out; }
+.lightbox img { max-height: 100%; background: var(--paper); padding: .5rem; border-radius: 6px; }
+
+@media (max-width: 560px) {
+  .tldr dl > div, dl.exp-notes > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .crumb .proj { display: none; }
+}
+</style>
+<script type="application/json" id="agent-context">{
+ "about": "Hidden from readers: the facts an agent needs to answer questions about this page and to change it. Written by the paper-explain skill's build_index.py.",
+ "page": "2026-11-26-OPAL",
+ "open": "#2026-11-26-OPAL after the library artifact's link opens this page directly",
+ "project": "LLM-Harness",
+ "tldr": "coding agent 在一次训练里反复重写 analysis.py（看什么）和 updater.py（怎么更新），zero-shot；LightningDiT-XL/1 的 FID-50K 4.33，官方 recipe 5.15，约 100 次 decision 花 $6.42。",
+ "paper": {
+  "title": "Reactive Optimizers",
+  "venue": "arXiv 2026",
+  "date": "2026-10-24",
+  "source": "https://arxiv.org/abs/2610.33826",
+  "pdf": "https://arxiv.org/pdf/2610.33826v2",
+  "links": {
+   "arXiv": "https://arxiv.org/abs/2610.33826",
+   "PDF": "https://arxiv.org/pdf/2610.33826v2",
+   "Project page": "https://xingjianbai.com/reactive-optimizers/",
+   "Code": "https://github.com/xingjian-bai/opal"
+  }
+ },
+ "sections": [
+  "tldr",
+  "problem",
+  "l1",
+  "l2",
+  "l3",
+  "results",
+  "limits",
+  "for-you"
+ ],
+ "library": {
+  "repo": "https://github.com/EricWang12/all_papers",
+  "page_file": "https://github.com/EricWang12/all_papers/blob/main/LLM-Harness/artifact/2026-11-26-OPAL.html",
+  "figures": "https://github.com/EricWang12/all_papers/tree/main/LLM-Harness/artifact/2026-11-26-OPAL",
+  "profile": "https://github.com/EricWang12/all_papers/blob/main/preferences.md",
+  "pdf_note": "The PDF is not in the repo (too large): fetch paper.pdf."
+ },
+ "answering": "Answer from the paper itself (paper.pdf), not only from this page; name the figure, table or section a number comes from, and say so when the paper does not report something. The reader's profile (library.profile) says how they like answers.",
+ "changing": "To change the page, edit library.page_file in the repo and republish it to this artifact, with the paper-explain skill (https://github.com/EricWang12/zw-claude-skills/tree/main/plugins/paper-explain) when you can. A page changed only in this artifact is copied into the repo by the skill's next run, so it is not lost."
+}</script>
+</head>
+<body>
+
+<nav class="bar" aria-label="Page">
+  <div class="frame">
+    <span class="crumb"><a href="../../index.html">Library</a><span class="proj"> / LLM-Harness</span></span>
+    <div class="jump">
+      <a href="#tldr">TL;DR</a><a href="#problem">Problem</a><a href="#related">Related work</a><a href="#l1">Big picture</a>
+      <a href="#l2">Stages</a><a href="#l3">Details</a><a href="#results">Results</a>
+      <a href="#limits">Limits</a><a href="#for-you">For you</a>
+    </div>
+  </div>
+</nav>
+
+<main class="frame">
+
+<header class="head">
+  <p class="eyebrow">LLM-Harness · 归档于 2026-11-26</p>
+  <h1>OPAL</h1>
+  <p class="full-title">Reactive Optimizers</p>
+  <p class="meta">Xingjian Bai, Jia-Hao Liang, Jayden Teoh, Vincent Sitzmann · MIT · arXiv 2026-10-24（v2 2026-11-04，blog post 的静态版）</p>
+  <p class="links">
+    <a href="https://arxiv.org/abs/2610.33826">arXiv</a><a href="https://arxiv.org/pdf/2610.33826v2">PDF</a>
+    <a href="https://xingjianbai.com/reactive-optimizers/">Project page</a><a href="https://github.com/xingjian-bai/opal">Code</a>
+  </p>
+  <p class="filed">归档到 <b>LLM/Harness</b>：一个 coding agent 被放进长时间运行的训练循环里，靠自己写的两个程序观察和控制它，是 agent loop 本身的设计，不涉及机器人。</p>
+</header>
+
+<section id="tldr" class="tldr">
+  <p class="eyebrow">TL;DR</p>
+  <dl>
+    <div><dt>Problem</dt><dd>optimizer 的 recipe 在训练前写死；换了模型或数据、又只够跑一次时，它不合适也没人改。</dd></div>
+    <div><dt>Idea</dt><dd>训练中让 agent 反复重写两个程序：<code>analysis.py</code>（它想看什么）和 <code>updater.py</code>（每个 parameter group 怎么更新）；zero-shot，不做 meta-training。</dd></div>
+    <div><dt>Result</dt><dd>LightningDiT-XL/1 一次 run：FID-50K 4.33，官方 recipe 5.15；agent 约 100 次 decision 花 $6.42，不等 agent 时多 1.14× 时间。</dd></div>
+  </dl>
+</section>
+
+<section id="problem">
+  <p class="eyebrow">Problem</p>
+  <h2>没有调好的 recipe，又只够跑一次：训练出了状况没人管</h2>
+  <div class="setup">
+    <p class="eyebrow">Running example · 后面每个 stage 都跟着它走</p>
+    <p><b>LightningDiT-XL/1 这一次 run</b>：<span class="ex">ImageNet 256×256 图像生成，64 epochs = 80,000 updates</span>，起点是<span class="ex">官方 recipe（AdamW）</span>，agent 是 <span class="ex">Claude Opus 5.5</span> → 想要：不做 sweep，一次跑完，FID-50K 比官方 recipe 低。</p>
+  </div>
+  <div class="flow"><pre>
+flowchart LR
+  IN["<b>例子输入</b><br/><span class='ex'>LightningDiT-XL/1<br/>只够跑一次</span>"]
+  IN --> A1["<b>官方 recipe 原样跑</b><br/>AdamW，规则训练前写死"]
+  A1 --> AX["80K updates 一行不改<br/><span class='ex'>FID-50K 5.15</span>"]:::gap
+  IN --> B1["<b>借别处调好的 recipe</b><br/>NanoGPT 榜 #21 Shampoo"]
+  B1 --> BX["换成中文数据就掉队<br/><span class='ex'>4.2977，输给 AdamW 4.2570</span>"]:::gap
+  IN --> C1["<b>Sweep</b><br/>Goldfish：再跑 9 个 recipe"]
+  C1 --> CX["多花 9 整轮训练<br/><span class='ex'>80.89，OPAL 一轮 81.11</span>"]:::gap
+  IN --> D1["<b>跨 run 搜索 / meta-train</b><br/>AI Scientist、VeLO"]
+  D1 --> DX["要很多 run 或先训 optimizer<br/><span class='ex'>找到后仍然写死</span>"]:::gap
+  </pre></div>
+  <p class="note">第 1 条是例子本身（Fig. 1g）。第 2、3 条论文是在 NanoGPT 和 Goldfish 上报告的（Fig. 1a/c/f，Appendix C.2）：Shampoo 在原设定赢 AdamW（3,975 对 5,625 updates），换语言后反过来。第 4 条论文没有跑实验，只在 Introduction 和 Appendix A 里说明。</p>
+  <p class="crux"><b>根本问题：</b>规则都写在训练之前，训练中发生什么都没人看、没人改。　<b>这篇的切入点：</b>让一个通用 agent 在这一次 run 里边看边改 optimizer 的代码。</p>
+
+  <h3>先认几个词</h3>
+  <div class="table-wrap">
+    <table class="grid">
+      <tr><th>词</th><th>白话</th><th>在例子里</th></tr>
+      <tr><td class="sym">recipe</td><td>optimizer + 超参 + schedule，训练前定好</td><td>LightningDiT 官方的 AdamW 配置</td></tr>
+      <tr><td class="sym">parameter group</td><td>共用一条更新规则的一组权重</td><td>attention / MLP 矩阵、adaLN、timestep embedder</td></tr>
+      <tr><td class="sym">AdamW</td><td>每个权重各算各的步长</td><td>起点：所有权重都用它</td></tr>
+      <tr><td class="sym">Muon</td><td>把一个权重矩阵当整体，更新先正交化</td><td>step 800 起 block 里的矩阵改用它</td></tr>
+      <tr><td class="sym">adaLN</td><td>DiT 里把 timestep / class 条件注入每层的 modulation 权重（通用含义，论文没解释）</td><td>step 4,000 也搬到 Muon</td></tr>
+      <tr><td class="sym">cooldown</td><td>训练末段把 learning rate 降到接近 0</td><td>起点改了两次：60K → 54K → 50K</td></tr>
+      <tr><td class="sym">decision</td><td>问 agent 一次；它也可以什么都不改</td><td>约 100 次，其中 13 次改了程序</td></tr>
+      <tr><td class="sym">FID-50K</td><td>用 5 万张生成图算的质量分，越低越好</td><td>4.33 对 5.15（不带 guidance）</td></tr>
+    </table>
+  </div>
+
+  <h3 id="related">Related work</h3>
+  <div class="table-wrap">
+    <table class="grid related">
+      <tr><th>相关工作</th><th>解决什么</th><th>怎么解决</th><th>和本文的区别</th></tr>
+      <tr class="group"><th colspan="4">同一问题 · 别的解法</th></tr>
+      <tr><td><b>手工 optimizer 和 schedule</b><br><span class="muted">Adam、Shampoo / SOAP、Muon、SGDR</span></td><td>训练该怎么走的先验</td><td>规则训练前写好</td><td>只按预先写的规则变 → 本文在 run 中改规则本身</td></tr>
+      <tr><td><b>跨 run 自动搜索</b><br><span class="muted">AI Scientist、autonomous speedrunning、Symbolic Discovery</span></td><td>找更好的 optimizer</td><td>跑很多 run 来搜</td><td>要很多 run，结果还是静态的 → 本文只用一次 run</td></tr>
+      <tr><td><b>学出来的 optimizer / step-size controller</b><br><span class="muted">Andrychowicz et al.、Li &amp; Malik、Daniel et al.、VeLO、Optim4RL、OPEN</span></td><td>更新随训练状态变化</td><td>在很多优化任务上 meta-train 一个网络</td><td>要专门 meta-training → 本文用现成 agent，zero-shot（本文自己这一脉）</td></tr>
+      <tr><td><b>在线选超参</b><br><span class="muted">Population Based Training、AdaQN</span></td><td>训练中找超参 schedule</td><td>同时训一群模型或多个 critic 再挑</td><td>要并行多份，只动超参 → 本文单个 run，整个算法可重写</td></tr>
+      <tr class="group"><th colspan="4">相似做法 · 别的问题</th></tr>
+      <tr><td><b>模型指挥自己的 fine-tuning</b><br><span class="muted">SEAL</span></td><td>LM 自己适应新数据</td><td>RL 训 LM 生成 fine-tuning 数据和超参指令</td><td>要先用 RL 训这个 LM，输出的是指令 → 本文不训 agent，改的是可执行的更新代码</td></tr>
+    </table>
+  </div>
+  <p class="note">来源：Introduction 和 Appendix A（Related work），未另行检索。Introduction 说本文建立在 VeLO、Daniel et al.、Population Based Training 和 SEAL 之上。</p>
+</section>
+
+<section id="l1">
+  <p class="eyebrow">Level 1 · Big picture</p>
+  <h2>代码是唯一的接口：agent 写一个程序看训练，写另一个程序改训练</h2>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-26-OPAL/fig2.jpg" alt="training run 和 agent 之间的两个箭头：analysis.py 从训练到 agent，updater.py 从 agent 回到训练"></div>
+    <figcaption><b>Fig. 2</b>（作者原图）agent 在训练中反复重写的两个程序。</figcaption>
+  </figure>
+  <p class="eyebrow">怎么读这张图</p>
+  <ol class="read">
+    <li><b>左 training run：</b>正在跑的训练，例子里是 LightningDiT-XL/1 的 80,000 updates。</li>
+    <li><b>上 analysis.py（绿）：</b>agent 自己写的探针，从训练状态里取它想知道的统计量，交给 agent。</li>
+    <li><b>下 updater.py（蓝）：</b>agent 写的更新规则，训练的每一步都用它；例子里它从“全用 AdamW”被改了 13 次。</li>
+  </ol>
+  <figure class="paper-fig">
+    <div class="mat"><img src="2026-11-26-OPAL/web-hero.jpg" alt="项目页动画的一帧：左边 static optimizer 的 AdamW 伪代码，右边 reactive optimizer 在 step 800 插入了给 attn/MLP 矩阵用 Muon 的几行"></div>
+    <figcaption><b>项目页</b> <a href="https://xingjianbai.com/reactive-optimizers/">开头的动画</a>（截取 step 800 一帧）：例子的第 1 次 decision。</figcaption>
+  </figure>
+  <ol class="read">
+    <li><b>左 static：</b>8 行 AdamW，80K 步不变。</li>
+    <li><b>右 reactive，高亮 4–6 行：</b>agent 给 attn/MLP 矩阵加了一段 Muon；其余权重还走下面的 AdamW。</li>
+    <li><b>下方两行：</b>analysis 是它看到的（AdamW 逐元素更新，忽略矩阵结构），update 是它改的（update 801 起换 Muon）。原页可以拖动时间轴看后面每次改动。</li>
+  </ol>
+  <div class="flow"><pre>
+flowchart LR
+  I["<b>Input</b><br/><span class='ex'>官方 AdamW recipe<br/>一次 80K-update run</span>"] --> M["<b>agent 边训边改代码</b><br/><span class='ex'>约 100 次 decision<br/>13 次改了程序</span>"]:::win
+  M --> O["<b>Output</b><br/><span class='ex'>FID-50K 4.33<br/>官方 recipe 5.15</span>"]
+  </pre></div>
+</section>
+
+<section id="l2">
+  <p class="eyebrow">Level 2 · Stages</p>
+  <h2>一个循环，5 步</h2>
+  <div class="flow"><pre>
+flowchart TD
+  S1["<b>1 · Wrap</b><br/><span class='ex'>官方 AdamW，原样包起来</span>"] --> S2["<b>2 · Probe</b>　analysis.py<br/><span class='ex'>梯度–momentum cosine、spike log</span>"]:::win
+  S2 --> S3["<b>3 · Decide</b>　agent<br/><span class='ex'>step 800：block 矩阵该换 Muon</span>"]:::win
+  S3 --> S4["<b>4 · Rewrite</b>　updater.py<br/><span class='ex'>196 个矩阵 → Muon</span>"]:::win
+  S4 --> S5["<b>5 · Swap in</b><br/><span class='ex'>update 801 起生效</span>"]
+  S5 -->|"下一次 decision"| S2
+  click S1 href "#stage-1"
+  click S2 href "#stage-2"
+  click S3 href "#stage-3"
+  click S4 href "#stage-4"
+  click S5 href "#stage-5"
+  </pre></div>
+  <p class="flow-hint">点击 stage 展开 Level 3 细节。例子里 13 次改动的完整记录在 <a href="#stage-4">Stage 4</a>。</p>
+</section>
+
+<section id="l3">
+  <div class="l3-head">
+    <div><p class="eyebrow">Level 3 · Details</p><h2>每个 stage 的细节</h2></div>
+    <button type="button" class="ghost" id="expand-all">全部展开</button>
+  </div>
+
+  <details class="stage" id="stage-1">
+    <summary>
+      <span class="stage-n">Stage 1</span>
+      <span class="stage-name">Wrap</span>
+      <span class="stage-io">现成的 optimizer + scheduler → 两个初始程序</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>不假设模型、数据或训练动态；从任务自带的 recipe 出发，agent 不动就等于原来的训练。</li>
+        <li><b>How：</b>一行 <code>opal.wrap(opt, model, scheduler, total_steps, goal)</code>（README）。</li>
+        <li><code>updater.py</code> 初始就是调用你原来的 optimizer 和 scheduler；<code>analysis.py</code> 初始只有 loss 和梯度的几个统计量（README）。</li>
+        <li>agent 改之前，包过的 run 和原 run 逐 bit 相同（README）。</li>
+        <li>agent 被要求不碰模型、数据、loss、batch size、步数和评测；这是规则，不是 sandbox（README）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>你的训练脚本</b><br/><span class='ex'>AdamW + scheduler</span>"] --> b["<b>opal.wrap</b><br/>一句 goal：训什么、按什么评"]
+  b --> c["<b>updater.py</b> = 原 optimizer<br/><b>analysis.py</b> = 基本统计"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>官方 LightningDiT recipe（AdamW）→ step 0–799 和官方训练一样。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-2">
+    <summary>
+      <span class="stage-n">Stage 2</span>
+      <span class="stage-name">Probe · analysis.py</span>
+      <span class="stage-io">训练状态 → agent 读得下的一份报告</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>权重、activation、梯度原样给 agent 会撑爆 context（§2）。</li>
+        <li><b>How：</b>看什么也由 agent 自己写；探针全程跟着训练跑。</li>
+        <li>论文举的信号（§2）：每个 parameter group 的梯度范数、更新量相对权重的大小、相邻两步梯度的 cosine、哪些 tensor 梯度突然变大。</li>
+        <li>agent 还能看到：goal、参数的名字和形状、training loss、训练脚本和模型代码的只读副本（README）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>训练状态</b><br/>权重、梯度、loss"] --> b["<b>analysis.py</b><br/>agent 写的探针"]:::win
+  b --> c["<b>报告</b><br/><span class='ex'>每类矩阵、每层深度的<br/>梯度–momentum cosine</span>"]
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>step 2,400：修了一个报告 bug，把梯度–momentum cosine 按矩阵类型和深度拆开，AdamW 的 tensor 也加上。step 17,600：加上 block 外每个 tensor 的梯度范数和一份 spike log（C.3）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-3">
+    <summary>
+      <span class="stage-n">Stage 3</span>
+      <span class="stage-name">Decide · agent</span>
+      <span class="stage-io">报告 + loss + 这次 run 的全部历史 → 改不改、改什么、为什么</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>人只能做有限几次决定；agent 决定得勤，每次都能看整段历史（§3.1）。</li>
+        <li><b>How：</b>zero-shot，没有别的 run 留下的记忆；整个 run 是一段对话，每次 decision 留一句理由（README）。</li>
+        <li>它拿来当证据的四种做法（Appendix B）：</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  E1["<b>Deduced from clues</b><br/><span class='ex'>SiT：cosine ≈ −0.22<br/>→ 该组 LR 0.3× 降到 0.15×</span>"] --> D["<b>decision</b><br/>改 updater.py"]:::win
+  E2["<b>A-B-A test</b><br/><span class='ex'>RAEv2：2× 比 1.5× 降得快<br/>→ update 3,100 起用 2×</span>"] --> D
+  E3["<b>Trial and error</b><br/><span class='ex'>RAEv2：1.3× → backbone 退回 1×<br/>→ 全部 1.5×</span>"] --> D
+  E4["<b>Re-planned cooldown</b><br/><span class='ex'>DiT：constant rate 几乎不动<br/>→ 54K 提前到 50K</span>"] --> D
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-26-OPAL/appB-trial.jpg" alt="Appendix B 的 Trial and error 框：RAEv2 agent 的 backbone attention learning rate 随 update 的曲线，1x 起步，升到 1.5x、2x、2.5x、2.75x，中间两处短暂下探，最后 cooldown"></div>
+        <figcaption><b>Appendix B · Trial and error</b>（作者原图）RAEv2 agent 的 backbone attention learning rate，相对官方 rate 的倍数。</figcaption>
+      </figure>
+      <ol class="read">
+        <li><b>斜体那句：</b>agent 自己的理由，“上次的解释错了，所以全部升到 1.5×”。</li>
+        <li><b>曲线的台阶：</b>2×、2.5×、2.75× 各试约 650 updates，最后留在 2×。</li>
+        <li><b>两处很深的下探：</b>把 rate 降 75 个 updates 当测试，量 step size 带来的 loss 噪声。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>step 800（decision 1）：看到“AdamW 逐元素更新 block 矩阵，忽略矩阵结构”→ 决定把它们换成 Muon（项目页动画）。step 39,200：看到 constant rate 下进展几乎停了 → 把 cooldown 起点从 54K 提前到 50K（C.3）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-4">
+    <summary>
+      <span class="stage-n">Stage 4</span>
+      <span class="stage-name">Rewrite · updater.py</span>
+      <span class="stage-io">decision → 每个 parameter group 的新更新规则</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>直接写代码，schedule、optimizer 类型、保护措施都能改，而且可以每个 parameter group 各不相同。</li>
+        <li><b>How：</b>例子里改动分四类：</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  U["<b>updater.py</b>"] --> K1["<b>Optimizer 类型</b><br/><span class='ex'>800：196 个矩阵 → Muon<br/>4,000：adaLN 也搬过去</span>"]:::win
+  U --> K2["<b>LR schedule</b><br/><span class='ex'>4,800：Muon 步长升到 1.5×<br/>13,600：1−√ cooldown，54K→76K</span>"]:::win
+  U --> K3["<b>Guard</b><br/><span class='ex'>1,600：梯度范数超过<br/>均值 3× 就降这步的 rate</span>"]:::win
+  U --> K4["<b>Fix / revert</b><br/><span class='ex'>4,000：撤掉 3,200 加的 controller<br/>18,400：guard 不再看噪声大的那层</span>"]:::win
+      </pre></div>
+      <figure class="paper-fig">
+        <div class="mat"><img src="2026-11-26-OPAL/tabC3-dit.jpg" alt="Appendix C.3 的表：LightningDiT-XL/1 这次 run 里 13 次改了程序的 decision，列为 Step、File、What changed、Tags"></div>
+        <figcaption><b>Appendix C.3 · LightningDiT-XL/1</b>（作者原图）例子里所有改了程序的 decision。</figcaption>
+      </figure>
+      <p class="eyebrow">怎么读这张图</p>
+      <ol class="read">
+        <li><b>Step 列：</b>都是 800 的倍数（推断：每 800 updates 问一次，80,000 / 800 = 100，和 §4 的“约 100 次 decision”一致）。</li>
+        <li><b>File 列：</b>改的是哪个程序；16,000 起连续三行只改 <code>analysis.py</code>。</li>
+        <li><b>前 7 行（800–6,400）：</b>逐步把更多矩阵搬到 Muon，并把 Muon 的步长升到 1.25×、1.5×。</li>
+        <li><b>3,200 → 4,000：</b>加了一个按“梯度和 momentum 反向”降 rate 的 controller，下一次就撤掉。</li>
+        <li><b>Tags 列：</b>block-specific = 只动某类模块；observation-originated = 由探针看到的信号引出；fix or revert = 改自己之前的决定。</li>
+      </ol>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>Fig. 5 的计数：112 个矩阵在 update 801 换 Muon，4,001 加 28 个 adaLN，6,401 再加 2 个，共 142 个；C.3 写的 196 是把融合的 tensor 拆开后的个数。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="stage" id="stage-5">
+    <summary>
+      <span class="stage-n">Stage 5</span>
+      <span class="stage-name">Swap in</span>
+      <span class="stage-io">新程序 → 接管之后的每一步</span>
+    </summary>
+    <div class="stage-body">
+      <ul class="tight">
+        <li><b>Why：</b>每次都停下来等 agent 太慢（Fig. 9：1.30× 到 4.39×）。</li>
+        <li><b>How：</b>可以让训练继续，agent 的改动在之后某个 update 换入；Goldfish 上中位数晚 65 个 updates（§4）。</li>
+        <li>optimizer 的决定大多不抢时间，所以晚一点影响小（§4）。</li>
+        <li>新的 updater 先试跑 20 步，报错就退回上一个程序；每个版本都存着（README）。</li>
+      </ul>
+      <div class="flow"><pre>
+flowchart LR
+  a["<b>agent 在想</b><br/>训练不停"] --> b["<b>答案到了</b><br/><span class='ex'>之后某个 update 换入</span>"]
+  b --> c["<b>到得太晚就不生效</b><br/><span class='ex'>16,000 和 16,800 的<br/>analysis 改动</span>"]:::gap
+      </pre></div>
+      <div class="on-example">
+        <p class="eyebrow ex-label">Running example 在这一步</p>
+        <p>step 16,000 和 16,800 写的 diagnostics 都没生效（答案到 host 太晚），17,600 第三次写才跑起来（C.3）。这次 run 不等 agent 的总时间估计为 1.14×，等的话 1.30×（Fig. 9）。</p>
+      </div>
+    </div>
+  </details>
+
+  <details class="recap">
+    <summary>Recap：例子覆盖了论文的哪些 idea</summary>
+    <div class="table-wrap">
+      <table class="grid">
+        <tr><th>论文里的 idea</th><th>例子里在哪体现</th></tr>
+        <tr><td>代码是唯一接口，两个程序</td><td>Stage 2 / 4：C.3 的 File 列</td></tr>
+        <tr><td>zero-shot，从现成 recipe 出发</td><td>Stage 1：官方 AdamW</td></tr>
+        <tr><td>每个 parameter group 各自的 optimizer</td><td>Stage 4：800 / 4,000 / 6,400 分批搬到 Muon</td></tr>
+        <tr><td>中途升 LR、重排 cooldown</td><td>Stage 4：1.25× → 1.5×；cooldown 60K → 54K → 50K</td></tr>
+        <tr><td>压 gradient spike</td><td>Stage 4：1,600 的 guard，18,400 修它</td></tr>
+        <tr><td>改自己之前的决定</td><td>Stage 4：3,200 → 4,000</td></tr>
+        <tr><td>不等 agent</td><td>Stage 5：16,000 / 16,800 没生效</td></tr>
+        <tr><td>数值精度（float32 moments）</td><td>例子没有；NanoGPT Track 3 的 run，见 <a href="#exp-2">E2</a></td></tr>
+        <tr><td>momentum 控制</td><td>例子没有；2D toy landscape，见 <a href="#exp-3">E3</a></td></tr>
+        <tr><td>数据损坏的 batch gate、抗 overfitting</td><td>例子没有；ResNet-18 / CIFAR-10，见 <a href="#exp-4">E4</a>、<a href="#exp-5">E5</a></td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>没有调好的 recipe 时，一次 run 里追平或超过固定 recipe；多数实验只跑了一次</h2>
+  <p><a href="#exp-1">E1</a> 比最终质量 → <a href="#exp-2">E2</a> 看 agent 实际改了什么 → <a href="#exp-3">E3</a>–<a href="#exp-5">E5</a> 三个受控实验（momentum、loss spike、overfitting）→ <a href="#exp-6">E6</a> 算时间和钱。</p>
+
+  <div class="exp" id="exp-1">
+    <h3><span class="exp-n">E1</span>没有为这个设定调过的 recipe，一次 run 能不能比固定 recipe 好？<span class="exp-src">§1 · Fig. 1 · C.2</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-26-OPAL/fig1.jpg" alt="八个小图：NanoGPT 五个设定的条形图（OPAL 蓝色），Goldfish Amharic、LightningDiT-XL/1、RAEv2-B 三条训练曲线"></div>
+      <figcaption><b>Fig. 1</b>（作者原图）蓝色是 OPAL，灰色是固定 recipe；所有轴都是越小越好。</figcaption>
+    </figure>
+    <ol class="read">
+      <li><b>(a) NanoGPT 原设定：</b>recipe 都为它调过；OPAL 从 #36 出发，3,200 updates，和 #36 一样，输给 #46（2,725）和 #30（2,900）。</li>
+      <li><b>(b)–(e) ¼ batch 和三种语言：</b>没有专门的 recipe；OPAL 四个都最低，但只比 #46 低一点（如 Chinese 4.0957 对 4.0992）。</li>
+      <li><b>(f) Goldfish Amharic：</b>81.11 对官方 83.48 bits/sentence。</li>
+      <li><b>(g) 例子：</b>FID-50K 4.335 对 5.151（不带 guidance）。<b>(h) RAEv2-B：</b>3.192 对 3.385。</li>
+    </ol>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>没有现成 recipe 的设定里质量更好，调透的设定里只是追平。</b>例子带 guidance 是 1.83 对 2.18；Goldfish 上 sweep 找到的 recipe 80.89 反超 OPAL 的 81.11，但 OPAL 从这个 recipe 出发又到 80.73。</dd></div>
+      <div><dt>在故事里</dt><dd>立论：token 可以替代一部分 GPU / 人力 sweep。</dd></div>
+      <div><dt>指标</dt><dd>NanoGPT 原设定：validation loss 首次到 3.28 用的 updates；其余 NanoGPT：固定 updates 后的 validation loss；Goldfish：FLORES-200 bits/sentence；图像：FID-50K。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>agent 都是 Claude Opus 5.5；NanoGPT 的 baseline 是榜上 5 个 record 加自然的调整（¼ batch 时 learning rate 全部 ×¼）。</li>
+        <li>Chinese / Thai 的 OPAL 是 3 次 run 的均值；其余多为单次（§4）。</li>
+        <li>Goldfish：sweep 是另外 9 个静态 recipe，各跑满 10 epochs；OPAL 从官方 recipe 出发 50 次 decision，从 sweep 最好点出发 200 次。</li>
+        <li>三种语言上 #46 和 OPAL 用权重的 moving average 读数，其他 record 用最后的权重。</li>
+        <li>LightningDiT 的 baseline 是作者自己重训的官方 recipe；官方放出的 checkpoint 是 5.23 / 2.16。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-2">
+    <h3><span class="exp-n">E2</span>agent 在训练中到底改了什么？<span class="exp-src">§3.1–3.2 · Fig. 3–5 · App. B, C.3</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-26-OPAL/fig3.jpg" alt="四个 run 的 loss 曲线，OPAL 蓝色在固定 recipe 下方，曲线下的红色竖线标出每次改程序的 update"></div>
+      <figcaption><b>Fig. 3</b>（作者原图）四个 OPAL run 的 loss 和改程序的时刻；横轴是 log。</figcaption>
+    </figure>
+    <ol class="read">
+      <li><b>红色竖线：</b>改了程序的 decision；左上（例子）13 条，其中两条虚线是没生效的。</li>
+      <li><b>灰色短线：</b>没改程序的 decision。改动集中在前半段。</li>
+    </ol>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-26-OPAL/fig4.jpg" alt="五个小图：DeepSeek-V3 手工设计的五段 learning rate，和 OPAL 在 SiT-B/2、RAEv2-B、LightningDiT-XL/1、NanoGPT 上给每个 parameter group 定的 learning rate 轨迹"></div>
+      <figcaption><b>Fig. 4</b>（作者原图）learning rate 相对各自 recipe 的倍数；左上是人手写的 DeepSeek-V3 作对照。</figcaption>
+    </figure>
+    <ol class="read">
+      <li><b>每条颜色：</b>一个 parameter group；同一个 run 里各走各的。</li>
+      <li><b>中下（例子）：</b>蓝色的 attention / MLP 矩阵和橙色的 adaLN 中途升高，末段一起 cooldown（C.3：50K 起）。</li>
+      <li><b>左下 RAEv2-B：</b>台阶和两处下探就是 Stage 3 里那张 trial-and-error 图。</li>
+    </ol>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-26-OPAL/fig5.jpg" alt="四条横条：每个 run 里各段训练用的是 AdamW、部分 Muon、Muon，以及 NanoGPT 里 embedding 的 moments 从 bfloat16 换到 float32"></div>
+      <figcaption><b>Fig. 5</b>（作者原图）四个 run 里 optimizer 类型和数值精度随训练进度的变化。</figcaption>
+    </figure>
+    <ol class="read">
+      <li><b>右上（例子）：</b>橙色 AdamW 只占开头一小段，801 起转蓝（Muon）。</li>
+      <li><b>右下 RAEv2-B：</b>6,501 把 2 个输入卷积搬到 Muon，7,001 又搬回 AdamW。</li>
+      <li><b>左下 NanoGPT：</b>token embedding 的值约 15，相邻 bfloat16 相差 0.0625，learning rate 变小后更新被舍入吃掉 → 1,040 起只给这一个矩阵的 Adam moments 用 float32。</li>
+    </ol>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>schedule 因 run、因 parameter group 而异，还会中途升 learning rate、按模块换 optimizer。</b>这是对行为的描述，不是 ablation。</dd></div>
+      <div><dt>在故事里</dt><dd>说明 E1 的增益来自看了训练动态再做的改动。</dd></div>
+      <div><dt>指标</dt><dd>没有数值指标；记录每次 decision 的改动和 agent 写的理由。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>四个 run 的完整记录在 Appendix C.3。</li>
+        <li>Fig. 3 的图注明说：曲线是整次 run 的结果，没有单独隔离每次改动的效果。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-3">
+    <h3><span class="exp-n">E3</span>只让它调 momentum，能不能走出常见 optimizer 卡住的地形？<span class="exp-src">§3.3 · Fig. 6</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-26-OPAL/fig6.jpg" alt="左：2D 地形上的轨迹，蓝线 OPAL 从 start 走到 minimum，虚线 Static Preset A 来回震荡；右：loss、learning rate、momentum 随 step 的曲线"></div>
+      <figcaption><b>Fig. 6</b>（作者原图）34 个 2D 地形之一（tilted double-well 的变体）。</figcaption>
+    </figure>
+    <ol class="read">
+      <li><b>左：</b>start 在一个几乎平的 saddle 旁；虚线（固定设置）来回震荡，蓝线走到 minimum（星号）。</li>
+      <li><b>右上：</b>离最优值的差（log），蓝线降到约 −16，虚线停在 0 附近；红色小标记是 momentum reset 和回到最好点。</li>
+      <li><b>右下两条：</b>agent 定的 learning rate 和 momentum，平坦处升 momentum，接近 minimum 时降。</li>
+    </ol>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>同样的预算里离最优值更近。</b>34 个地形平均分 −11.6；12 个常见 recipe 里最好的 −2.2；382,080 个 sweep 出来的 recipe 里最好的 −7.4。</dd></div>
+      <div><dt>在故事里</dt><dd>“改 momentum”这类行为在大实验里看不清，放到 toy 上单独看。</dd></div>
+      <div><dt>指标</dt><dd>log<sub>10</sub>(当前值 − 最优值)，越低越好；每个地形 300 步。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>不限制的话，agent 几次 decision 内就换成二阶方法直接解掉，所以限制它只能用 heavy-ball，只调超参。</li>
+        <li>另给三个动作：清空 momentum、回到目前最好的点、跳到附近随机一点。静态 recipe 没有这些动作。</li>
+        <li>汇总结果在交互版 blog 里，PDF 只给这三个数。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-4">
+    <h3><span class="exp-n">E4</span>数据里混进坏 batch，它能不能自己学会挡住？<span class="exp-src">§3.4 · Fig. 7</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-26-OPAL/fig7.jpg" alt="左：test loss 曲线，四段灰色阴影是随机图像和标签的区间，OPAL 在第三、四段的尖峰明显变小；右：每段 test accuracy 变化的表"></div>
+      <figcaption><b>Fig. 7</b>（作者原图）ResNet-18 / CIFAR-10，四段阴影里换成随机图像和标签。</figcaption>
+    </figure>
+    <ol class="read">
+      <li><b>左，阴影 1–4：</b>四段坏数据；蓝线（OPAL）在 1、2 段和别人一样冲高，3 段小很多，4 段几乎没有。</li>
+      <li><b>左，顶上的标记：</b>圆 = 加 loss damping，方 = 换成 clipping，菱形 = 写 batch gate 并调它。</li>
+      <li><b>右表：</b>每段 test accuracy 掉多少个点；OPAL 是 −50.0、−66.3、−12.1、+0.7。</li>
+    </ol>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>见过几次之后更稳。</b>第 3、4 段 OPAL 掉 12.1 点和不掉；带 clipping 的 baseline 和 Stable-SPAM 这两段仍掉 28 到 76 点。</dd></div>
+      <div><dt>在故事里</dt><dd>“对训练事故做反应”的受控版本；大实验里对应的是 SiT agent 把 18 次 gradient spike 里的 17 次追到 timestep embedder，改成每个 tensor 按自己的历史 clip。</dd></div>
+      <div><dt>指标</dt><dd>每段坏数据造成的 test accuracy 变化（百分点）。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>不告诉 OPAL 数据被动过。</li>
+        <li>baseline：Muon、AdamW，各自带或不带 clipping，以及 Stable-SPAM。</li>
+        <li>gate 的做法：loss 远高于近期干净 batch 的 batch 被挡住。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-5">
+    <h3><span class="exp-n">E5</span>训练集里 10% 标签是错的，它能不能不去背错标签？<span class="exp-src">§3.5 · Fig. 8 · Table 1 · C.1</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-26-OPAL/fig8.jpg" alt="test loss 随 epoch：AdamW 从约第 24 epoch 起一路升到 2.5，OPAL 在竖线标出的 optimizer 改动后回落到 0.685"></div>
+      <figcaption><b>Fig. 8</b>（作者原图）test loss；蓝线上的小竖线是 optimizer 改动。</figcaption>
+    </figure>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-26-OPAL/tab1.jpg" alt="Table 1：OPAL 和三个 AdamW 版本的 test loss、test accuracy，以及在标错的训练图上预测真标签和错标签的比例"></div>
+      <figcaption><b>Table 1</b>（作者原图）先看最右两列：对那 4,500 张标错的训练图，模型说的是真标签还是错标签。</figcaption>
+    </figure>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>泛化更好，背得更少。</b>test loss 0.685、accuracy 78.6%；AdamW 直接跑完是 2.493、73.5%，最强的 AdamW 版本（validation 选的 EMA）是 0.832、77.5%。标错的图上 OPAL 只有 3.7% 说错标签，AdamW 跑完是 100%。</dd></div>
+      <div><dt>在故事里</dt><dd>optimizer 能看 validation 信号后，连 overfitting 也能自己处理。</dd></div>
+      <div><dt>指标</dt><dd>test loss、test accuracy；标错的训练子集上预测真标签 / 错标签的比例。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>ResNet-18，CIFAR-10，120 epochs，无 data augmentation；50,000 张里 10% 留作 validation，其余 10% 换成固定的错标签。</li>
+        <li>agent 看得到 training 统计和 validation loss / accuracy，不知道有错标签，也看不到 test。</li>
+        <li>起点和 baseline 都是 AdamW，learning rate 3e-3；网络的 logits 做了归一化（LogitNorm 的一种），防止靠缩放 logits 刷 loss。</li>
+        <li>OPAL 的做法：validation loss 在 epoch 24、28 上升后，逐步升 learning rate 并做权重平均；最终权重是 epoch 96–117 的平均，在 validation 上选的。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+
+  <div class="exp" id="exp-6">
+    <h3><span class="exp-n">E6</span>要多花多少时间和钱？<span class="exp-src">§4 · Fig. 9</span></h3>
+    <figure class="paper-fig">
+      <div class="mat"><img src="2026-11-26-OPAL/fig9.jpg" alt="四组条形：Goldfish、nanoGPT Track 3、LightningDiT XL/1、RAEv2-B 的 wall-clock 时间相对无 agent 训练的倍数，深蓝是不等 agent，浅蓝是等 agent 的时间"></div>
+      <figcaption><b>Fig. 9</b>（作者原图）wall-clock 时间，相对同一任务不带 agent 的训练。</figcaption>
+    </figure>
+    <ol class="read">
+      <li><b>灰：</b>不带 agent = 1。<b>深蓝：</b>不等 agent。<b>浅蓝：</b>每次 decision 都停下来等的额外时间。</li>
+      <li><b>右二（例子）：</b>等的话 1.30×；不等的话 1.14×，斜线表示这是估计值。</li>
+      <li><b>nanoGPT：</b>run 很短，等的话 4.39×。</li>
+    </ol>
+    <dl class="exp-notes">
+      <div><dt>说明什么</dt><dd><b>不等 agent 时时间开销小，token 钱相对 GPU 钱很少。</b>不等：1.01× 到 1.14×；等：1.30× 到 4.39×。例子约 100 次 decision 花 $6.42（Claude Opus 5.5 标价），训练本身约 74 H100-hours（约 $510）。</dd></div>
+      <div><dt>在故事里</dt><dd>回答“实用吗”。</dd></div>
+      <div><dt>指标</dt><dd>wall-clock 倍数；API 费用对 GPU 租金。</dd></div>
+      <div><dt>怎么评测</dt><dd><ul class="tight">
+        <li>不等时剩下的开销来自 agent 写的东西本身：比原 recipe 更贵的更新规则（Muon 的正交化、float32）和探针的测量。</li>
+        <li>LightningDiT 和 RAEv2-B 的“不等”是估计值，论文没说怎么估的。</li>
+      </ul></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Limits</p>
+  <h2>局限和开放问题</h2>
+  <ul class="tight">
+    <li>多数实验只跑一次，少数三次；agent 每次选的可能不一样，复现性更差（§4）。</li>
+    <li>没有隔离单次改动的效果（Fig. 3 图注）；哪些改动真的有用不清楚。</li>
+    <li>run 短、recipe 已调透时增益缩小：NanoGPT 原设定只追平 #36（§4）；README 还记了一次比 #36 差的 run（3.2878）。</li>
+    <li>大规模训练还缺支持：sharded training、optimizer 编译（§4）。</li>
+    <li>按 FLOPs 算不划算，论文只主张 GPU 小时和 token 是两种不同的资源（§4）。</li>
+    <li>agent 的程序在训练进程里跑，“不碰模型和数据”只是规则；它也不能回滚训练，只能下次 decision 再改（README）。</li>
+  </ul>
+</section>
+
+<section id="for-you">
+  <p class="eyebrow">For LLM/Harness</p>
+  <h2>对我们有什么用</h2>
+  <ul class="tight">
+    <li><b>和 <code>robot-harness</code> 同一个形状：</b>agent 低频决策，代码高频执行。区别是这里连“看什么”（<code>analysis.py</code>）也让 agent 自己写；我们的 Supervisor evidence 是固定的。</li>
+    <li><b>不等 agent 的换入方式可以照搬：</b>循环不停，答案晚到就丢，新程序先试跑 20 步、报错退回上一版。机器人控制循环同样等不起 LLM。</li>
+    <li><b>可以直接用：</b><code>pip install opal-optimizer</code>，agent 就是 Claude Code；适合没有调好 recipe 的几小时以上的训练（README：一次 decision 平均约 40 s）。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="frame">来源 <code>LLM-Harness/2026-11-26-OPAL.pdf</code> · <a href="../../index.html">返回 Library</a></div></footer>
+
+<div class="lightbox" hidden><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+(() => {
+  const root = document.documentElement;
+  const tok = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const dark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  let seq = 0;
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false, securityLevel: "loose", theme: "base",
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false, padding: 10, nodeSpacing: 36, rankSpacing: 46 },
+      themeVariables: {
+        darkMode: dark(), fontFamily: tok("--f-body"), fontSize: "15px",
+        background: tok("--surface"), mainBkg: tok("--surface"), primaryColor: tok("--surface"),
+        primaryTextColor: tok("--ink"), textColor: tok("--ink"), primaryBorderColor: tok("--accent"),
+        lineColor: tok("--muted"), clusterBkg: tok("--bg"), clusterBorder: tok("--rule"),
+        titleColor: tok("--muted"), edgeLabelBackground: tok("--surface")
+      }
+    });
+  }
+
+  async function draw(box) {
+    if (!box.dataset.src) {  // innerHTML keeps the <b>/<br/> label markup that textContent would drop
+      const t = document.createElement("textarea");
+      t.innerHTML = box.querySelector("pre").innerHTML;
+      box.dataset.src = t.value;
+    }
+    try {
+      const sc = document.createElement("div");
+      sc.className = "flow-scroller";
+      sc.innerHTML = (await mermaid.render("flow" + ++seq, box.dataset.src)).svg;
+      box.replaceChildren(sc);
+      scale(sc.querySelector("svg"));
+      const hint = document.createElement("p");
+      hint.className = "scroll-hint"; hint.setAttribute("aria-hidden", "true"); hint.textContent = "\u2190 \u6a2a\u5411\u6eda\u52a8 \u2192";
+      box.append(hint);
+      sc.addEventListener("scroll", () => fit(box), { passive: true });
+      fit(box);
+    } catch (err) {
+      box.innerHTML = "<pre></pre>";
+      box.firstChild.textContent = box.dataset.src;
+      console.error("flowchart failed to parse", err);
+    }
+    box.dataset.drawn = "1";
+  }
+  // Mermaid lays the chart out at natural size (useMaxWidth: false). The SVG then scales with
+  // the box through its viewBox, down to 70% of natural width; narrower boxes scroll it.
+  function scale(svg) {
+    const w = svg && (parseFloat(svg.getAttribute("width")) || (svg.viewBox.baseVal && svg.viewBox.baseVal.width));
+    if (!w) return;
+    svg.style.width = "100%"; svg.style.maxWidth = w + "px"; svg.style.minWidth = Math.round(w * 0.7) + "px"; svg.style.height = "auto";
+  }
+  function fit(box) {
+    const sc = box.querySelector(".flow-scroller");
+    const scrolls = !!sc && sc.scrollWidth > sc.clientWidth + 1;
+    box.classList.toggle("scrolls", scrolls);
+    box.classList.toggle("at-end", scrolls && sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1);
+  }
+  // Mermaid cannot measure text inside a closed <details>, so draw a chart when it first shows.
+  async function drawShown() {
+    for (const box of document.querySelectorAll(".flow:not([data-drawn])"))
+      if (!box.closest("details:not([open])")) await draw(box);
+  }
+  async function redraw() {
+    setup();
+    document.querySelectorAll(".flow[data-drawn]").forEach(b => delete b.dataset.drawn);
+    await drawShown();
+  }
+
+  function openFromHash() {
+    const el = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === "DETAILS" && !el.open) { el.open = true; el.scrollIntoView(); }
+  }
+
+  const expand = document.getElementById("expand-all");
+  expand?.addEventListener("click", () => {
+    const all = [...document.querySelectorAll("details.stage")];
+    const open = !all.every(d => d.open);
+    all.forEach(d => { d.open = open; });
+    expand.textContent = open ? "全部收起" : "全部展开";
+  });
+
+  const box = document.querySelector(".lightbox");
+  document.addEventListener("click", e => {
+    const img = e.target.closest(".paper-fig img");
+    if (img) { box.firstChild.src = img.src; box.firstChild.alt = img.alt; box.hidden = false; }
+    else if (e.target.closest(".lightbox")) box.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") box.hidden = true; });
+
+  if (!window.mermaid) return;  // offline: the <pre> sources stay readable
+  addEventListener("hashchange", openFromHash);
+  addEventListener("resize", () => document.querySelectorAll(".flow[data-drawn]").forEach(fit));
+  document.addEventListener("toggle", e => { if (e.target.open) drawShown(); }, true);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { setup(); openFromHash(); drawShown(); });
+})();
+</script>
+<!-- library.js (build_index.py copies it to the library root) puts the star in the top bar.
+     A temporary page has no library: delete the next line. -->
+<script src="../../library.js"></script>
+</body>
+</html>

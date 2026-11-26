@@ -517,6 +517,14 @@ code { font-family: var(--f-mono); font-size: .9em; }
    "file": "Atom-Action/artifact/2026-11-02-AtomicVLA.html"
   },
   {
+   "page": "2026-11-26-OPAL",
+   "project": "LLM-Harness",
+   "title": "Reactive Optimizers",
+   "date": "2026-10-24",
+   "source": "https://arxiv.org/abs/2610.33826",
+   "file": "LLM-Harness/artifact/2026-11-26-OPAL.html"
+  },
+  {
    "page": "2026-11-22-ComputerUseAgents",
    "project": "LLM-Harness",
    "title": "Computer-use agents：怎么工作、为什么又慢又贵、靠什么变快（专题页，不是单篇论文）",
@@ -720,13 +728,13 @@ code { font-family: var(--f-mono); font-size: .9em; }
  "changing": "Pages are made by the paper-explain skill (https://github.com/EricWang12/zw-claude-skills/tree/main/plugins/paper-explain), which keeps this artifact and the repo in step on every run."
 }</script>
 <header class="frame">
-  <p class="eyebrow">papers/ · 6 个 project · 77 篇 paper</p>
+  <p class="eyebrow">papers/ · 6 个 project · 78 篇 paper</p>
   <h1>Zhaoning Paper Pile</h1>
   <p class="sub">每篇 paper 先对着一个 <span class="ex">running example</span> 讲清 problem，
   再 big picture → stages → details，并逐块解读作者原图。下面的文件夹和磁盘上的
   <code>papers/</code> 一一对应，点名字展开。每张卡左边是论文首次公开的日期（arXiv v1 或 release），小字是归档日期。</p>
   <div class="seg" id="star-filter" role="group" aria-label="显示哪些 paper">
-    <button type="button" data-filter="all" aria-pressed="true">全部 77</button>
+    <button type="button" data-filter="all" aria-pressed="true">全部 78</button>
     <button type="button" data-filter="recent" aria-pressed="false">最近一周 <span id="recent-count">0</span></button>
     <button type="button" data-filter="starred" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>星标 <span id="star-count">0</span></button>
   </div>
@@ -795,8 +803,9 @@ code { font-family: var(--f-mono); font-size: .9em; }
 <li data-added="2026-11-02"><a href="Atom-Action/artifact/2026-11-02-AtomicVLA.html"><span class="date"><b>2026-03-08</b><small>归档 2026-11-02</small></span><span class="name">AtomicVLA</span><span class="title">AtomicVLA: Unlocking the Potential of Atomic Skill Learning in Robots · CVPR 2026</span><span class="tldr">让 VLA 自己 think 出当前的 atomic skill（turn / pick / place），再用它 route 到专属 expert（SG-MoE）；加新技能只加一个 expert。LIBERO-LONG 85.2 → 95.2，学新技能后旧任务只掉 1.3（π0.5 掉 15.0）。</span></a><button type="button" class="star" data-star="Atom-Action:2026-11-02-AtomicVLA" aria-pressed="false" aria-label="星标 AtomicVLA"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
 </details>
-<details id="LLM-Harness" data-proj="LLM-Harness"><summary class="proj"><h2>LLM-Harness</h2><span class="count">LLM-Harness/ · 2 篇</span><button type="button" class="fstar" data-star="LLM-Harness" aria-pressed="false" aria-label="给整个 LLM-Harness 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
+<details id="LLM-Harness" data-proj="LLM-Harness"><summary class="proj"><h2>LLM-Harness</h2><span class="count">LLM-Harness/ · 3 篇</span><button type="button" class="fstar" data-star="LLM-Harness" aria-pressed="false" aria-label="给整个 LLM-Harness 文件夹加星标"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg>整个文件夹</button></summary>
 <ol class="papers">
+<li data-added="2026-11-26"><a href="LLM-Harness/artifact/2026-11-26-OPAL.html"><span class="date"><b>2026-10-24</b><small>归档 2026-11-26</small></span><span class="name">OPAL</span><span class="title">Reactive Optimizers · arXiv 2026</span><span class="tldr">coding agent 在一次训练里反复重写 analysis.py（看什么）和 updater.py（怎么更新），zero-shot；LightningDiT-XL/1 的 FID-50K 4.33，官方 recipe 5.15，约 100 次 decision 花 $6.42。</span></a><button type="button" class="star" data-star="LLM-Harness:2026-11-26-OPAL" aria-pressed="false" aria-label="星标 OPAL"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-11-22"><a href="LLM-Harness/artifact/2026-11-22-ComputerUseAgents.html"><span class="date"><b>2026-09-02</b><small>归档 2026-11-22</small></span><span class="name">Computer-Use Agents</span><span class="title">Computer-use agents：怎么工作、为什么又慢又贵、靠什么变快（专题页，不是单篇论文） · 专题 · 文献检索 2026-11-22</span><span class="tldr">Computer-use agent 专题：都是同一个截图 → 想 → 点的 loop；慢在大模型调用和越滚越长的历史，步数是人的 2.7–4.3×；四个省法是少看、少记、每步多做、少想。</span></a><button type="button" class="star" data-star="LLM-Harness:2026-11-22-ComputerUseAgents" aria-pressed="false" aria-label="星标 Computer-Use Agents"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 <li data-added="2026-11-07"><a href="LLM-Harness/artifact/2026-11-07-AgentMemory.html"><span class="date"><b>2026-11-06</b><small>归档 2026-11-07</small></span><span class="name">AgentMemory</span><span class="title">The components of agent memory · Anthropic Engineering blog 2026</span><span class="tldr">Anthropic 讲 agent memory 的四层（transcripts、notes、wiki、injected context）和离线 dreaming：对照日志改错、建 wiki、提炼顶层</span></a><button type="button" class="star" data-star="LLM-Harness:2026-11-07-AgentMemory" aria-pressed="false" aria-label="星标 AgentMemory"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.85 5.9 6.5.85-4.75 4.5 1.2 6.45L12 17.4l-5.8 3.1 1.2-6.45-4.75-4.5 6.5-.85z"/></svg></button></li>
 </ol>
